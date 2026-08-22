@@ -1,5 +1,6 @@
 /**
- * @extramundum/sim — детерминированный боевой движок.
+ * @extramundum/sim — детерминированные системы, считающие от сида:
+ * бой и генерация лута.
  *
  * ЭТАП M1a: ядро. Генератор, цикл по тикам, пайплайн урона, матчапы,
  * формат лога. Статусы (M1b) и трейты (M1c) объявлены интерфейсами
@@ -71,3 +72,4 @@ export {
   type TickResult,
 } from './statuses.js';
 export { TRAITS, type Trait, type TraitContext, type TraitHooks } from './traits.js';
+export { allowedTiers, generateItem, type GeneratedItem, type GenerateItemInput } from './loot.js';
