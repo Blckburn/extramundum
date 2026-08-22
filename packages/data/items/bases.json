@@ -1,0 +1,120 @@
+{
+  "$comment": [
+    "Базы предметов. GDD §5.3 (что даёт слот), §6.1 (масштаб по ilvl).",
+    "",
+    "Числа ЗДЕСЬ БАЗОВЫЕ, до масштабирования: итог считает baseValue()",
+    "по формуле база × (1 + ilvl × 0.04). Одна формула на репозиторий.",
+    "",
+    "ПРОВИЗОРНО. GDD не задаёт таблицу базового урона и брони — он задаёт",
+    "лестницу аффиксов и матчапы. Поэтому числа привязаны к тому,",
+    "на чём калибровался движок в M1c: эталонное оружие матрицы —",
+    "8–14 сбалансированного класса на первом уровне, а суммарная броня",
+    "архетипов 40–55. Полный комплект здесь даёт около 45, чтобы матрица",
+    "винрейтов осталась сравнимой с M1c, а не мерила другой мир.",
+    "",
+    "Класс брони несёт ТОЛЬКО нагрудник (§5.3: «ARM (основной источник),",
+    "класс брони»). Остальные части дают ARM и не спорят за класс —",
+    "иначе пришлось бы решать, чей класс главнее, и правило появилось бы",
+    "в коде вместо данных."
+  ],
+  "$source": "GDD §5.3, §6.1",
+  "bases": [
+    { "key": "weapon.dagger", "slot": "weapon", "weaponClass": "light", "dmgMin": 6, "dmgMax": 10 },
+    {
+      "key": "weapon.rapier",
+      "slot": "weapon",
+      "weaponClass": "light",
+      "dmgMin": 7,
+      "dmgMax": 11,
+      "minIlvl": 8
+    },
+    {
+      "key": "weapon.sword",
+      "slot": "weapon",
+      "weaponClass": "balanced",
+      "dmgMin": 8,
+      "dmgMax": 14
+    },
+    {
+      "key": "weapon.spear",
+      "slot": "weapon",
+      "weaponClass": "balanced",
+      "dmgMin": 9,
+      "dmgMax": 13,
+      "minIlvl": 8
+    },
+    { "key": "weapon.axe", "slot": "weapon", "weaponClass": "heavy", "dmgMin": 10, "dmgMax": 18 },
+    {
+      "key": "weapon.maul",
+      "slot": "weapon",
+      "weaponClass": "heavy",
+      "dmgMin": 12,
+      "dmgMax": 20,
+      "minIlvl": 16
+    },
+
+    {
+      "key": "offhand.buckler",
+      "slot": "offhand",
+      "offhandKind": "shield",
+      "armor": 4,
+      "blockChance": 0.22,
+      "blockReduction": 0.6
+    },
+    {
+      "key": "offhand.kiteShield",
+      "slot": "offhand",
+      "offhandKind": "shield",
+      "armor": 7,
+      "blockChance": 0.32,
+      "blockReduction": 0.7,
+      "minIlvl": 8
+    },
+    {
+      "key": "offhand.parryingBlade",
+      "slot": "offhand",
+      "offhandKind": "weapon",
+      "dmgMin": 3,
+      "dmgMax": 6,
+      "weaponClass": "light"
+    },
+    {
+      "key": "offhand.warAxe",
+      "slot": "offhand",
+      "offhandKind": "weapon",
+      "dmgMin": 5,
+      "dmgMax": 9,
+      "weaponClass": "heavy",
+      "minIlvl": 16
+    },
+    { "key": "offhand.boneIdol", "slot": "offhand", "offhandKind": "focus", "statusPower": 1.25 },
+    {
+      "key": "offhand.ashenSigil",
+      "slot": "offhand",
+      "offhandKind": "focus",
+      "statusPower": 1.4,
+      "minIlvl": 16
+    },
+
+    { "key": "helmet.hood", "slot": "helmet", "armor": 5 },
+    { "key": "helmet.cap", "slot": "helmet", "armor": 7 },
+    { "key": "helmet.greatHelm", "slot": "helmet", "armor": 10, "minIlvl": 8 },
+
+    { "key": "chest.robe", "slot": "chest", "armorClass": "cloth", "armor": 10 },
+    { "key": "chest.jerkin", "slot": "chest", "armorClass": "light", "armor": 14 },
+    { "key": "chest.mail", "slot": "chest", "armorClass": "medium", "armor": 18 },
+    { "key": "chest.plate", "slot": "chest", "armorClass": "heavy", "armor": 24, "minIlvl": 8 },
+
+    { "key": "bracers.wraps", "slot": "bracers", "armor": 4 },
+    { "key": "bracers.vambraces", "slot": "bracers", "armor": 7, "minIlvl": 8 },
+
+    { "key": "boots.sandals", "slot": "boots", "armor": 4 },
+    { "key": "boots.greaves", "slot": "boots", "armor": 7, "minIlvl": 8 },
+
+    { "key": "amulet.cord", "slot": "amulet" },
+    { "key": "amulet.reliquary", "slot": "amulet", "minIlvl": 16 },
+
+    { "key": "ring.band", "slot": "ring" },
+    { "key": "ring.signet", "slot": "ring", "minIlvl": 16 }
+  ]
+}

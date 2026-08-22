@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
 
+import SkipGuard from './scripts/vitest-skip-guard.ts';
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -22,8 +24,15 @@ export default defineConfig({
     },
   },
   test: {
+    /**
+     * Страж пропусков. Перечисляет пропущенные тесты поимённо, а при
+     * CI=true валит прогон: способа увидеть зелёное на непройденных
+     * тестах существовать не должно. Подробности — в самом файле.
+     */
+    reporters: ['default', new SkipGuard()],
+
     // Один прогон на весь монорепо: pnpm test.
-    include: ['{packages,apps,server}/**/*.{test,spec}.ts'],
+    include: ['{packages,apps,server,scripts}/**/*.{test,spec}.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     environment: 'node',
   },

@@ -10,12 +10,14 @@
   "include": [
     "index.ts",
     "assets.ts",
+    "items.ts",
     "render.ts",
     "balance.json",
     "assets.json",
     "palette.json",
+    "animations.json",
     "rigs/*.json",
-    "animations.json"
+    "items/*.json"
   ],
   "exclude": ["__tests__/**"],
   "references": [

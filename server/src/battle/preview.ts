@@ -1,7 +1,9 @@
 import type { BattleSetup, Difficulty, PlayerProfile, ZoneId } from '@extramundum/shared';
 import { resolveBattle } from '@extramundum/sim';
 
-import { combatBalance, fighterFromProfile, sparringDummy } from './setup.ts';
+import { fighterFromLoadout, type Loadout } from '../items/loadout.ts';
+
+import { combatBalance, sparringDummy } from './setup.ts';
 
 /**
  * Оценка шанса победы. GDD §6.4.
@@ -30,10 +32,12 @@ export type PreviewInput = {
   readonly zone: ZoneId;
   readonly difficulty: Difficulty;
   readonly runs: number;
+  /** Набор, ПО КОТОРОМУ считать. Гипотетический — тоже сюда. */
+  readonly loadout: Loadout;
 };
 
 export function estimateWinRate(input: PreviewInput): { winRate: number; runs: number } {
-  const player = fighterFromProfile(input.profile);
+  const player = fighterFromLoadout(input.profile, input.loadout);
   const enemy = sparringDummy(input.profile.level, input.difficulty);
   const setup: BattleSetup = [player, enemy];
 

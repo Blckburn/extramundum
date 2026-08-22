@@ -68,7 +68,8 @@ function build(archetype, extraTraits = []) {
     armorClass: 'medium',
     critBonus: 0,
     weapon: { dmgMin: 8, dmgMax: 14, ilvl: 1, class: 'balanced' },
-    shield: null,
+    offhand: null,
+    damageAffixes: [],
     statuses: [],
     traits: [a.trait, ...extraTraits],
   };
@@ -82,7 +83,7 @@ function build(archetype, extraTraits = []) {
  * архетипа, а преимущество первого хода: при равной инициативе порядок
  * решает бросок, но при разном SPD быстрый бьёт первым всегда.
  */
-function duel(a, b, label, runs = RUNS) {
+function duel(a, b, label, runs = RUNS, rules = balance) {
   let wins = 0;
   let draws = 0;
   let ticks = 0;
@@ -90,7 +91,7 @@ function duel(a, b, label, runs = RUNS) {
   for (let i = 0; i < runs; i++) {
     const swap = i % 2 === 1;
     const setup = swap ? [b, a] : [a, b];
-    const { outcome } = resolveBattle(setup, balance, `${label}-${i}`);
+    const { outcome } = resolveBattle(setup, rules, `${label}-${i}`);
     ticks += outcome.ticks;
 
     if (outcome.winner === null) draws++;
@@ -181,6 +182,70 @@ for (const [school, ids] of Object.entries(SCHOOL_PROBE)) {
   }));
 }
 
+/* ─────────────── бюджет семейства «Мощь» (§4.6, пункт 4) ────────────── */
+
+/**
+ * ПРОВЕРКА ЧИСЛА «ДВА» ЗАМЕРОМ. GDD §6.1 назначил бюджет расчётом:
+ * «четыре аффикса T1 против четырёх T5 дают ×1.5 урона, то есть тир
+ * снаряжения решал бы бой в одиночку; при двух — ×1.23, около 82%».
+ * Расчёт — не замер, и до M3a проверить его было нечем: аффиксов
+ * не существовало.
+ *
+ * Считается ровно то, что обещано: носитель четырёх T1 против носителя
+ * четырёх T5, и то же самое при двух. Плюс контрольный прогон
+ * с ОТКЛЮЧЁННЫМ бюджетом — иначе «при двух мягче» не с чем сравнить.
+ */
+const ladder = balance.items.affixFamilies.might;
+const midOf = (tier) => (ladder[tier][0] + ladder[tier][1]) / 2;
+
+function withMight(count, tier) {
+  return { ...build('theft'), damageAffixes: Array.from({ length: count }, () => midOf(tier)) };
+}
+
+const mightRuns = Math.max(400, Math.round(RUNS / 4));
+const budget = balance.items.mightBudget;
+
+/**
+ * КОНТРОЛЬНЫЙ ПРОГОН БЕЗ БЮДЖЕТА.
+ *
+ * Без него «при двух мягче» не с чем сравнивать: обе строки сняты
+ * с работающим бюджетом и потому обязаны совпасть. Проверять надо
+ * ровно то, что утверждает GDD, — что БЕЗ ограничения счёта четыре
+ * аффикса дают ×1.5 и решают бой в одиночку.
+ *
+ * Бюджет отключается подменой коэффициента, а не правкой движка:
+ * матрица не имеет права трогать то, что меряет.
+ */
+const noBudget = { ...balance, items: { ...balance.items, mightBudget: 99 } };
+
+/** Множитель урона от N аффиксов тира при заданном бюджете. */
+const multiplier = (count, tier, cap) =>
+  Array.from({ length: count }, () => midOf(tier))
+    .slice(0, cap)
+    .reduce((acc, v) => acc * (1 + v), 1);
+
+const mightBudgetProbe = [];
+for (const count of [4, 2]) {
+  for (const [mode, rules, cap] of [
+    ['с бюджетом', balance, budget],
+    ['без бюджета', noBudget, 99],
+  ]) {
+    mightBudgetProbe.push({
+      count,
+      mode,
+      ratio: multiplier(count, 'T1', cap) / multiplier(count, 'T5', cap),
+      /* Метка сида ОДНА на все четыре прогона, и это не мелочь.
+         Аффиксы «Мощи» не тратят бросков (на это есть тест), поэтому
+         при одном сиде три строки с множителем ×1.226 обязаны совпасть
+         ПОБИТОВО, а отличаться должна ровно одна — та, где бюджет снят.
+         С разными метками строки расходились на 3.8 п.п., и это была
+         разница ВЫБОРОК, а не баланса: ровно то, за что матрица ругает
+         условные броски. */
+      ...duel(withMight(count, 'T1'), withMight(count, 'T5'), 'might', mightRuns, rules),
+    });
+  }
+}
+
 /* ─────────────────────────────── вывод ──────────────────────────────── */
 
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
@@ -191,7 +256,11 @@ const breaches = pairs.filter((p) => p.rate < LOW || p.rate > HIGH);
 
 if (AS_JSON) {
   console.log(
-    JSON.stringify({ runs: RUNS, corridor: [LOW, HIGH], pairs, combos, solo, breaches }, null, 2),
+    JSON.stringify(
+      { runs: RUNS, corridor: [LOW, HIGH], pairs, combos, solo, mightBudgetProbe, breaches },
+      null,
+      2,
+    ),
   );
 } else {
   console.log(`\nМАТРИЦА ВИНРЕЙТОВ · GDD §4.6, пункт 2`);
@@ -286,11 +355,33 @@ if (AS_JSON) {
     console.log('  Работает без условия, в отличие от соседей, — поэтому проверяется отдельно.');
   }
 
-  console.log(`\nПУНКТ 4 §4.6 — КРИВАЯ ЗОН — НЕ ПРОВЕРЯЕТСЯ.`);
-  console.log('Отложено до M3: ни зон, ни предметов, ни тир-снаряжения ещё нет.');
-  console.log('Подставить манекенов означало бы проверять выдуманные числа');
-  console.log('о выдуманных зонах — такая проверка хуже отсутствующей, потому');
-  console.log('что выглядит как гарантия.\n');
+  console.log(`\nБЮДЖЕТ СЕМЕЙСТВА «МОЩЬ» · §6.1, проверка расчёта замером`);
+  console.log(`Носитель N аффиксов T1 против носителя N аффиксов T5.`);
+  console.log(`Текущий бюджет: ${budget}. Прогонов на пару: ${mightRuns}.\n`);
+  console.log(
+    `${pad('аффиксов', 10)}${pad('режим', 14)}${padL('множитель', 11)}${padL('винрейт', 9)}`,
+  );
+  console.log('─'.repeat(56));
+  for (const probe of mightBudgetProbe) {
+    console.log(
+      pad(probe.count, 10) +
+        pad(probe.mode, 14) +
+        padL(`×${probe.ratio.toFixed(3)}`, 11) +
+        padL(pct(probe.rate), 9),
+    );
+  }
+  console.log('');
+  console.log('GDD §6.1 назначил бюджет РАСЧЁТОМ: «четыре T1 против четырёх T5');
+  console.log('дают ×1.5 урона», «при двух — ×1.23, около 82%». Строки');
+  console.log('«без бюджета» проверяют первое утверждение, строки «с бюджетом» —');
+  console.log('что ограничение действительно держит: при четырёх аффиксах оно');
+  console.log('обязано давать то же, что при двух.');
+
+  console.log(`\nКРИВАЯ ЗОН (§4.6, пункт 4) — НЕ ПРОВЕРЯЕТСЯ.`);
+  console.log('Отложено до M3b: зон и их противников ещё нет. Подставить');
+  console.log('манекенов означало бы проверять выдуманные числа о выдуманных');
+  console.log('зонах — такая проверка хуже отсутствующей, потому что');
+  console.log('выглядит как гарантия.\n');
 
   if (breaches.length > 0) {
     console.log(`КОРИДОР НАРУШЕН в ${breaches.length} пар(ах):`);

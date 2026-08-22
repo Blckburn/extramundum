@@ -94,16 +94,31 @@ export function resolveAttack(
   //    бросал только при щите, и тогда число бросков за удар зависело
   //    от снаряжения: бойцы со щитом и без него расходились потоком
   //    там, где исход ещё совпадал.
-  const offhand = defender.config.shield;
-  const blockRoll = rng.chance(offhand?.blockChance ?? 0);
-  const blocked = offhand !== null && blockRoll;
+  //    Тип оффхенда на ЧИСЛО бросков не влияет: блок бросается у всех,
+  //    включая тех, у кого в оффхенде второе оружие или фокус. Их шанс
+  //    блока просто ноль.
+  const offhand = defender.config.offhand;
+  const shield = offhand !== null && offhand.kind === 'shield' ? offhand : null;
+  const blockRoll = rng.chance(shield?.blockChance ?? 0);
+  const blocked = shield !== null && blockRoll;
   // Трейт может переопределить силу блока (fortress: гасит полностью).
-  const blockReduction = blocked ? (def.blockReductionOverride ?? offhand.blockReduction) : 0;
+  const blockReduction = blocked ? (def.blockReductionOverride ?? shield.blockReduction) : 0;
 
   // ── Шаг 3. Базовый ролл оружия × масштаб уровня предмета.
+  //
+  //    Второе оружие в оффхенде складывается в ТОТ ЖЕ бросок, а не
+  //    добавляет свой. Отдельный бросок изменил бы их число за удар,
+  //    и билд со вторым оружием разошёлся бы потоком генератора с тем,
+  //    у кого оффхенд пуст, — см. шапку файла.
   const weapon = attacker.config.weapon;
-  const lo = Math.min(weapon.dmgMin, weapon.dmgMax);
-  const hi = Math.max(weapon.dmgMin, weapon.dmgMax);
+  const mainhand = attacker.config.offhand;
+  const extra = mainhand !== null && mainhand.kind === 'weapon' ? mainhand : null;
+  const lo =
+    Math.min(weapon.dmgMin, weapon.dmgMax) +
+    (extra === null ? 0 : Math.min(extra.dmgMin, extra.dmgMax));
+  const hi =
+    Math.max(weapon.dmgMin, weapon.dmgMax) +
+    (extra === null ? 0 : Math.max(extra.dmgMin, extra.dmgMax));
   const weaponRoll = lo + rng.next() * (hi - lo);
   const scale = ilvlScale(weapon.ilvl, balance);
 
@@ -137,7 +152,13 @@ export function resolveAttack(
   // ── Шаг 8. Эффекты — M1b и M1c. Здесь их нет, и место под них не занято
   //    заглушками: пустой хук выглядел бы как реализованная механика.
 
-  const beforeBlock = weaponRoll * scale * atkMult * matchup * (1 - dr) * critMult;
+  // ── Шаг 4 (продолжение). Семейство «Мощь» — процент УРОНА (GDD §6.1).
+  //    Отдельным множителем, а не внутри atkMult: иначе журнал показал бы
+  //    одно число вместо двух, и вклад снаряжения стал бы неотличим
+  //    от вклада статов.
+  const might = att.mightMultiplier;
+
+  const beforeBlock = weaponRoll * scale * atkMult * might * matchup * (1 - dr) * critMult;
   const raw = beforeBlock * (1 - blockReduction);
   const final = Math.max(0, Math.round(raw));
 
@@ -145,6 +166,7 @@ export function resolveAttack(
     weaponRoll,
     ilvlScale: scale,
     atkMultiplier: atkMult,
+    mightMultiplier: might,
     matchupMultiplier: matchup,
     mitigation: dr,
     critMultiplier: critMult,
