@@ -5,7 +5,6 @@ import {
   type CombatBalance,
   type Difficulty,
   type FighterConfig,
-  type PlayerProfile,
 } from '@extramundum/shared';
 
 /**
@@ -18,6 +17,11 @@ import {
  *
  * Инвариант 5: числа берутся из balance.json. Здесь нет ни одной
  * константы, кроме имён полей.
+ *
+ * Сборка бойца ИГРОКА живёт в `../items/loadout.ts` — там же, где
+ * читается надетое. Двух мест, собирающих одного и того же бойца,
+ * быть не должно: они разошлись бы, и превью обещало бы одно,
+ * а бой давал другое.
  */
 
 /**
@@ -27,41 +31,8 @@ import {
  */
 export const combatBalance: CombatBalance = combatBalanceSchema.parse(balanceData);
 
-const unarmed = balanceData.unarmed;
 const sparring = balanceData.sparring;
 const difficulties = balanceData.raid.difficulty;
-
-/**
- * Боец из профиля игрока.
- *
- * Экипировки пока нет: предметы, аффиксы и лут — это M3. До тех пор
- * боец выходит в бой с голыми кулаками и без брони. Это честнее, чем
- * выдать ему выдуманное снаряжение: превью показывало бы шанс победы
- * для персонажа, которого не существует.
- */
-export function fighterFromProfile(profile: PlayerProfile): FighterConfig {
-  return fighterConfigSchema.parse({
-    level: profile.level,
-    atk: profile.statAtk,
-    def: profile.statDef,
-    agi: profile.statAgi,
-    spd: profile.statSpd,
-    // Пути уровня — M3 вместе с драфтом карточек. Поле уже есть, чтобы
-    // при их появлении не пришлось трогать формулу HP (GDD §13, пункт 2).
-    pathBonusHp: 0,
-    accuracy: 0,
-    armor: 0,
-    armorClass: 'medium',
-    critBonus: 0,
-    weapon: {
-      dmgMin: unarmed.dmgMin,
-      dmgMax: unarmed.dmgMax,
-      ilvl: unarmed.ilvl,
-      class: unarmed.class,
-    },
-    offhand: null,
-  });
-}
 
 /**
  * Спарринг-манекен.

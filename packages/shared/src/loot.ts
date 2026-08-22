@@ -46,6 +46,11 @@ export const lootBalanceSchema = z.object({
     strength: ladderSchema,
   }),
   mightBudget: z.int().min(1),
+  capacity: z.object({ inv: z.int().min(1), stash: z.int().min(1) }),
+  sell: z.object({
+    base: z.number().min(0),
+    rarityMultiplier: z.record(raritySchema, z.number().min(0)),
+  }),
   drop: z.object({
     rarityWeights: z.record(raritySchema, z.number().min(0)),
     familyWeights: z.record(affixFamilySchema, z.number().min(0)),

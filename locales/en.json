@@ -188,5 +188,7 @@
   "status.enrage": "Enrage",
   "status.chill": "Chill",
   "battle.effects.count": "×{count}",
-  "battle.roll.mightMultiplier": "Might multiplier"
+  "battle.roll.mightMultiplier": "Might multiplier",
+  "error.item.equipped": "Unequip the item first",
+  "error.item.containerFull": "No space left"
 }

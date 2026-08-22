@@ -188,5 +188,7 @@
   "status.enrage": "Бешенство",
   "status.chill": "Озноб",
   "battle.effects.count": "×{count}",
-  "battle.roll.mightMultiplier": "Множитель «Мощи»"
+  "battle.roll.mightMultiplier": "Множитель «Мощи»",
+  "error.item.equipped": "Сначала снимите предмет",
+  "error.item.containerFull": "Нет места"
 }

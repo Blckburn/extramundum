@@ -158,3 +158,119 @@ export type Item = z.infer<typeof itemSchema>;
 export function baseValue(base: number, ilvl: number, ilvlScale: number): number {
   return base * (1 + ilvl * ilvlScale);
 }
+
+/* ─────────────────────── запросы и ответы инвентаря ──────────────────── */
+
+/**
+ * Во всех запросах ниже клиент присылает ТОЛЬКО идентификаторы.
+ * Ни одного числа о предмете, ни одной характеристики: состав и сила
+ * читаются сервером из БД (инвариант 1). Подменить нечем — схема
+ * таких полей не содержит.
+ */
+
+export const equipInputSchema = z.object({ itemId: z.uuid() });
+export type EquipInput = z.infer<typeof equipInputSchema>;
+
+export const unequipInputSchema = z.object({ slot: equipmentSlotSchema });
+export type UnequipInput = z.infer<typeof unequipInputSchema>;
+
+/** Перемещение между инвентарём и стешем. `equipped` сюда не входит. */
+export const moveInputSchema = z.object({
+  itemId: z.uuid(),
+  to: z.enum(['inv', 'stash']),
+});
+export type MoveInput = z.infer<typeof moveInputSchema>;
+
+export const lockInputSchema = z.object({ itemId: z.uuid(), locked: z.boolean() });
+export type LockInput = z.infer<typeof lockInputSchema>;
+
+/**
+ * Массовая продажа с фильтром по редкости. GDD §6.3.
+ *
+ * Редкости — СПИСОК, а не диапазон: «всё до редкого включительно»
+ * и «обычные и эпические» — разные намерения, и второе выразить
+ * диапазоном нельзя.
+ *
+ * Заблокированные не продаются никогда, даже если попали под фильтр:
+ * замок существует ровно для этого (§6.3).
+ */
+export const sellInputSchema = z.object({
+  rarities: z.array(raritySchema).min(1),
+  from: z.enum(['inv', 'stash']),
+});
+export type SellInput = z.infer<typeof sellInputSchema>;
+
+export type SellResponse = {
+  readonly sold: number;
+  readonly gold: number;
+  /**
+   * Цена посчитана ПРОВИЗОРНОЙ формулой: экономика (настоящие цены,
+   * кузнец, лавка) — это M3c. Золото пока инертно, тратить его негде,
+   * поэтому неверные числа ничего не ломают, а удаление без выплаты
+   * было бы необратимым разрушением без компенсации.
+   */
+  readonly provisional: true;
+};
+
+/**
+ * Числа предмета ПОСЛЕ масштабирования по ilvl. Считает сервер.
+ *
+ * Клиент их не выводит и не может: формула одна и живёт в `baseValue`,
+ * а показывать игроку «база 8–14» там, где в бою участвует 9–16, —
+ * это пункт 4 аудита v1.0 в чистом виде.
+ */
+export type ItemDerived = {
+  readonly dmgMin?: number;
+  readonly dmgMax?: number;
+  readonly armor?: number;
+  readonly blockChance?: number;
+  readonly blockReduction?: number;
+  readonly statusPower?: number;
+};
+
+export type ItemAffixView = ItemAffix & {
+  /**
+   * Учитывается ли аффикс в бою. Заполняется ТОЛЬКО у надетых предметов
+   * и только для «Мощи»: бюджет семейства — две сильнейшие на персонажа
+   * (GDD §6.1), и третий аффикс не даёт ничего.
+   *
+   * Считает сервер, потому что ответ зависит от всего надетого набора.
+   * Клиент это рисует, а не выводит.
+   */
+  readonly counted?: boolean;
+};
+
+export type ItemView = Omit<Item, 'affixes'> & {
+  readonly affixes: readonly ItemAffixView[];
+  readonly derived: ItemDerived;
+  readonly offhandKind?: OffhandKind;
+  readonly weaponClass?: string;
+  readonly armorClass?: string;
+};
+
+/**
+ * Производные характеристики бойца от НАДЕТОГО. Их сравнивает превью.
+ *
+ * Считает сервер по тем же правилам, по которым собирает бойца для боя,
+ * — иначе превью обещало бы одно, а бой давал другое.
+ */
+export type LoadoutStats = {
+  readonly atk: number;
+  readonly armor: number;
+  readonly dmgMin: number;
+  readonly dmgMax: number;
+  readonly mightMultiplier: number;
+  /** Сколько аффиксов «Мощи» надето и сколько из них считается. */
+  readonly mightWorn: number;
+  readonly mightBudget: number;
+};
+
+export type InventoryResponse = {
+  readonly items: readonly ItemView[];
+  /** Слот → идентификатор надетого предмета. Пустые слоты не входят. */
+  readonly equipped: Readonly<Partial<Record<EquipmentSlot, string>>>;
+  readonly stats: LoadoutStats;
+  readonly gold: number;
+  /** Вместимость инвентаря и стеша. Вкладки за золото — M3c. */
+  readonly capacity: { readonly inv: number; readonly stash: number };
+};

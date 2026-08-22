@@ -47,6 +47,7 @@ export {
   ilvlScale,
   matchupMultiplier,
   maxHp,
+  mightMultiplier,
   mitigation,
   type EffectiveStats,
   type FighterState,

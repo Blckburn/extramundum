@@ -325,24 +325,41 @@ describe.skipIf(!HAS_DB)('API', () => {
     });
   });
 
-  describe('battle/start — заглушка до M3', () => {
+  describe('battle/start', () => {
     const body = { zone: 'wastes', difficulty: 'normal', loadoutHash: LOADOUT } as const;
 
     it('без сессии — 401', async () => {
       expect((await post(ctx, API_ROUTES.battleStart, body)).status).toBe(401);
     });
 
-    it('с сессией — 501: нужен противник, лут и награды, это M3', async () => {
+    it('с сессией — проводит бой и возвращает лог', async () => {
+      // До M2b здесь стоял 501. Тест не обновили вместе с эндпоинтом,
+      // и это осталось незамеченным ровно потому, что интеграционные
+      // тесты без DATABASE_URL пропускаются: локально «всё зелено»,
+      // а в CI с базой — красно. Тот самый случай, ради которого
+      // в CI стоит CI=true.
       const { jar } = await register(ctx);
       const res = await post(ctx, API_ROUTES.battleStart, body, jar);
 
-      expect(res.status).toBe(501);
+      expect(res.status).toBe(200);
       expect(res.body).toMatchObject({
-        error: { code: 'not_implemented', messageKey: 'error.not_implemented' },
+        provisional: true,
+        rewards: {},
+        outcome: { winner: expect.anything() },
       });
+
+      const parsed = res.body as {
+        log: { events: unknown[]; seed: string };
+        maxHp: [number, number];
+      };
+      expect(parsed.log.events.length).toBeGreaterThan(0);
+      expect(parsed.log.seed).toEqual(expect.any(String));
+      // Максимум HP присылает СЕРВЕР: вывести его из лога нельзя.
+      expect(parsed.maxHp[0]).toBeGreaterThan(0);
+      expect(parsed.maxHp[1]).toBeGreaterThan(0);
     });
 
-    it('валидирует тело до того, как ответить 501', async () => {
+    it('валидирует тело до того, как проводить бой', async () => {
       const { jar } = await register(ctx);
       const res = await post(
         ctx,
