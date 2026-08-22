@@ -827,7 +827,9 @@ body {
 
 .inv__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  /* Шире, чем в первой редакции: в 3.25rem не помещалась подпись уровня,
+     а число без подписи — просто число. */
+  grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr));
   gap: 0.35rem;
   align-content: start;
 }
@@ -837,11 +839,25 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.2rem;
+  gap: 0.15rem;
+  padding: 0 0.2rem 0.2rem;
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) / 2);
   cursor: pointer;
+}
+
+/* Полоса редкости во всю ширину ячейки. Цвет наследуется от рамки,
+   поэтому определение цвета редкости остаётся ОДНО на правило —
+   вторая таблица соответствий разошлась бы с первой. */
+.inv__cell-rarity {
+  display: block;
+  width: 100%;
+  height: 0.25rem;
+  margin-bottom: 0.15rem;
+  background: currentcolor;
+  color: inherit;
 }
 
 .inv__cell--selected {
@@ -852,6 +868,7 @@ body {
   color: var(--muted);
   font-size: 0.625rem;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .inv__cell-lock {
@@ -866,24 +883,55 @@ body {
 /* Редкость — цветом рамки, а не заливкой: заливка спорит с иконкой,
    а рамка читается и на плейсхолдере, и на будущем ассете. */
 .inv__cell--common,
-.inv__slot--common {
+.inv__slot--common,
+.inv__rarity--common {
   border-color: var(--border);
+  color: var(--muted);
 }
 .inv__cell--magic,
-.inv__slot--magic {
+.inv__slot--magic,
+.inv__rarity--magic {
   border-color: #4a6ea8;
+  color: #7fa3dd;
 }
 .inv__cell--rare,
-.inv__slot--rare {
+.inv__slot--rare,
+.inv__rarity--rare {
   border-color: #b08f2c;
+  color: #d8b04a;
 }
 .inv__cell--epic,
-.inv__slot--epic {
+.inv__slot--epic,
+.inv__rarity--epic {
   border-color: #7b4fa8;
+  color: #b184dd;
 }
 .inv__cell--legendary,
-.inv__slot--legendary {
+.inv__slot--legendary,
+.inv__rarity--legendary {
   border-color: #a85f28;
+  color: #e08a3c;
+}
+
+/* Кнопки фильтра — это ЛЕГЕНДА: имя редкости рядом с её цветом.
+   Без неё цвет рамки понятен только тому, кто уже знает соответствие,
+   а новичку он не говорит ничего. */
+.inv__rarity {
+  /* Невыбранная плашка — обычная рамка в цвет редкости: это легенда.
+     Выбранная утолщается и получает подложку, иначе «раскрашены все»
+     и «выбраны все» выглядят одинаково. */
+  border-width: 1px;
+}
+
+/* Выбранная редкость подсвечивается СВОИМ цветом, приглушённым до фона.
+   Не заливкой в цвет текста: `background: currentcolor` рядом
+   с переопределённым `color` даёт фон цветом фона — плашка пропадает.
+   color-mix берёт тот же единственный источник цвета и не заводит
+   второй таблицы соответствий. */
+.inv__rarity.button--active {
+  background: color-mix(in srgb, currentcolor 22%, transparent);
+  border-color: currentcolor;
+  border-width: 2px;
 }
 
 .inv__name--common {

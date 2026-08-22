@@ -268,5 +268,7 @@
   "stat.mightMultiplier": "Might multiplier",
   "stat.mightWorn": "Might affixes",
   "stat.mightBudget": "Might budget",
-  "inventory.action.sellPick": "Pick a rarity to sell"
+  "inventory.action.sellPick": "Pick a rarity to sell",
+  "item.level.short": "lvl {ilvl}",
+  "item.title": "{name} · {rarity} · {level}"
 }

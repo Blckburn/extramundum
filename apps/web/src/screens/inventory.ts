@@ -242,11 +242,24 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
         {
           class: `inv__cell inv__cell--${item.rarity}${item.id === selectedId ? ' inv__cell--selected' : ''}`,
           type: 'button',
-          title: t(`item.${item.baseKey}`),
+          title: t('item.title', {
+            name: t(`item.${item.baseKey}`),
+            rarity: t(`rarity.${item.rarity}`),
+            level: t('item.level.short', { ilvl: item.ilvl }),
+          }),
         },
         [
+          // Полоса редкости СВЕРХУ, а не только рамка. Плейсхолдер иконки
+          // красится в свой оттенок по ключу (ART-BIBLE §7), и рядом
+          // с тонкой рамкой именно он читается как главный цвет ячейки —
+          // то есть сетка выглядит несортированной там, где сортировка
+          // работает. Полоса возвращает редкости первенство.
+          el('span', { class: 'inv__cell-rarity', 'aria-hidden': 'true' }),
           renderIcon(item.baseKey, 128, t(`item.${item.baseKey}`)),
-          el('span', { class: 'inv__cell-ilvl' }, [String(item.ilvl)]),
+          // Число без подписи — просто число. Подпись короткая, потому
+          // что ячейка узкая; полное название редкости есть в панели
+          // и в подсказке.
+          el('span', { class: 'inv__cell-ilvl' }, [t('item.level.short', { ilvl: item.ilvl })]),
           ...(item.locked
             ? [el('span', { class: 'inv__cell-lock', title: t('inventory.locked') }, ['⊘'])]
             : []),

@@ -268,5 +268,7 @@
   "stat.mightMultiplier": "Множитель «Мощи»",
   "stat.mightWorn": "Аффиксов «Мощи»",
   "stat.mightBudget": "Бюджет «Мощи»",
-  "inventory.action.sellPick": "Выберите редкость для продажи"
+  "inventory.action.sellPick": "Выберите редкость для продажи",
+  "item.level.short": "ур. {ilvl}",
+  "item.title": "{name} · {rarity} · {level}"
 }
