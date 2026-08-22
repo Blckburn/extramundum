@@ -1,21 +1,9 @@
-import type { PlayerProfile } from '@extramundum/shared';
+import { EQUIPMENT_SLOTS, type PlayerProfile } from '@extramundum/shared';
 
 import { api } from '../api.ts';
 import { clear, el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { renderIcon } from '../ui/icon.ts';
-
-/** GDD §5.3. В M0 показываются только как плейсхолдеры. */
-const EQUIPMENT_SLOTS = [
-  'weapon',
-  'offhand',
-  'helmet',
-  'chest',
-  'bracers',
-  'boots',
-  'amulet',
-  'ring',
-] as const;
 
 /**
  * Заглушка деревни — граница этапа M0.

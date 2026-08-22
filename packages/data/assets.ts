@@ -1,4 +1,12 @@
-import { ALL_TRAIT_IDS, ARCHETYPE_IDS, STATUS_IDS, ZONE_IDS } from '@extramundum/shared';
+import {
+  ALL_TRAIT_IDS,
+  ARCHETYPE_IDS,
+  EQUIPMENT_SLOTS,
+  STATUS_IDS,
+  ZONE_IDS,
+} from '@extramundum/shared';
+
+import { ITEM_BASES } from './items.ts';
 
 import manifest from './assets.json' with { type: 'json' };
 
@@ -57,9 +65,33 @@ export const ICON_ENTITIES = {
   /** GDD §4.5, тридцать выбираемых трейтов и четыре врождённых. */
   trait: [...ALL_TRAIT_IDS],
 
-  /** GDD §5.3, восемь слотов экипировки. Иконки пустого слота. */
-  slot: ['weapon', 'offhand', 'helmet', 'chest', 'bracers', 'boots', 'amulet', 'ring'],
+  /** GDD §5.3, восемь слотов экипировки. Иконки ПУСТОГО слота. */
+  slot: [...EQUIPMENT_SLOTS],
+
+  /**
+   * GDD §6, базы предметов. Ключ базы И ЕСТЬ ключ иконки — так записано
+   * в схеме БД (`items.base_key`), и второго ключа заводить нельзя:
+   * предмет ссылается на базу строкой, и разойдись эти два имени,
+   * у игрока в инвентаре окажется запись, которую нечем истолковать.
+   *
+   * Поэтому категории здесь — сами слоты, а идентификаторы берутся
+   * ИЗ БАЗ, а не переписываются руками: `weapon.dagger` в bases.json
+   * даёт ровно ключ `weapon.dagger` в манифесте.
+   */
+  ...itemCategories(),
 } as const satisfies Record<string, readonly string[]>;
+
+/** Базы, разложенные по слотам: `{ weapon: ['dagger', ...], ... }`. */
+function itemCategories(): Record<string, readonly string[]> {
+  const out: Record<string, string[]> = {};
+  for (const base of ITEM_BASES) {
+    // Ключ базы — «слот.имя». Категорией становится слот, идентификатором
+    // остаток: склеивая их обратно, получаем тот же ключ.
+    const name = base.key.slice(base.slot.length + 1);
+    (out[base.slot] ??= []).push(name);
+  }
+  return out;
+}
 
 /** Все ключи, которые обязаны присутствовать в манифесте. */
 export function expectedIconKeys(): string[] {

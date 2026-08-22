@@ -11,6 +11,8 @@ export * from './auth.js';
 export * from './battle.js';
 export * from './combat.js';
 export * from './errors.js';
+export * from './items.js';
+export * from './loot.js';
 export * from './player.js';
 export * from './render.js';
 export * from './routes.js';

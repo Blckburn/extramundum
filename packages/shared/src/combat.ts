@@ -306,7 +306,18 @@ export const combatBalanceSchema = z.object({
     balanced: matchupRowSchema,
     heavy: matchupRowSchema,
   }),
-  items: z.object({ ilvlScale: z.number() }),
+  items: z.object({
+    ilvlScale: z.number(),
+    /**
+     * Сколько аффиксов «Мощи» учитывается в бою. GDD §6.1.
+     *
+     * Правило держит ДВИЖОК, а не сервер и не генератор: надеть можно
+     * сколько угодно, считаются две сильнейшие. На генерации это
+     * невыразимо — предмет создаётся, не зная, кто его наденет,
+     * — а на сервере было бы механикой без теста.
+     */
+    mightBudget: z.int().min(1),
+  }),
 
   /**
    * Коэффициенты статусов. GDD §4.4 задаёт систему и набор эффектов,
