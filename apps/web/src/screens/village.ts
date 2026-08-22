@@ -16,12 +16,13 @@ export function renderVillage(
   player: PlayerProfile,
   onSignedOut: () => void,
   onArena?: () => void,
+  onInventory?: () => void,
 ): void {
   clear(root);
 
-  const arenaButton = (onArena: () => void) => {
-    const button = el('button', { class: 'button', type: 'button' }, [t('arena.enter')]);
-    button.addEventListener('click', onArena);
+  const navButton = (labelKey: string, onClick: () => void) => {
+    const button = el('button', { class: 'button', type: 'button' }, [t(labelKey)]);
+    button.addEventListener('click', onClick);
     return button;
   };
 
@@ -62,10 +63,9 @@ export function renderVillage(
         stat('village.stat.elo', player.elo),
       ]),
 
-      // Восемь слотов экипировки — пока только иконки-плейсхолдеры.
-      // Здесь они затем, чтобы система плейсхолдеров была видна, а не
-      // только описана: ни один ассет ещё не нарисован (ART-BIBLE §7).
-      // Инвентарь и надевание предметов — это M3.
+      // Восемь слотов экипировки. Что в них надето, показывает экран
+      // снаряжения (M3a); здесь остаются иконки пустых слотов —
+      // ни один ассет ещё не нарисован (ART-BIBLE §7).
       el(
         'div',
         { class: 'slots', 'aria-label': t('village.slots') },
@@ -75,7 +75,10 @@ export function renderVillage(
       // Вход на арену. В M2a там статичная сцена: воспроизведение боя —
       // это M2b, и заводить кнопку «в бой» раньше него значило бы обещать
       // игроку то, чего нет.
-      ...(onArena === undefined ? [] : [arenaButton(onArena)]),
+      el('div', { class: 'village__nav' }, [
+        ...(onInventory === undefined ? [] : [navButton('inventory.open', onInventory)]),
+        ...(onArena === undefined ? [] : [navButton('arena.enter', onArena)]),
+      ]),
 
       el('p', { class: 'village__stub' }, [t('village.stub')]),
     ]),

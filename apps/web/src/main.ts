@@ -3,6 +3,7 @@ import { clear, el } from './dom.ts';
 import { getLocale, setLocale, t } from './i18n.ts';
 import { renderArena } from './screens/arena.ts';
 import { renderAuth } from './screens/auth.ts';
+import { renderInventory } from './screens/inventory.ts';
 import { renderVillage } from './screens/village.ts';
 
 import type { MeResponse } from '@extramundum/shared';
@@ -99,6 +100,7 @@ async function route(): Promise<void> {
       player,
       () => void route(),
       () => renderArena(root!, village),
+      () => renderInventory(root!, village),
     );
   village();
 }

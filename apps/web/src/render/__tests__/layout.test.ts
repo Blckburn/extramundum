@@ -50,7 +50,16 @@ describe('лейаут проектируется от 380 px вверх', () =>
     }
 
     expect([...absolute].sort()).toEqual(
-      ['.arena__canvas', '.arena__overlay', '.numbers', '.numbers__item', '.numbers__float'].sort(),
+      [
+        '.arena__canvas',
+        '.arena__overlay',
+        '.numbers',
+        '.numbers__item',
+        '.numbers__float',
+        // M3a: значок замка в углу ячейки инвентаря. Привязан к самой
+        // ячейке (`position: relative` на ней), координаты нулевые.
+        '.inv__cell-lock',
+      ].sort(),
     );
   });
 

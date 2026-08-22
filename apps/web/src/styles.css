@@ -743,3 +743,276 @@ body {
   margin: 0.3rem 0 0;
   color: var(--danger);
 }
+
+/* ── Снаряжение: инвентарь, стеш, экипировка (M3a) ─────────────────────
+   Раскладка от узкого экрана: на телефоне колонка, на широком —
+   сетка с панелью предмета справа. Ни одной пиксельной координаты,
+   ни одного position: fixed. */
+
+.screen--inventory {
+  max-width: 64rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.inv__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.inv__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.inv__head {
+  display: flex;
+  gap: 1rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv__label {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  align-self: center;
+}
+
+.inv__slots,
+.inv__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.inv__slot {
+  padding: 0.15rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  cursor: pointer;
+}
+
+.inv__slot .icon,
+.inv__cell .icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1rem;
+}
+
+.inv__slot--empty {
+  opacity: 0.4;
+}
+
+.inv__body {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr;
+  min-height: 0;
+}
+
+@media (min-width: 700px) {
+  .inv__body {
+    grid-template-columns: 1fr minmax(16rem, 22rem);
+  }
+}
+
+.inv__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  gap: 0.35rem;
+  align-content: start;
+}
+
+.inv__cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  cursor: pointer;
+}
+
+.inv__cell--selected {
+  outline: 2px solid var(--accent);
+}
+
+.inv__cell-ilvl {
+  color: var(--muted);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv__cell-lock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  color: var(--accent);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/* Редкость — цветом рамки, а не заливкой: заливка спорит с иконкой,
+   а рамка читается и на плейсхолдере, и на будущем ассете. */
+.inv__cell--common,
+.inv__slot--common {
+  border-color: var(--border);
+}
+.inv__cell--magic,
+.inv__slot--magic {
+  border-color: #4a6ea8;
+}
+.inv__cell--rare,
+.inv__slot--rare {
+  border-color: #b08f2c;
+}
+.inv__cell--epic,
+.inv__slot--epic {
+  border-color: #7b4fa8;
+}
+.inv__cell--legendary,
+.inv__slot--legendary {
+  border-color: #a85f28;
+}
+
+.inv__name--common {
+  color: var(--text);
+}
+.inv__name--magic {
+  color: #7fa3dd;
+}
+.inv__name--rare {
+  color: #d8b04a;
+}
+.inv__name--epic {
+  color: #b184dd;
+}
+.inv__name--legendary {
+  color: #e08a3c;
+}
+
+.inv__detail {
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.8125rem;
+  align-self: start;
+}
+
+.inv__name {
+  margin: 0 0 0.15rem;
+  font-size: 1rem;
+}
+
+.inv__sub {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.inv__stats,
+.inv__affixes,
+.inv__deltas {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.inv__affix {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: baseline;
+  color: var(--accent);
+}
+
+.inv__affix-tier {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+/* Аффикс сверх бюджета «Мощи» показывается зачёркнутым и с причиной.
+   Спрятать его было бы хуже: игрок надел бы третий и не понял,
+   почему ничего не изменилось. */
+.inv__affix--cut {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.inv__affix-cut {
+  color: var(--danger);
+  font-size: 0.6875rem;
+  text-decoration: none;
+}
+
+.inv__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0.5rem 0;
+}
+
+.inv__preview {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.inv__preview-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.inv__winrate {
+  margin: 0 0 0.35rem;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.inv__delta--up {
+  color: #7fa87f;
+}
+
+.inv__delta--down {
+  color: var(--danger);
+}
+
+.inv__empty,
+.inv__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.inv__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.button--danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.village__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
