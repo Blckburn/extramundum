@@ -945,16 +945,22 @@ body {
 
 /* Аффикс сверх бюджета «Мощи» показывается зачёркнутым и с причиной.
    Спрятать его было бы хуже: игрок надел бы третий и не понял,
-   почему ничего не изменилось. */
+   почему ничего не изменилось.
+
+   Зачёркивается ТОЛЬКО значение, а не вся строка: text-decoration
+   наследуется и не отменяется у потомка, поэтому строка целиком
+   зачёркивала бы и причину — то есть ровно то, что нужно прочесть. */
 .inv__affix--cut {
   color: var(--muted);
+}
+
+.inv__affix--cut .inv__affix-text {
   text-decoration: line-through;
 }
 
 .inv__affix-cut {
   color: var(--danger);
   font-size: 0.6875rem;
-  text-decoration: none;
 }
 
 .inv__actions {
@@ -1015,4 +1021,18 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+/* Портрет с надетым. Слоты видны на риге (GDD §5.3). */
+.inv__worn {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.inv__portrait {
+  flex: 0 0 auto;
+  width: 6rem;
+  height: 9rem;
+  display: block;
 }

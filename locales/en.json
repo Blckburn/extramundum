@@ -243,8 +243,8 @@
   "inventory.action.toInv": "To bag",
   "inventory.action.lock": "Lock",
   "inventory.action.unlock": "Unlock",
-  "inventory.action.sell": "Sell selected rarities",
-  "inventory.sell.confirm": "Sell every unlocked item of these rarities?",
+  "inventory.action.sell": "Sell ({count})",
+  "inventory.sell.confirm": "Sell every unlocked item of these rarities: {rarities}?",
   "inventory.sell.done": "Sold {sold}, gained {gold} gold",
   "inventory.sell.none": "Nothing to sell",
   "inventory.sell.provisional": "Price is provisional: the economy comes later",
@@ -267,5 +267,6 @@
   "stat.dmgMax": "Damage max",
   "stat.mightMultiplier": "Might multiplier",
   "stat.mightWorn": "Might affixes",
-  "stat.mightBudget": "Might budget"
+  "stat.mightBudget": "Might budget",
+  "inventory.action.sellPick": "Pick a rarity to sell"
 }

@@ -243,8 +243,8 @@
   "inventory.action.toInv": "В сумку",
   "inventory.action.lock": "Заблокировать",
   "inventory.action.unlock": "Разблокировать",
-  "inventory.action.sell": "Продать выбранные редкости",
-  "inventory.sell.confirm": "Продать все незаблокированные предметы этих редкостей?",
+  "inventory.action.sell": "Продать ({count})",
+  "inventory.sell.confirm": "Продать все незаблокированные предметы: {rarities}?",
   "inventory.sell.done": "Продано: {sold}, получено золота: {gold}",
   "inventory.sell.none": "Нечего продавать",
   "inventory.sell.provisional": "Цена провизорная: экономика появится позже",
@@ -267,5 +267,6 @@
   "stat.dmgMax": "Урон макс.",
   "stat.mightMultiplier": "Множитель «Мощи»",
   "stat.mightWorn": "Аффиксов «Мощи»",
-  "stat.mightBudget": "Бюджет «Мощи»"
+  "stat.mightBudget": "Бюджет «Мощи»",
+  "inventory.action.sellPick": "Выберите редкость для продажи"
 }

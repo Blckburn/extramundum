@@ -1,6 +1,7 @@
 import {
   EQUIPMENT_SLOTS,
   RARITIES,
+  type EquipmentSlot,
   type InventoryResponse,
   type ItemAffixView,
   type ItemView,
@@ -37,6 +38,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   clear(root);
 
   const head = el('div', { class: 'inv__head' });
+  const portraitCanvas = el('canvas', { class: 'inv__portrait' }) as HTMLCanvasElement;
   const slotsRow = el('div', { class: 'inv__slots' });
   const controls = el('div', { class: 'inv__controls' });
   const grid = el('div', { class: 'inv__grid' });
@@ -44,7 +46,10 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   const notice = el('p', { class: 'inv__notice', role: 'status' });
 
   const back = el('button', { class: 'button button--ghost', type: 'button' }, [t('action.back')]);
-  back.addEventListener('click', onBack);
+  back.addEventListener('click', () => {
+    portrait?.stop();
+    onBack();
+  });
 
   root.append(
     el('main', { class: 'screen screen--inventory' }, [
@@ -52,7 +57,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
         el('h1', { class: 'inv__title' }, [t('inventory.title')]),
         head,
       ]),
-      slotsRow,
+      el('div', { class: 'inv__worn' }, [portraitCanvas, slotsRow]),
       controls,
       el('div', { class: 'inv__body' }, [grid, detail]),
       el('div', { class: 'inv__bar' }, [notice, back]),
@@ -66,6 +71,24 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   let selectedId: string | null = null;
   /** Растёт на каждый запрос превью: ответ на устаревший игнорируется. */
   let previewToken = 0;
+  /** Портрет с надетым. three.js — динамическим импортом, как на арене. */
+  let portrait: { show(worn: ReadonlySet<EquipmentSlot>): void; stop(): void } | null = null;
+
+  void (async () => {
+    const { mountPortrait } = await import('../render/portrait.ts');
+    if (!portraitCanvas.isConnected) return;
+    portrait = mountPortrait(portraitCanvas);
+    showWorn();
+  })();
+
+  /**
+   * §5.3: «восемь слотов, и ВСЕ ВИДНЫ НА РИГЕ». Пустой слот прячет свой
+   * узел, занятый показывает — без этого обещание остаётся словами.
+   */
+  function showWorn(): void {
+    if (portrait === null || data === null) return;
+    portrait.show(new Set(Object.keys(data.equipped) as EquipmentSlot[]));
+  }
 
   const refresh = async (): Promise<void> => {
     try {
@@ -91,6 +114,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       el('span', { class: 'inv__capacity' }, [t('inventory.capacity', { used, max })]),
     );
 
+    showWorn();
     drawSlots();
     drawControls();
     drawGrid();
@@ -173,10 +197,18 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     controls.append(sortSelect);
 
     /* Массовая продажа. Заблокированные не продаются никогда — это
-       держит сервер, а не подтверждение здесь. */
+       держит сервер, а не подтверждение здесь.
+
+       Кнопка НЕАКТИВНА, пока редкости не выбраны. Пустой фильтр в этом
+       экране означает «показать все», и если бы продажа читала его так же,
+       одно нажатие сносило бы весь стеш — необратимо и без явного
+       намерения. Разрушающее действие требует выбора, а не умолчания. */
     const sell = el('button', { class: 'button button--small button--danger', type: 'button' }, [
-      t('inventory.action.sell'),
-    ]);
+      rarityFilter.size === 0
+        ? t('inventory.action.sellPick')
+        : t('inventory.action.sell', { count: rarityFilter.size }),
+    ]) as HTMLButtonElement;
+    sell.disabled = rarityFilter.size === 0;
     sell.addEventListener('click', () => void sellSelected());
     controls.append(sell);
   }
@@ -413,8 +445,10 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   /* ─────────────────────────── массовая продажа ──────────────────────── */
 
   async function sellSelected(): Promise<void> {
-    const rarities = rarityFilter.size === 0 ? [...RARITIES] : [...rarityFilter];
-    if (!globalThis.confirm(t('inventory.sell.confirm'))) return;
+    if (rarityFilter.size === 0) return;
+    const rarities = [...rarityFilter];
+    const names = rarities.map((rarity) => t(`rarity.${rarity}`)).join(', ');
+    if (!globalThis.confirm(t('inventory.sell.confirm', { rarities: names }))) return;
 
     try {
       const result = await api.sellItems({ rarities, from: tab });
