@@ -65,7 +65,7 @@ describe('частоты сходятся с формулами', () => {
   it('блок выпадает с вероятностью щита', () => {
     const { blocked, hits } = sample(
       { accuracy: 1000 }, // уклонений нет, все удары доходят до блока
-      { shield: { blockChance: 0.25, blockReduction: 0.8 } },
+      { offhand: { kind: 'shield', blockChance: 0.25, blockReduction: 0.8 } },
       'block-rate',
     );
     expect(blocked / hits).toBeCloseTo(0.25, 2);
@@ -85,10 +85,10 @@ describe('броски не коррелируют между собой', () =>
     // При общем броске (`r < dodge` → уклон, иначе `r < dodge + block`
     // → блок) доля блоков среди дошедших ударов равна block/(1 − dodge),
     // то есть 0.309 против 0.411. При раздельных бросках — 0.3 в обоих.
-    const shield = { blockChance: 0.3, blockReduction: 0.7 };
+    const offhand = { kind: 'shield', blockChance: 0.3, blockReduction: 0.7 } as const;
 
-    const slow = sample({}, { agi: 0, shield }, 'corr-a'); // уклонение 3%
-    const nimble = sample({}, { agi: 30, shield }, 'corr-b'); // уклонение 27%
+    const slow = sample({}, { agi: 0, offhand }, 'corr-a'); // уклонение 3%
+    const nimble = sample({}, { agi: 30, offhand }, 'corr-b'); // уклонение 27%
 
     // Проверяем, что уклонение действительно разное: иначе тест
     // незаметно выродится в предыдущую редакцию.
@@ -106,10 +106,10 @@ describe('броски не коррелируют между собой', () =>
   it('шанс крита не зависит от того, есть ли у защитника щит', () => {
     const withShield = sample(
       { agi: 20, accuracy: 1000 },
-      { shield: { blockChance: 0.5, blockReduction: 0.6 } },
+      { offhand: { kind: 'shield', blockChance: 0.5, blockReduction: 0.6 } },
       'crit-shield',
     );
-    const without = sample({ agi: 20, accuracy: 1000 }, { shield: null }, 'crit-no-shield');
+    const without = sample({ agi: 20, accuracy: 1000 }, { offhand: null }, 'crit-no-shield');
 
     expect(Math.abs(withShield.crit / withShield.hits - without.crit / without.hits)).toBeLessThan(
       0.02,
@@ -119,10 +119,10 @@ describe('броски не коррелируют между собой', () =>
   it('шанс уклонения не зависит от наличия щита', () => {
     const withShield = sample(
       {},
-      { agi: 25, shield: { blockChance: 0.35, blockReduction: 0.9 } },
+      { agi: 25, offhand: { kind: 'shield', blockChance: 0.35, blockReduction: 0.9 } },
       'dodge-shield',
     );
-    const without = sample({}, { agi: 25, shield: null }, 'dodge-no-shield');
+    const without = sample({}, { agi: 25, offhand: null }, 'dodge-no-shield');
 
     expect(Math.abs(withShield.dodged / RUNS - without.dodged / RUNS)).toBeLessThan(0.02);
   });
@@ -205,18 +205,79 @@ describe('сам генератор', () => {
       return { rng, draws: () => draws };
     };
 
-    const hit = (defender: Parameters<typeof fighter>[0], seed: string) => {
+    /**
+     * Пара варьируется С ОБЕИХ СТОРОН.
+     *
+     * Прежняя редакция меняла только защитника, и диверсия «второе
+     * оружие тратит свой бросок» проходила мимо: второе оружие
+     * принадлежит АТАКУЮЩЕМУ. Проверка, смотрящая на одну сторону,
+     * доказывает ровно половину.
+     */
+    const hit = (
+      attacker: Parameters<typeof fighter>[0],
+      defender: Parameters<typeof fighter>[0],
+      seed: string,
+    ) => {
       const { rng, draws } = counted(seed);
-      const a = createFighterState(fighter({ atk: 20, accuracy: 5 }), balance);
+      const a = createFighterState(fighter({ atk: 20, accuracy: 5, ...attacker }), balance);
       const d = createFighterState(fighter(defender), balance);
       const outcome = resolveAttack(a, d, balance, rng, 0, 1);
       return { kind: outcome.kind, draws: draws() };
     };
 
-    const deadShield = { blockChance: 0, blockReduction: 0.3, ilvl: 1 };
-    const pairs: Array<[string, Parameters<typeof fighter>[0], Parameters<typeof fighter>[0]]> = [
-      // Щит, который никогда не срабатывает, против отсутствия щита.
-      ['щит с нулевым блоком', { agi: 20 }, { agi: 20, shield: deadShield }],
+    type Side = {
+      attacker?: Parameters<typeof fighter>[0];
+      defender?: Parameters<typeof fighter>[0];
+    };
+
+    const deadShield = { kind: 'shield', blockChance: 0, blockReduction: 0.3 } as const;
+    const secondWeapon = { kind: 'weapon', dmgMin: 0, dmgMax: 0 } as const;
+    const focus = { kind: 'focus', statusPower: 1.4 } as const;
+
+    const pairs: Array<[string, Side, Side]> = [
+      // Щит, который никогда не срабатывает, против отсутствия оффхенда.
+      [
+        'щит с нулевым блоком',
+        { defender: { agi: 20 } },
+        { defender: { agi: 20, offhand: deadShield } },
+      ],
+
+      // ТРИ ВИДА ОФФХЕНДА (M3a). Самая опасная правка этапа: блок
+      // бросается у всех, второе оружие складывается в ТОТ ЖЕ бросок
+      // урона, фокус не бросает вовсе. Разойдись здесь число бросков —
+      // вся калибровка M1c поехала бы потоком, а не силой правки.
+      //
+      // Оффхенд проверяется НА ОБЕИХ сторонах: у защитника он влияет
+      // на шаг блока, у атакующего — на шаг урона.
+      [
+        'второе оружие у защитника',
+        { defender: { agi: 20 } },
+        { defender: { agi: 20, offhand: secondWeapon } },
+      ],
+      [
+        'второе оружие у АТАКУЮЩЕГО',
+        { attacker: {}, defender: { agi: 20 } },
+        { attacker: { offhand: secondWeapon }, defender: { agi: 20 } },
+      ],
+      ['фокус у защитника', { defender: { agi: 20 } }, { defender: { agi: 20, offhand: focus } }],
+      [
+        'фокус у АТАКУЮЩЕГО',
+        { attacker: {}, defender: { agi: 20 } },
+        { attacker: { offhand: focus }, defender: { agi: 20 } },
+      ],
+      [
+        'фокус против щита',
+        { defender: { agi: 20, offhand: focus } },
+        { defender: { agi: 20, offhand: deadShield } },
+      ],
+
+      // Аффиксы «Мощи» меняют ЧИСЛО урона, но не число бросков —
+      // ни у того, кто их носит, ни у того, по кому бьют.
+      [
+        'аффиксы Мощи у атакующего',
+        { attacker: {}, defender: { agi: 20 } },
+        { attacker: { damageAffixes: [0.12, 0.15, 0.15] }, defender: { agi: 20 } },
+      ],
     ];
 
     let sameOutcome = 0;
@@ -225,8 +286,8 @@ describe('сам генератор', () => {
 
     for (let i = 0; i < 300; i++) {
       for (const [name, left, right] of pairs) {
-        const a = hit(left, `draws-${i}`);
-        const b = hit(right, `draws-${i}`);
+        const a = hit(left.attacker ?? {}, left.defender ?? {}, `draws-${i}`);
+        const b = hit(right.attacker ?? {}, right.defender ?? {}, `draws-${i}`);
         expect(b.kind, `${name}: исход разошёлся, сравнивать броски нельзя`).toBe(a.kind);
         expect(b.draws, `${name}: разное число бросков при одинаковом исходе`).toBe(a.draws);
         sameOutcome++;
@@ -237,7 +298,7 @@ describe('сам генератор', () => {
 
     // В выборке ЕСТЬ и попадания, и промахи: у них разное число бросков,
     // и проверка выше без обоих доказывала бы только одну ветку.
-    expect(sameOutcome).toBe(300);
+    expect(sameOutcome).toBe(300 * pairs.length);
     expect(hits, 'ни одного попадания в выборке').toBeGreaterThan(30);
     expect(misses, 'ни одного промаха в выборке').toBeGreaterThan(10);
   });

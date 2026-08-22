@@ -104,8 +104,16 @@ export type EffectiveStats = {
   /** Множители урона от трейтов. */
   readonly outgoingDamageMultiplier: number;
   readonly incomingDamageMultiplier: number;
-  /** Прибавка к урону своих эффектов на цели. */
+  /** Прибавка к урону своих эффектов на цели. Трейты плюс фокус. */
   readonly dotDamageBonus: number;
+  /**
+   * Шаг 4: множитель семейства «Мощь» (GDD §6.1).
+   *
+   * Учтены ТОЛЬКО ДВЕ СИЛЬНЕЙШИЕ — бюджет семейства. Держится здесь,
+   * а не на генерации и не на сервере: предмет создаётся, не зная, кто
+   * его наденет, а правило на сервере было бы механикой без теста.
+   */
+  readonly mightMultiplier: number;
   /** Крит без броска на ближайшем ударе. */
   readonly guaranteedCrit: boolean;
 };
@@ -142,6 +150,11 @@ export function effectiveStats(
       (tm.armorMultiplier ?? 1),
   );
 
+  // Фокус в оффхенде усиливает статусы, наложенные НОСИТЕЛЕМ, — тем же
+  // механизмом, что трейт `amplifier`, а не вторым понятием рядом.
+  const focusBonus =
+    base.offhand !== null && base.offhand.kind === 'focus' ? base.offhand.statusPower - 1 : 0;
+
   return {
     atk,
     agi: Math.max(0, base.agi + (sm.agi ?? 0) + (tm.agi ?? 0)),
@@ -162,9 +175,31 @@ export function effectiveStats(
     enemyCritMultiplier: tm.enemyCritMultiplier ?? 1,
     outgoingDamageMultiplier: tm.outgoingDamageMultiplier ?? 1,
     incomingDamageMultiplier: tm.incomingDamageMultiplier ?? 1,
-    dotDamageBonus: tm.dotDamageBonus ?? 0,
+    dotDamageBonus: (tm.dotDamageBonus ?? 0) + focusBonus,
     guaranteedCrit: tm.guaranteedCrit ?? false,
+    mightMultiplier: mightMultiplier(base.damageAffixes, balance),
   };
+}
+
+/**
+ * Множитель семейства «Мощь» из аффиксов носителя. GDD §6.1.
+ *
+ * Берутся ДВЕ СИЛЬНЕЙШИЕ (`balance.items.mightBudget`), остальные
+ * не считаются. Без ограничения счёта лестница перестаёт значить:
+ * четыре аффикса T1 против четырёх T5 дают ×1.5 урона, то есть тир
+ * снаряжения решал бы бой в одиночку.
+ *
+ * Сортировка копии, а не самого массива: конфигурация бойца общая
+ * на весь прогон матрицы, и мутировать её здесь значило бы менять
+ * входные данные из функции, которая обязана быть чистой.
+ */
+export function mightMultiplier(affixes: readonly number[], balance: CombatBalance): number {
+  if (affixes.length === 0) return 1;
+
+  const counted = [...affixes].sort((a, b) => b - a).slice(0, balance.items.mightBudget);
+  let multiplier = 1;
+  for (const value of counted) multiplier *= 1 + value;
+  return multiplier;
 }
 
 /**

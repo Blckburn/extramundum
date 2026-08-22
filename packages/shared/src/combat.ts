@@ -145,16 +145,39 @@ export const weaponConfigSchema = z.object({
 export type WeaponConfig = z.infer<typeof weaponConfigSchema>;
 
 /**
- * Щит в оффхенде. GDD §5.3: оффхенд может быть щитом, вторым оружием
- * или фокусом. В M1a реализован только щит — остальное меняет урон
- * и эффекты статусов, то есть относится к M1b и позже.
+ * Оффхенд. GDD §5.3: щит, второе оружие или фокус — ТРИ РАЗНЫХ ТИПА,
+ * а не три варианта одного.
+ *
+ * Размеченное объединение, а не общий объект с необязательными полями:
+ * «щит с уроном» и «фокус с блоком» не должны выражаться в типе вовсе.
+ * В M1a был только щит, остальное появилось с предметами (M3a).
+ *
+ * ⚠️ Число бросков за удар от типа оффхенда НЕ ЗАВИСИТ. Блок бросается
+ * безусловно у всех, второе оружие складывает урон в тот же бросок,
+ * фокус не бросает вовсе. Иначе два билда, отличающиеся оффхендом,
+ * расходились бы ПОТОКОМ генератора, и матрица винрейтов мерила бы
+ * смещение выборки вместо силы правки. На это есть тест.
  */
-export const shieldConfigSchema = z.object({
-  blockChance: z.number().min(0).max(1),
-  /** Насколько блок гасит урон: 0.6–1.0 (GDD §4.2). */
-  blockReduction: z.number().min(0).max(1),
-});
-export type ShieldConfig = z.infer<typeof shieldConfigSchema>;
+export const offhandConfigSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('shield'),
+    blockChance: z.number().min(0).max(1),
+    /** Насколько блок гасит урон: 0.6–1.0 (GDD §4.2). */
+    blockReduction: z.number().min(0).max(1),
+  }),
+  z.object({
+    kind: z.literal('weapon'),
+    /** Складывается с уроном основного оружия в ТОТ ЖЕ бросок. */
+    dmgMin: z.number().min(0),
+    dmgMax: z.number().min(0),
+  }),
+  z.object({
+    kind: z.literal('focus'),
+    /** Множитель силы статусов, наложенных НОСИТЕЛЕМ. 1.25 = +25%. */
+    statusPower: z.number().min(1),
+  }),
+]);
+export type OffhandConfig = z.infer<typeof offhandConfigSchema>;
 
 export const fighterConfigSchema = z.object({
   level: z.int().min(1),
@@ -189,8 +212,18 @@ export const fighterConfigSchema = z.object({
   critBonus: z.number().min(0).default(0),
 
   weapon: weaponConfigSchema,
-  /** null — оффхенд пуст или занят не щитом. */
-  shield: shieldConfigSchema.nullable().default(null),
+  /** null — оффхенд пуст. */
+  offhand: offhandConfigSchema.nullable().default(null),
+
+  /**
+   * Аффиксы семейства «Мощь» — доли урона. GDD §6.1.
+   *
+   * СПИСОК, а не свёрнутое число, и это принципиально: бюджет семейства
+   * (не больше двух на персонажа) держит ДВИЖОК, отбирая две сильнейшие.
+   * Приди сюда готовый множитель, правило жило бы на сервере, где его
+   * нечем проверить тестом, — а механики без теста не существует.
+   */
+  damageAffixes: z.array(z.number()).default([]),
 
   /**
    * Статусы, с которыми боец входит в бой.
@@ -437,6 +470,18 @@ export type RollBreakdown = {
   readonly ilvlScale: number;
   /** Шаг 4: 1 + ATK / делитель. */
   readonly atkMultiplier: number;
+  /**
+   * Шаг 4: множитель семейства «Мощь». GDD §6.1.
+   *
+   * ОТДЕЛЬНЫМ ПОЛЕМ, а не внутри `atkMultiplier`. Смешавшись с ним,
+   * «Мощь» заставила бы журнал врать ровно там, ради чего он написан:
+   * игрок увидел бы одно число вместо двух и не понял бы, что из него
+   * пришло от статов, а что от снаряжения.
+   *
+   * Учтены только две сильнейшие — бюджет семейства. Аффикс сверх
+   * бюджета в этот множитель не входит, и превью обязано это показать.
+   */
+  readonly mightMultiplier: number;
   /** Шаг 5: «класс оружия × класс брони» (GDD §4.3). */
   readonly matchupMultiplier: number;
   /** Шаг 6: доля поглощённого бронёй урона, 0..кап. */

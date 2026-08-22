@@ -187,5 +187,6 @@
   "status.shield": "Shield",
   "status.enrage": "Enrage",
   "status.chill": "Chill",
-  "battle.effects.count": "×{count}"
+  "battle.effects.count": "×{count}",
+  "battle.roll.mightMultiplier": "Might multiplier"
 }

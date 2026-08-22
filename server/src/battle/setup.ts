@@ -59,7 +59,7 @@ export function fighterFromProfile(profile: PlayerProfile): FighterConfig {
       ilvl: unarmed.ilvl,
       class: unarmed.class,
     },
-    shield: null,
+    offhand: null,
   });
 }
 
@@ -98,6 +98,6 @@ export function sparringDummy(playerLevel: number, difficulty: Difficulty): Figh
       ilvl: level,
       class: sparring.weapon.class,
     },
-    shield: null,
+    offhand: null,
   });
 }
