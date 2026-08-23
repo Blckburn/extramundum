@@ -198,6 +198,11 @@ body {
   display: inline-block;
   border-radius: calc(var(--radius) / 2);
   vertical-align: middle;
+  /* Размер НА ЭКРАНЕ задаётся здесь, а не инлайновым стилем: инлайн
+     сильнее файла, и правило вроде `.slots .icon` его не перебивало. */
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.35rem;
 }
 
 .icon--placeholder {
@@ -246,11 +251,55 @@ body {
   max-width: none;
   padding: 0;
   display: grid;
-  grid-template-rows: 1fr auto;
   /* height, а не min-height: экран боя занимает ровно окно и не растёт.
      dvh, а не vh: на мобильных браузерах панель адреса съезжает,
      и vh оставляет под ней полосу либо режет низ экрана. */
   height: 100dvh;
+
+  /* Журнал занимает НИЗ, и это не компромисс с местом.
+
+     Смотрят на сцену, а разбираются по журналу — то есть взгляд идёт
+     сверху вниз, и порядок «сцена, органы управления, журнал» совпадает
+     с порядком действий. Обратный порядок заставлял бы искать кнопку
+     паузы под таблицей на сотню строк.
+
+     minmax(0, …) обязателен обеим гибким строкам: без нуля в минимуме
+     строка grid распирается содержимым, и журнал на длинном бое
+     выталкивает сцену за край экрана. */
+  grid-template-areas:
+    'stage'
+    'controls'
+    'journal'
+    'bar';
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1.05fr) auto;
+}
+
+.screen--arena > .arena__stage {
+  grid-area: stage;
+}
+.screen--arena > .arena__controls {
+  grid-area: controls;
+}
+.screen--arena > .arena__journal {
+  grid-area: journal;
+}
+.screen--arena > .arena__bar {
+  grid-area: bar;
+}
+
+/* На широком экране вертикали мало, а ширины много: журнал уходит
+   в колонку справа и перестаёт отнимать высоту у сцены. Порог по
+   ШИРИНЕ, а не по устройству: планшет в альбомной ориентации ведёт
+   себя как десктоп, и должен. */
+@media (min-width: 900px) {
+  .screen--arena {
+    grid-template-areas:
+      'stage journal'
+      'controls journal'
+      'bar journal';
+    grid-template-columns: minmax(0, 1fr) minmax(20rem, 34%);
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
 }
 
 .arena__stage {
@@ -299,4 +348,398 @@ body {
   font-size: 0.8125rem;
   /* Цифры не должны прыгать при обновлении. */
   font-variant-numeric: tabular-nums;
+}
+
+/* ── Арена: воспроизведение боя (M2b) ─────────────────────────────────
+   Всё, что лежит поверх холста, не перехватывает указатель: цифры урона
+   и полосы здоровья — это картинка, а не органы управления. Иначе они
+   съедали бы клики по сцене, и разобраться, почему кнопка не нажимается,
+   было бы нечем. */
+
+.arena__overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.arena__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.button--small {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.button--small.button--active {
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.arena__scrub {
+  flex: 1 1 8rem;
+  min-width: 6rem;
+  accent-color: var(--accent);
+}
+
+.arena__summary[hidden] {
+  display: none;
+}
+
+.arena__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.arena__note {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* ── полосы здоровья и статусы ─────────────────────────────────────── */
+
+.hud {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.6rem 0.75rem;
+}
+
+.hud__side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 0 1 46%;
+  font-size: 0.75rem;
+}
+
+.hud__side--right {
+  align-items: flex-end;
+  text-align: right;
+}
+
+/* Чей ход — подсветкой имени, а не движением: скачок разметки
+   в кадре боя читается как ошибка, а не как подсказка. */
+.hud__side--acting .hud__name {
+  color: var(--accent);
+}
+
+.hud__side--dead {
+  opacity: 0.45;
+}
+
+.hud__name {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hud__bar {
+  width: 100%;
+  height: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.hud__fill {
+  display: block;
+  height: 100%;
+  background: var(--danger);
+  transition: width 0.18s linear;
+}
+
+.hud__side--right .hud__bar {
+  /* Полоса убывает от центра арены к краю: обе стороны теряют HP
+     «навстречу» друг другу, и падение видно боковым зрением. */
+  transform: scaleX(-1);
+}
+
+.hud__value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__statuses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.1rem 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.6875rem;
+}
+
+.chip .icon {
+  width: 1rem;
+  height: 1rem;
+  font-size: 0.625rem;
+}
+
+.chip__timer {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── всплывающие числа ─────────────────────────────────────────────── */
+
+.numbers {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.numbers__item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: none;
+  /* Позицию пишет JS ОДИН раз при рождении числа: камера за бой
+     не двигается, поэтому пересчитывать проекцию в кадре незачем
+     (см. numbers.ts). */
+  will-change: transform;
+}
+
+.numbers__float {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -100%);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px #000;
+  opacity: 0;
+  white-space: nowrap;
+}
+
+/* Подъём и затухание — CSS, а не JS: анимацию крутит браузер
+   на композиторе, и в кадре не остаётся ни одной нашей операции. */
+.numbers__float--play {
+  animation: number-rise 900ms ease-out forwards;
+}
+
+.numbers--paused .numbers__float {
+  animation-play-state: paused;
+}
+
+@keyframes number-rise {
+  0% {
+    transform: translate(-50%, -100%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -230%);
+    opacity: 0;
+  }
+}
+
+/* ── журнал боя ────────────────────────────────────────────────────── */
+
+.arena__journal {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: 0.6rem 0.75rem 0;
+}
+
+@media (min-width: 900px) {
+  .arena__journal {
+    border-top: none;
+    border-left: 1px solid var(--border);
+  }
+}
+
+.journal {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.journal__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.journal__list {
+  margin: 0;
+  padding: 0 0 0.75rem;
+  list-style: none;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Событие, которого ещё не было, не показывается вовсе.
+
+   Не приглушается и не размывается: журнал, показывающий исход раньше
+   сцены, отменяет смысл просмотра боя. */
+.journal__row--future {
+  display: none;
+}
+
+.journal__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  align-items: baseline;
+  width: 100%;
+  padding: 0.25rem 0.3rem;
+  color: inherit;
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) / 2);
+  cursor: pointer;
+}
+
+.journal__head[disabled] {
+  cursor: default;
+}
+
+.journal__head:hover:not([disabled]),
+.journal__head:focus-visible {
+  background: var(--bg);
+}
+
+.journal__row--turn .journal__head {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-top: 0.5rem;
+}
+
+.journal__who {
+  color: var(--muted);
+}
+
+.journal__amount {
+  margin-left: auto;
+  color: var(--danger);
+  font-variant-numeric: tabular-nums;
+}
+
+.journal__hp,
+.journal__count {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.journal__tag {
+  padding: 0 0.3rem;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.6875rem;
+}
+
+.journal__empty {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+/* ── разбор броска ─────────────────────────────────────────────────── */
+
+.breakdown {
+  padding: 0.4rem 0.6rem 0.6rem;
+  margin: 0 0.3rem 0.35rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.75rem;
+}
+
+.breakdown__grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1rem 0.75rem;
+  margin: 0;
+}
+
+.breakdown__grid dt {
+  color: var(--muted);
+}
+
+.breakdown__grid dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Итог отделён линией: множители читаются сверху вниз, и произведение
+   обязано быть видно как ИТОГ столбика, а не как ещё одна строка. */
+.breakdown__sum {
+  padding-top: 0.25rem;
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+}
+
+.breakdown__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breakdown__item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.breakdown__who {
+  color: var(--muted);
+}
+
+.breakdown__value {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.breakdown__hint {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.breakdown__mismatch {
+  margin: 0.3rem 0 0;
+  color: var(--danger);
 }

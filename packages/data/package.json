@@ -18,7 +18,8 @@
     "./render": {
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"
-    }
+    },
+    "./animations.json": "./animations.json"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +28,8 @@
     "balance.json",
     "assets.json",
     "palette.json",
-    "rigs"
+    "rigs",
+    "animations.json"
   ],
   "scripts": {
     "build": "tsc --build",

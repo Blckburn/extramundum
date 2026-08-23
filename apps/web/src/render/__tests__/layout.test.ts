@@ -24,16 +24,33 @@ describe('лейаут проектируется от 380 px вверх', () =>
     expect(rules).not.toMatch(/position:\s*fixed/);
   });
 
-  it('единственный position: absolute — холст, и он привязан к родителю', () => {
-    const absolutes = [...rules.matchAll(/position:\s*absolute/g)];
-    expect(absolutes).toHaveLength(1);
+  it('каждый position: absolute перечислен и привязан к родителю', () => {
+    // В M2a абсолютным был ровно один элемент — холст, и тест это
+    // и проверял. В M2b появился слой поверх холста (цифры урона,
+    // полосы здоровья), и он обязан быть абсолютным по построению.
+    //
+    // Поэтому проверка не ослаблена до «их несколько», а превращена
+    // в СПИСОК: новый абсолютный элемент валит тест и требует решения,
+    // а не появляется молча. Ровно так v1.0 и дошёл до интерфейса,
+    // налезающего сам на себя (GDD §13, пункт 31).
+    const absolute = new Set<string>();
+    for (const match of rules.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const selector = (match[1] ?? '').trim();
+      const body = match[2] ?? '';
+      if (!/position:\s*absolute/.test(body)) continue;
+      absolute.add(selector);
 
-    // inset: 0 относительно родителя, а не координаты относительно окна.
-    const start = rules.indexOf('.arena__canvas');
-    const canvasRule = rules.slice(start, rules.indexOf('}', start));
-    expect(canvasRule).toMatch(/inset:\s*0/);
-    expect(canvasRule, 'пиксельные координаты — это ровно v1.0').not.toMatch(
-      /\b(top|left|right|bottom):\s*-?\d+px/,
+      // Привязка к родителю, а не координаты относительно окна.
+      expect(body, `${selector}: пиксельные координаты — это ровно v1.0`).not.toMatch(
+        /\b(top|left|right|bottom):\s*-?\d+px/,
+      );
+      expect(body, `${selector}: не привязан к родителю`).toMatch(
+        /(inset|top|left|right|bottom):\s*0/,
+      );
+    }
+
+    expect([...absolute].sort()).toEqual(
+      ['.arena__canvas', '.arena__overlay', '.numbers', '.numbers__item', '.numbers__float'].sort(),
     );
   });
 
@@ -64,9 +81,14 @@ describe('лейаут проектируется от 380 px вверх', () =>
     // Пиксель уместен там, где он не должен масштабироваться: линия
     // в один пиксель и радиус скругления. Всё остальное обязано
     // тянуться вместе с размером шрифта.
-    const suspicious = [...rules.matchAll(/(padding|margin|gap|width|height):\s*[^;]*?(\d{2,})px/g)]
-      .map((m) => m[0].trim())
-      .filter((rule) => !rule.includes('min-width') && !rule.includes('max-width'));
+    // Отрицательный просмотр назад отсекает `min-width` и `max-width`:
+    // без него совпадение начиналось прямо со слова `width` внутри них,
+    // и медиазапрос `@media (min-width: 900px)` выглядел бы как размер
+    // в пикселях. Фильтр по строке этого не ловил — в совпадение
+    // попадала уже отрезанная часть.
+    const suspicious = [
+      ...rules.matchAll(/(?<![-\w])(padding|margin|gap|width|height):\s*[^;]*?(\d{2,})px/g),
+    ].map((m) => m[0].trim());
     expect(suspicious, 'размер в пикселях там, где нужен rem').toEqual([]);
   });
 });

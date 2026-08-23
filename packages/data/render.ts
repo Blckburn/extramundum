@@ -1,8 +1,16 @@
-import { paletteSchema, rigSpecSchema, type Palette, type RigSpec } from '@extramundum/shared';
+import {
+  animationSpecSchema,
+  paletteSchema,
+  rigSpecSchema,
+  type AnimationSpec,
+  type Palette,
+  type RigSpec,
+} from '@extramundum/shared';
 
 import arenaJson from './rigs/arena.json' with { type: 'json' };
 import humanoidJson from './rigs/humanoid.json' with { type: 'json' };
 import mundaJson from './rigs/munda.json' with { type: 'json' };
+import animationsJson from './animations.json' with { type: 'json' };
 import paletteJson from './palette.json' with { type: 'json' };
 
 /**
@@ -13,6 +21,14 @@ import paletteJson from './palette.json' with { type: 'json' };
  * Ошибка в json падает на сборке, а не в браузере у игрока.
  */
 export const palette: Palette = paletteSchema.parse(paletteJson);
+
+/**
+ * Анимации воспроизведения. GDD §3.2, §10.
+ *
+ * Разбираются схемой здесь же, один раз: кривая запись падает на сборке,
+ * а не превращается в бой без единой вспышки у игрока.
+ */
+export const animations: AnimationSpec = animationSpecSchema.parse(animationsJson);
 
 export const RIGS = {
   humanoid: rigSpecSchema.parse(humanoidJson),

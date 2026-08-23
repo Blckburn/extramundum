@@ -19,6 +19,20 @@ export type SceneBudget = {
   readonly triangles: number;
   /** Источников света. Каждый удорожает шейдер Lambert. */
   readonly lights: number;
+  /**
+   * Сколько из мешей — инстансированные. Считаются ОТДЕЛЬНО, потому что
+   * один такой меш — это один вызов отрисовки на сколько угодно копий.
+   */
+  readonly instancedMeshes: number;
+  /**
+   * Сколько копий в них суммарно.
+   *
+   * Число вызовов отрисовки от этого не растёт — и ровно поэтому его
+   * надо печатать рядом. Иначе «68 вызовов» одинаково читается и когда
+   * в кадре 68 коробок, и когда 67 коробок и 220 искр: граница цела,
+   * а нагрузка выросла втрое, и замер об этом молчит.
+   */
+  readonly instances: number;
 };
 
 /**
@@ -42,13 +56,23 @@ export type SceneBudget = {
  * на много копий, то есть уводит реальное число ВНИЗ. Но и пользы
  * от такой границы становится мало: она перестаёт отражать нагрузку.
  *
- * **Что делать в M2b:** когда появятся партиклы и цифры урона, перестать
- * считать меши и брать число у рендера — `renderer.info.render.calls`
- * после кадра. Живой счётчик не зависит ни от одного из условий выше.
- * Цена ему — настоящий WebGL, то есть браузер. Локально он уже есть:
- * `pnpm render:probe` меряет именно так и предупреждает, если живое
- * число ПРЕВЫСИЛО посчитанное — то есть если граница сломалась.
+ * **ЧТО ИЗМЕНИЛОСЬ В M2b.** Появились партиклы, и с ними первый
+ * `InstancedMesh`. Сделано три вещи:
+ *
+ *  - **на экране показывается живое число.** `renderer.info.render.calls`
+ *    после кадра не зависит ни от одного из условий выше. Посчитанное
+ *    осталось запасным вариантом — на случай, когда кадра ещё не было;
+ *  - **инстансы считаются отдельно** (`instancedMeshes`, `instances`).
+ *    Без них «68 вызовов» одинаково выглядит при пустой сцене и при
+ *    сцене, забитой искрами: граница цела, нагрузка втрое больше,
+ *    а замер об этом молчит;
+ *  - **замер идёт ВО ВРЕМЯ БОЯ,** а не на статичной сцене. Замер покоя
+ *    доказывает только то, что покой дёшев.
+ *
+ * Цифры урона — DOM поверх канваса, не меши: в этот замер они не входят
+ * и входить не должны (см. numbers.ts, там же — почему DOM).
  */
+
 /**
  * Условия, при которых `meshes` остаётся верхней границей вызовов.
  * Проверяются тестом по исходникам: нарушение любого делает замер
@@ -62,12 +86,16 @@ export function measureScene(root: Object3D): SceneBudget {
   let meshes = 0;
   let triangles = 0;
   let lights = 0;
+  let instancedMeshes = 0;
+  let instances = 0;
 
   // Обход здесь законен: он выполняется ОДИН раз при замере, а не в кадре.
   // Запрет из GDD §3.4 касается кадрового цикла — см. frame.ts.
   root.traverse((object) => {
     const candidate = object as Object3D & {
       isMesh?: boolean;
+      isInstancedMesh?: boolean;
+      count?: number;
       isLight?: boolean;
       material?: unknown;
       geometry?: {
@@ -80,6 +108,10 @@ export function measureScene(root: Object3D): SceneBudget {
     if (candidate.isMesh !== true || object.visible !== true) return;
 
     meshes += 1;
+    if (candidate.isInstancedMesh === true) {
+      instancedMeshes += 1;
+      instances += candidate.count ?? 0;
+    }
     if (candidate.material !== undefined) materials.add(candidate.material);
 
     const geometry = candidate.geometry;
@@ -90,7 +122,15 @@ export function measureScene(root: Object3D): SceneBudget {
     triangles += (indexed ?? positions) / 3;
   });
 
-  return { materials: materials.size, meshes, geometries: geometries.size, triangles, lights };
+  return {
+    materials: materials.size,
+    meshes,
+    geometries: geometries.size,
+    triangles,
+    lights,
+    instancedMeshes,
+    instances,
+  };
 }
 
 export type BudgetViolation = {

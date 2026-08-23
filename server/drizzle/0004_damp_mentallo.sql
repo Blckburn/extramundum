@@ -1,0 +1,1 @@
+ALTER TABLE "battles" ADD COLUMN "provisional" boolean DEFAULT false NOT NULL;

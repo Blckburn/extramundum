@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Проба боя</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script type="module">
+      /**
+       * Воспроизведение ЗАПИСАННОГО боя — без сервера и без входа.
+       *
+       * Зачем такая страница есть, хотя настоящий экран арены работает:
+       * у персонажа первого уровня нет ни трейтов, ни щита, ни предметов
+       * (это M3), поэтому НАСТОЯЩИЙ бой не порождает ни статусов,
+       * ни блоков, ни срабатываний трейтов. Половину показа — иконки
+       * статусов с таймерами, свёрнутые тики, отражённый урон — увидеть
+       * на нём нельзя, и проверить её глазами тоже нельзя.
+       *
+       * Эталонный лог из тестов эти события содержит: он порождён
+       * движком на бойцах со школой MAG, щитом и `thorns`.
+       *
+       * Показ идёт ТЕМ ЖЕ кодом, что и на арене (`mountBattle`).
+       * Отличается только источник боя — ровно ради этого источник
+       * и вынесен из модуля показа.
+       */
+      import fixture from '/src/battle/__tests__/fixtures/battle.json';
+      import { mountBattle } from '/src/battle/mount.ts';
+      import { setLocale } from '/src/i18n.ts';
+
+      const params = new URLSearchParams(location.search);
+      setLocale(params.get('locale') === 'en' ? 'en' : 'ru');
+
+      const app = document.querySelector('#app');
+      app.innerHTML = `
+        <main class="screen screen--arena">
+          <div class="arena__stage"><canvas class="arena__canvas"></canvas><div class="arena__overlay"></div></div>
+          <div class="arena__controls"></div>
+          <div class="arena__journal"></div>
+          <div class="arena__bar"><p class="arena__readout"></p></div>
+        </main>`;
+
+      const surface = {
+        canvas: app.querySelector('.arena__canvas'),
+        overlay: app.querySelector('.arena__overlay'),
+        controls: app.querySelector('.arena__controls'),
+        journalHost: app.querySelector('.arena__journal'),
+        readout: app.querySelector('.arena__readout'),
+      };
+
+      /**
+       * Максимум HP лежит в эталоне и посчитан ДВИЖКОМ при его записи —
+       * ровно так же, как его считает сервер. Здесь он не выводится
+       * ниоткуда: формула в браузер не попадает (инвариант 3).
+       */
+      const battle = {
+        battleId: 'dev-fixture',
+        log: fixture.log,
+        outcome: fixture.outcome,
+        maxHp: fixture.maxHp,
+        rewards: {},
+        provisional: true,
+      };
+
+      const mounted = await mountBattle(surface, battle);
+
+      // Проба ждёт момента, когда на бойцах есть статусы: без них
+      // скриншот «бой с активными статусами» показывал бы бой без них.
+      const skip = Number(params.get('skipMs') ?? 0);
+      if (skip > 0) {
+        const controls = surface.controls;
+        await new Promise((r) => setTimeout(r, 50));
+        const scrub = controls.querySelector('.arena__scrub');
+        scrub.value = String(skip);
+        scrub.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
+      let frames = 0;
+      const t0 = performance.now();
+      const spin = () => {
+        frames++;
+        if (performance.now() - t0 < 3000) requestAnimationFrame(spin);
+        else
+          window.__probe = {
+            drawCalls: mounted?.drawCalls() ?? 0,
+            statuses: document.querySelectorAll('.chip').length,
+            rows: document.querySelectorAll('.journal__row:not(.journal__row--future)').length,
+            readout: surface.readout.textContent,
+            msPerFrame: (performance.now() - t0) / frames,
+            frames,
+          };
+      };
+      requestAnimationFrame(spin);
+    </script>
+  </body>
+</html>

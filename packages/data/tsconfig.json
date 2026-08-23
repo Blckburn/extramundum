@@ -14,7 +14,8 @@
     "balance.json",
     "assets.json",
     "palette.json",
-    "rigs/*.json"
+    "rigs/*.json",
+    "animations.json"
   ],
   "exclude": ["__tests__/**"],
   "references": [

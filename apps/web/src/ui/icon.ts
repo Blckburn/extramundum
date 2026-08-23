@@ -54,18 +54,28 @@ export function renderIcon(key: string, size: IconSize = 128, alt = ''): HTMLEle
   }
 
   const hue = hueOf(key);
-  const placeholder = el(
+
+  /**
+   * В `style` идёт ТОЛЬКО оттенок — он вычисляется из ключа, и записать
+   * его классом нечем. Размер уходит в CSS, и это исправление, а не вкус:
+   * инлайновый стиль сильнее любого правила из файла, поэтому прежний
+   * `width:128px` побеждал `.slots .icon { width: 3rem }` — слоты
+   * деревни рисовались вчетверо крупнее задуманного, и это было видно
+   * только глазами. В M2b то же самое раздуло иконки статусов на пол-арены.
+   *
+   * `size` остаётся размером АССЕТА (WebP 128 и 256), а не размером
+   * на экране: это разные величины, и путать их — как раз то, что
+   * привело к прежнему поведению.
+   */
+  return el(
     'span',
     {
       class: 'icon icon--placeholder',
-      // Значения вычисляются, поэтому идут в style, а не в класс.
-      style: `--icon-hue:${hue};width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px`,
+      style: `--icon-hue:${hue}`,
       role: 'img',
       'aria-label': alt || key,
       'data-icon-key': key,
     },
     [letterOf(key)],
   );
-
-  return placeholder;
 }

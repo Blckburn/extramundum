@@ -3,6 +3,8 @@ import {
   apiErrorSchema,
   meResponseSchema,
   type ApiError,
+  type BattleStartInput,
+  type BattleStartResponse,
   type MeResponse,
   type SignInInput,
   type SignUpInput,
@@ -92,6 +94,29 @@ export const api = {
 
   async signOut(): Promise<void> {
     await request(`${API_ROUTES.auth}/sign-out`, { method: 'POST', body: '{}' });
+  },
+
+  /**
+   * Провести бой. GDD §3.2.
+   *
+   * В теле нет ни одного числа о бойце, и схема таких полей не содержит:
+   * состав читается сервером из БД по проверенной сессии. Клиент
+   * получает готовый лог и не может ни на что в нём повлиять.
+   *
+   * ПОЧЕМУ ОТВЕТ НЕ РАЗБИРАЕТСЯ СХЕМОЙ ЦЕЛИКОМ. Формат лога описан
+   * типами в `packages/shared/src/combat.ts` — типами, а не zod-схемой.
+   * Написать здесь вторую, проверяющую, значило бы завести ВТОРОЙ
+   * источник правды о формате: он разошёлся бы с первым на ближайшем
+   * изменении, и разошёлся бы молча. Неизвестный тип события ловит
+   * `schedule()` внятной ошибкой, а лог приходит от нашего же сервера,
+   * который собрал его движком.
+   */
+  async startBattle(input: BattleStartInput): Promise<BattleStartResponse> {
+    const body = await request(API_ROUTES.battleStart, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+    return body as BattleStartResponse;
   },
 
   /** Профиль текущего игрока. null — сессии нет. */

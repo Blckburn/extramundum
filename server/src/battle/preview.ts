@@ -1,7 +1,7 @@
 import type { BattleSetup, Difficulty, PlayerProfile, ZoneId } from '@extramundum/shared';
 import { resolveBattle } from '@extramundum/sim';
 
-import { combatBalance, fighterFromProfile, sparringDummy } from './setup.js';
+import { combatBalance, fighterFromProfile, sparringDummy } from './setup.ts';
 
 /**
  * Оценка шанса победы. GDD §6.4.

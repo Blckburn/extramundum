@@ -1,0 +1,191 @@
+{
+  "$comment": [
+    "Анимации воспроизведения боя. GDD §3.2 (формат лога), §10 (интерфейс).",
+    "",
+    "На каждый тип события BattleEvent — набор примитивов с параметрами.",
+    "Клиент НИЧЕГО не решает: он проигрывает то, что уже вычислено сервером",
+    "и записано в базу. Ни одного броска, ни одного расчёта урона здесь нет",
+    "и быть не может — это проигрыватель, а не движок.",
+    "",
+    "holdMs — сколько событие занимает в расписании. Примитив может играть",
+    "дольше и доигрывать поверх следующего события: иначе бой распадается",
+    "на отдельные позы вместо непрерывного движения.",
+    "",
+    "Цвета — ключи palette.json, не литералы. Правило то же, что у ригов."
+  ],
+  "$source": "GDD §3.2, §10",
+  "speeds": [1, 2, 4, 0],
+
+  "$stage": "Якоря и величины сцены. В коде рендера литералов быть не должно — то же правило, что у ригов и balance.json.",
+  "stage": {
+    "numberAnchor": "head",
+    "burstAnchor": "torso",
+    "flashIntensity": 2.4,
+    "flashDistance": 3.6,
+    "flashHeightM": 1.05,
+    "shakeHz": 24
+  },
+  "events": {
+    "$note": "Ключ совпадает с BattleEvent['t']. Отсутствие ключа — событие без визуального выражения, и тест на это ругается.",
+
+    "turn_start": {
+      "holdMs": 90,
+      "steps": []
+    },
+
+    "attack": {
+      "holdMs": 260,
+      "steps": [
+        { "primitive": "lunge", "on": "actor", "delayMs": 0, "durationMs": 280, "amount": 0.55 }
+      ]
+    },
+
+    "dodge": {
+      "holdMs": 240,
+      "steps": [
+        { "primitive": "shake", "on": "actor", "delayMs": 60, "durationMs": 220, "amount": 0.22 },
+        {
+          "primitive": "number",
+          "on": "actor",
+          "delayMs": 60,
+          "durationMs": 700,
+          "color": "tin"
+        }
+      ]
+    },
+
+    "block": {
+      "holdMs": 200,
+      "steps": [
+        {
+          "primitive": "flash",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 180,
+          "color": "tin",
+          "amount": 1.6
+        },
+        {
+          "primitive": "burst",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 420,
+          "color": "tin",
+          "count": 8
+        }
+      ]
+    },
+
+    "damage": {
+      "holdMs": 300,
+      "steps": [
+        {
+          "primitive": "flash",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 160,
+          "color": "blood",
+          "amount": 2.4
+        },
+        { "primitive": "shake", "on": "target", "delayMs": 0, "durationMs": 260, "amount": 0.16 },
+        {
+          "primitive": "burst",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 520,
+          "color": "blood",
+          "count": 14
+        },
+        { "primitive": "number", "on": "target", "delayMs": 0, "durationMs": 900, "color": "bone" }
+      ]
+    },
+
+    "status_apply": {
+      "holdMs": 180,
+      "steps": [
+        {
+          "primitive": "burst",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 460,
+          "color": "bile",
+          "count": 10
+        },
+        {
+          "primitive": "flash",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 220,
+          "color": "bile",
+          "amount": 1.4
+        }
+      ]
+    },
+
+    "status_tick": {
+      "holdMs": 140,
+      "steps": [
+        { "primitive": "number", "on": "target", "delayMs": 0, "durationMs": 760, "color": "bile" },
+        {
+          "primitive": "burst",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 380,
+          "color": "bile",
+          "count": 5
+        }
+      ]
+    },
+
+    "status_expire": {
+      "holdMs": 90,
+      "steps": []
+    },
+
+    "trait_fire": {
+      "holdMs": 200,
+      "steps": [
+        {
+          "primitive": "flash",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 260,
+          "color": "ochre",
+          "amount": 1.8
+        },
+        {
+          "primitive": "burst",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 460,
+          "color": "ochre",
+          "count": 9
+        }
+      ]
+    },
+
+    "death": {
+      "holdMs": 900,
+      "steps": [
+        {
+          "primitive": "flash",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 700,
+          "color": "blood",
+          "amount": 3.2
+        },
+        {
+          "primitive": "burst",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 1100,
+          "color": "blood",
+          "count": 26
+        },
+        { "primitive": "shake", "on": "actor", "delayMs": 0, "durationMs": 600, "amount": 0.3 },
+        { "primitive": "topple", "on": "actor", "delayMs": 120, "durationMs": 700, "amount": 1.5 }
+      ]
+    }
+  }
+}

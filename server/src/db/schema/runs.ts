@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   date,
   index,
@@ -78,6 +79,17 @@ export const battles = pgTable(
     rewards: jsonb('rewards')
       .notNull()
       .default(sql`'{}'::jsonb`),
+
+    /**
+     * Бой проведён до появления прогрессии (M2b): наград нет,
+     * состояние игрока не менялось.
+     *
+     * Колонка нужна не для игры, а для того, чтобы в M3 не пришлось
+     * выяснять, почему часть боёв без наград — баг это или наследие.
+     * Различить их постфактум по пустому `rewards` нельзя: проигранный
+     * бой тоже может ничего не дать.
+     */
+    provisional: boolean('provisional').notNull().default(false),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
