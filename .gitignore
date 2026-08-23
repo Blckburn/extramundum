@@ -7,6 +7,10 @@
 node_modules/
 dist/
 dist-types/
+# Сборка модуля рендера в JS для scripts/render-budget.mjs
+# (apps/web/tsconfig.render.json). Появилась в M2a, а строка здесь — нет,
+# и каталог всплывал как неотслеживаемый у каждого, кто гонял замер.
+dist-render/
 build/
 *.tsbuildinfo
 
