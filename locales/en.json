@@ -119,5 +119,10 @@
   "trait.innateAdvocate.name": "Advocate",
   "trait.innateAdvocate.desc": "After a dodge, your next hit is a guaranteed critical.",
   "trait.innateScholar.name": "Scholar",
-  "trait.innateScholar.desc": "Statuses you apply last one tick longer."
+  "trait.innateScholar.desc": "Statuses you apply last one tick longer.",
+  "action.back": "Back",
+  "arena.title": "Arena",
+  "arena.enter": "To the arena",
+  "arena.loading": "Preparing the arena…",
+  "arena.budget": "Draw calls {draws} · materials {materials} · triangles {triangles}"
 }

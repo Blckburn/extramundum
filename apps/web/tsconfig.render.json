@@ -1,0 +1,19 @@
+{
+  "$comment": "Отдельная сборка модуля рендера в JS — для scripts/render-budget.mjs. Основной tsconfig эмитит только декларации (клиент собирает Vite), но замер бюджетов должен запускаться в Node без браузера и без бандлера, поэтому ему нужен настоящий JS. Ничего, кроме src/render, сюда не входит: остальной клиент трогает DOM и в Node не поднимется.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src/render",
+    "outDir": "dist-render",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": false,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "declarationMap": false,
+    "composite": false,
+    "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": false
+  },
+  "include": ["src/render/**/*.ts"],
+  "exclude": ["src/render/__tests__/**"]
+}

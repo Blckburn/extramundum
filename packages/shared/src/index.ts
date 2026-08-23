@@ -12,5 +12,6 @@ export * from './battle.js';
 export * from './combat.js';
 export * from './errors.js';
 export * from './player.js';
+export * from './render.js';
 export * from './routes.js';
 export * from './validation.js';

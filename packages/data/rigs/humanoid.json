@@ -1,0 +1,198 @@
+{
+  "id": "humanoid",
+  "$comment": "Боец. Стиль коробок из v1.0 сохранён намеренно (GDD §3.4) — это идентичность проекта, а не техническое ограничение. Все восемь слотов экипировки из GDD §5.3 присутствуют: они видны на риге, и это бесплатный визуальный прогресс. Единицы — метры сцены, ось Y вверх, ступни на нуле. Цвета подобраны на читаемость: боец — объект, на который игрок смотрит весь бой, и тонуть в тёмном фоне он не должен. Оба бойца собираются из ЭТОЙ ЖЕ спецификации и намеренно одинаковы: позиция фиксирована (игрок слева, противник справа), а разойдутся они снаряжением в M3, где у каждого восемь видимых слотов. Красить их по-разному ради различимости значило бы решать задачу, которой нет.",
+  "nodes": [
+    {
+      "name": "root",
+      "parent": null,
+      "offset": [0, 0, 0],
+      "size": [0, 0, 0],
+      "color": "ink"
+    },
+    {
+      "name": "pelvis",
+      "parent": "root",
+      "offset": [0, 0.95, 0],
+      "size": [0.34, 0.22, 0.2],
+      "color": "earth"
+    },
+    {
+      "name": "torso",
+      "parent": "pelvis",
+      "offset": [0, 0.33, 0],
+      "size": [0.44, 0.44, 0.24],
+      "color": "parchment"
+    },
+    {
+      "name": "head",
+      "parent": "torso",
+      "offset": [0, 0.35, 0],
+      "size": [0.24, 0.26, 0.24],
+      "color": "bone"
+    },
+    {
+      "name": "armUpperL",
+      "parent": "torso",
+      "offset": [-0.3, 0.1, 0],
+      "size": [0.14, 0.34, 0.14],
+      "color": "parchment"
+    },
+    {
+      "name": "armLowerL",
+      "parent": "armUpperL",
+      "offset": [0, -0.33, 0],
+      "size": [0.12, 0.32, 0.12],
+      "color": "bone"
+    },
+    {
+      "name": "handL",
+      "parent": "armLowerL",
+      "offset": [0, -0.22, 0],
+      "size": [0.12, 0.12, 0.12],
+      "color": "bone"
+    },
+    {
+      "name": "armUpperR",
+      "parent": "torso",
+      "offset": [0.3, 0.1, 0],
+      "size": [0.14, 0.34, 0.14],
+      "color": "parchment"
+    },
+    {
+      "name": "armLowerR",
+      "parent": "armUpperR",
+      "offset": [0, -0.33, 0],
+      "size": [0.12, 0.32, 0.12],
+      "color": "bone"
+    },
+    {
+      "name": "handR",
+      "parent": "armLowerR",
+      "offset": [0, -0.22, 0],
+      "size": [0.12, 0.12, 0.12],
+      "color": "bone"
+    },
+    {
+      "name": "legUpperL",
+      "parent": "pelvis",
+      "offset": [-0.11, -0.3, 0],
+      "size": [0.16, 0.42, 0.16],
+      "color": "ash"
+    },
+    {
+      "name": "legLowerL",
+      "parent": "legUpperL",
+      "offset": [0, -0.41, 0],
+      "size": [0.14, 0.4, 0.14],
+      "color": "ash"
+    },
+    {
+      "name": "footL",
+      "parent": "legLowerL",
+      "offset": [0, -0.25, 0.04],
+      "size": [0.16, 0.1, 0.24],
+      "color": "earth"
+    },
+    {
+      "name": "legUpperR",
+      "parent": "pelvis",
+      "offset": [0.11, -0.3, 0],
+      "size": [0.16, 0.42, 0.16],
+      "color": "ash"
+    },
+    {
+      "name": "legLowerR",
+      "parent": "legUpperR",
+      "offset": [0, -0.41, 0],
+      "size": [0.14, 0.4, 0.14],
+      "color": "ash"
+    },
+    {
+      "name": "footR",
+      "parent": "legLowerR",
+      "offset": [0, -0.25, 0.04],
+      "size": [0.16, 0.1, 0.24],
+      "color": "earth"
+    },
+    {
+      "name": "slotHelmet",
+      "parent": "head",
+      "offset": [0, 0.11, 0],
+      "size": [0.28, 0.14, 0.28],
+      "color": "tin",
+      "slot": "helmet"
+    },
+    {
+      "name": "slotChest",
+      "parent": "torso",
+      "offset": [0, 0.02, 0],
+      "size": [0.48, 0.38, 0.28],
+      "color": "tin",
+      "slot": "chest"
+    },
+    {
+      "name": "slotBracerL",
+      "parent": "armLowerL",
+      "offset": [0, -0.06, 0],
+      "size": [0.15, 0.16, 0.15],
+      "color": "tin",
+      "slot": "bracers"
+    },
+    {
+      "name": "slotBracerR",
+      "parent": "armLowerR",
+      "offset": [0, -0.06, 0],
+      "size": [0.15, 0.16, 0.15],
+      "color": "tin",
+      "slot": "bracers"
+    },
+    {
+      "name": "slotBootL",
+      "parent": "footL",
+      "offset": [0, 0.02, 0],
+      "size": [0.18, 0.12, 0.26],
+      "color": "tin",
+      "slot": "boots"
+    },
+    {
+      "name": "slotBootR",
+      "parent": "footR",
+      "offset": [0, 0.02, 0],
+      "size": [0.18, 0.12, 0.26],
+      "color": "tin",
+      "slot": "boots"
+    },
+    {
+      "name": "slotAmulet",
+      "parent": "torso",
+      "offset": [0, 0.15, 0.14],
+      "size": [0.08, 0.08, 0.05],
+      "color": "ochre",
+      "slot": "amulet"
+    },
+    {
+      "name": "slotRing",
+      "parent": "handR",
+      "offset": [0.03, -0.05, 0.03],
+      "size": [0.06, 0.06, 0.06],
+      "color": "ochre",
+      "slot": "ring"
+    },
+    {
+      "name": "slotWeapon",
+      "parent": "handR",
+      "offset": [0, 0.36, 0.02],
+      "size": [0.08, 0.8, 0.04],
+      "color": "tin",
+      "slot": "weapon"
+    },
+    {
+      "name": "slotOffhand",
+      "parent": "handL",
+      "offset": [-0.04, 0.0, 0.08],
+      "size": [0.4, 0.5, 0.06],
+      "color": "ash",
+      "slot": "offhand"
+    }
+  ]
+}

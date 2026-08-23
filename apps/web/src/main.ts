@@ -1,6 +1,7 @@
 import { api, ApiClientError } from './api.ts';
 import { clear, el } from './dom.ts';
 import { getLocale, setLocale, t } from './i18n.ts';
+import { renderArena } from './screens/arena.ts';
 import { renderAuth } from './screens/auth.ts';
 import { renderVillage } from './screens/village.ts';
 
@@ -88,9 +89,18 @@ async function route(): Promise<void> {
 
   if (me === null) {
     renderAuth(root!, () => void route());
-  } else {
-    renderVillage(root!, me.player, () => void route());
+    return;
   }
+
+  const player = me.player;
+  const village = (): void =>
+    renderVillage(
+      root!,
+      player,
+      () => void route(),
+      () => renderArena(root!, village),
+    );
+  village();
 }
 
 void route();

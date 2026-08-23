@@ -1,0 +1,305 @@
+{
+  "id": "munda",
+  "$comment": "Силуэт Мунды на горизонте. ART-BIBLE §5: «единственное место в игре, нарисованное чисто» — светлое, ровное, недосягаемое. Все узлы городского происхождения помечены origin: city, и только поэтому им разрешены зарезервированные цвета (ART-BIBLE §3); этот же флаг даёт им материал без освещения и без тумана. ГОРОД РАННЕСРЕДНЕВЕКОВЫЙ, И ЭТО ЗАДАНО ФОРМОЙ, А НЕ НАДЕЖДОЙ: стена в основании (в лоре она центральный объект — ворота работают в одну сторону), ворота с надвратной башней, башни разной ширины и высоты под шатрами, скатные крыши жилья, собор единственной доминантой. Первая версия была из прямоугольных башен одинаковой ширины с плоскими верхушками и читалась современным мегаполисом. Три ступени яркости вместо одной: mundaWall глуше всего, mundaStone — масса, mundaSpire — только собор. Мунда обязана быть светлее всего в кадре и при этом не перетягивать взгляд с бойцов, на которых игрок смотрит весь бой. Линия земли — ПЛОСКАЯ полоса, а не объёмный холм: объём на таком удалении читается плитой и поглощает стену по глубине. Настоящий холм вернётся с 2D-ассетом горизонта. Риг помечен static: город неподвижен, и его меши сливаются по материалу при сборке. Двадцать два вызова отрисовки на декорацию, которая за бой не сдвинется ни разу, — это запас, который иначе упрётся на первых же партиклах в M2b.",
+  "static": true,
+  "nodes": [
+    {
+      "name": "root",
+      "parent": null,
+      "offset": [0, 0, 0],
+      "size": [0, 0, 0],
+      "color": "ink",
+      "origin": "city"
+    },
+    {
+      "name": "groundline",
+      "parent": "root",
+      "offset": [0, -0.95, 0.4],
+      "size": [46, 0.55, 0.15],
+      "color": "charcoal",
+      "origin": "city"
+    },
+    {
+      "name": "wall",
+      "parent": "root",
+      "offset": [0, 0, 0],
+      "size": [40, 2.4, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon0",
+      "parent": "root",
+      "offset": [-18, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon1",
+      "parent": "root",
+      "offset": [-14.4, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon2",
+      "parent": "root",
+      "offset": [-10.8, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon3",
+      "parent": "root",
+      "offset": [-7.2, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon4",
+      "parent": "root",
+      "offset": [7.2, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon5",
+      "parent": "root",
+      "offset": [10.8, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon6",
+      "parent": "root",
+      "offset": [14.4, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "merlon7",
+      "parent": "root",
+      "offset": [18, 1.5, 0],
+      "size": [1.7, 0.6, 1.6],
+      "color": "mundaWall",
+      "origin": "city"
+    },
+    {
+      "name": "gateArch",
+      "parent": "root",
+      "offset": [0, -0.55, 0.9],
+      "size": [2.6, 1.3, 0.5],
+      "color": "ink"
+    },
+    {
+      "name": "gateTower",
+      "parent": "root",
+      "offset": [0, 1.0, 0.1],
+      "size": [4.4, 4.4, 2.0],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "gateRoof",
+      "parent": "root",
+      "offset": [0, 3.9, 0.1],
+      "size": [4.8, 1.8, 2.4],
+      "color": "mundaStone",
+      "shape": "gable",
+      "origin": "city"
+    },
+    {
+      "name": "towerFarW",
+      "parent": "root",
+      "offset": [-17.0, 1.4, 0],
+      "size": [2.4, 3.6, 2.4],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "towerFarWCap",
+      "parent": "root",
+      "offset": [-17.0, 4.5200000000000005, 0],
+      "size": [2.76, 2.64, 2.76],
+      "color": "mundaStone",
+      "shape": "pyramid",
+      "origin": "city"
+    },
+    {
+      "name": "towerW",
+      "parent": "root",
+      "offset": [-11.6, 2.3000000000000003, 0],
+      "size": [3.0, 5.4, 3.0],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "towerWCap",
+      "parent": "root",
+      "offset": [-11.6, 6.65, 0],
+      "size": [3.4499999999999997, 3.3000000000000003, 3.4499999999999997],
+      "color": "mundaStone",
+      "shape": "pyramid",
+      "origin": "city"
+    },
+    {
+      "name": "towerE",
+      "parent": "root",
+      "offset": [11.6, 1.9, 0],
+      "size": [2.6, 4.6, 2.6],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "towerECap",
+      "parent": "root",
+      "offset": [11.6, 5.629999999999999, 0],
+      "size": [2.9899999999999998, 2.8600000000000003, 2.9899999999999998],
+      "color": "mundaStone",
+      "shape": "pyramid",
+      "origin": "city"
+    },
+    {
+      "name": "towerFarE",
+      "parent": "root",
+      "offset": [17.0, 1.1, 0],
+      "size": [2.2, 3.0, 2.2],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "towerFarECap",
+      "parent": "root",
+      "offset": [17.0, 3.8100000000000005, 0],
+      "size": [2.53, 2.4200000000000004, 2.53],
+      "color": "mundaStone",
+      "shape": "pyramid",
+      "origin": "city"
+    },
+    {
+      "name": "houseA",
+      "parent": "root",
+      "offset": [-7.8, 0.9000000000000001, -1.2],
+      "size": [3.0, 2.2, 2.4000000000000004],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "houseARoof",
+      "parent": "root",
+      "offset": [-7.8, 2.55, -1.2],
+      "size": [3.3000000000000003, 1.1, 2.55],
+      "color": "mundaStone",
+      "shape": "gable",
+      "origin": "city"
+    },
+    {
+      "name": "houseB",
+      "parent": "root",
+      "offset": [-4.6, 1.25, -0.6],
+      "size": [2.6, 2.9, 2.08],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "houseBRoof",
+      "parent": "root",
+      "offset": [-4.6, 3.25, -0.6],
+      "size": [2.8600000000000003, 1.1, 2.21],
+      "color": "mundaStone",
+      "shape": "gable",
+      "origin": "city"
+    },
+    {
+      "name": "houseC",
+      "parent": "root",
+      "offset": [4.8, 1.05, -0.9],
+      "size": [2.8, 2.5, 2.2399999999999998],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "houseCRoof",
+      "parent": "root",
+      "offset": [4.8, 2.8499999999999996, -0.9],
+      "size": [3.08, 1.1, 2.38],
+      "color": "mundaStone",
+      "shape": "gable",
+      "origin": "city"
+    },
+    {
+      "name": "houseD",
+      "parent": "root",
+      "offset": [8.0, 0.8, -1.4],
+      "size": [2.4, 2.0, 1.92],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "houseDRoof",
+      "parent": "root",
+      "offset": [8.0, 2.35, -1.4],
+      "size": [2.64, 1.1, 2.04],
+      "color": "mundaStone",
+      "shape": "gable",
+      "origin": "city"
+    },
+    {
+      "name": "naveBody",
+      "parent": "root",
+      "offset": [-1.0, 1.9, -3.2],
+      "size": [5.6, 4.6, 3.4],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "naveRoof",
+      "parent": "root",
+      "offset": [-1.0, 4.9, -3.2],
+      "size": [6.0, 1.9, 3.6],
+      "color": "mundaStone",
+      "shape": "gable",
+      "origin": "city"
+    },
+    {
+      "name": "cathTower",
+      "parent": "root",
+      "offset": [2.6, 4.2, -3.2],
+      "size": [3.0, 9.2, 3.0],
+      "color": "mundaStone",
+      "origin": "city"
+    },
+    {
+      "name": "cathBelfry",
+      "parent": "root",
+      "offset": [2.6, 9.2, -3.2],
+      "size": [3.4, 1.4, 3.4],
+      "color": "mundaSpire",
+      "origin": "city"
+    },
+    {
+      "name": "spire",
+      "parent": "root",
+      "offset": [2.6, 12.6, -3.2],
+      "size": [3.0, 5.4, 3.0],
+      "color": "mundaSpire",
+      "shape": "pyramid",
+      "origin": "city"
+    },
+    {
+      "name": "spireTip",
+      "parent": "root",
+      "offset": [2.6, 16.0, -3.2],
+      "size": [0.5, 1.6, 0.5],
+      "color": "mundaGold",
+      "origin": "city"
+    }
+  ]
+}

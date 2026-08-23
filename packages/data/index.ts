@@ -13,3 +13,4 @@ export const balance = balanceJson;
 export type Balance = typeof balanceJson;
 
 export * from './assets.ts';
+export * from './render.ts';

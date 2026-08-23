@@ -27,8 +27,15 @@ export function renderVillage(
   root: HTMLElement,
   player: PlayerProfile,
   onSignedOut: () => void,
+  onArena?: () => void,
 ): void {
   clear(root);
+
+  const arenaButton = (onArena: () => void) => {
+    const button = el('button', { class: 'button', type: 'button' }, [t('arena.enter')]);
+    button.addEventListener('click', onArena);
+    return button;
+  };
 
   const stat = (labelKey: string, value: number) =>
     el('div', { class: 'stat' }, [
@@ -76,6 +83,11 @@ export function renderVillage(
         { class: 'slots', 'aria-label': t('village.slots') },
         EQUIPMENT_SLOTS.map((slot) => renderIcon(`slot.${slot}`, 128, t(`slot.${slot}`))),
       ),
+
+      // Вход на арену. В M2a там статичная сцена: воспроизведение боя —
+      // это M2b, и заводить кнопку «в бой» раньше него значило бы обещать
+      // игроку то, чего нет.
+      ...(onArena === undefined ? [] : [arenaButton(onArena)]),
 
       el('p', { class: 'village__stub' }, [t('village.stub')]),
     ]),

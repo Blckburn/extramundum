@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Проба лейаута</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { renderArena } from '/src/screens/arena.ts';
+      renderArena(document.getElementById('app'), () => {});
+      setTimeout(() => {
+        const doc = document.documentElement;
+        const bar = document.querySelector('.arena__bar').getBoundingClientRect();
+        const stage = document.querySelector('.arena__stage').getBoundingClientRect();
+        window.__probe = {
+          drawCalls: 0,
+          frames: 0,
+          msPerFrame: 0,
+          budget: { meshes: 0, materials: 0 },
+          layout: {
+            horizontalOverflow: doc.scrollWidth - doc.clientWidth,
+            barOverlapsStage: Math.max(0, stage.bottom - bar.top),
+            barVisible: bar.top >= 0 && bar.bottom <= window.innerHeight + 1,
+            stageHeight: Math.round(stage.height),
+            barHeight: Math.round(bar.height),
+            readout: document.querySelector('.arena__readout').textContent,
+          },
+        };
+      }, 2500);
+    </script>
+  </body>
+</html>

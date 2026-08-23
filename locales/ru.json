@@ -119,5 +119,10 @@
   "trait.innateAdvocate.name": "Заступник",
   "trait.innateAdvocate.desc": "После уклонения следующий удар — гарантированный крит.",
   "trait.innateScholar.name": "Книжник",
-  "trait.innateScholar.desc": "Наложенные статусы длятся на 1 тик дольше."
+  "trait.innateScholar.desc": "Наложенные статусы длятся на 1 тик дольше.",
+  "action.back": "Назад",
+  "arena.title": "Арена",
+  "arena.enter": "На арену",
+  "arena.loading": "Готовим арену…",
+  "arena.budget": "Вызовов отрисовки {draws} · материалов {materials} · треугольников {triangles}"
 }

@@ -15,7 +15,7 @@
     "typecheck": "tsc --build --force",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @extramundum/server build && pnpm --filter @extramundum/web build",
+    "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @extramundum/server build && pnpm --filter @extramundum/web build && pnpm --filter @extramundum/web build:render",
     "check:bundle": "node scripts/check-bundle.mjs",
     "db:generate": "pnpm --filter @extramundum/server db:generate",
     "db:migrate": "pnpm --filter @extramundum/server db:migrate",
@@ -26,7 +26,9 @@
     "assets:build": "node scripts/process-assets.mjs",
     "assets:check": "node scripts/process-assets.mjs --check",
     "check:docs": "node scripts/check-doc-refs.mjs",
-    "balance:matrix": "node scripts/winrate-matrix.mjs"
+    "balance:matrix": "node scripts/winrate-matrix.mjs",
+    "render:budget": "node scripts/render-budget.mjs",
+    "render:probe": "node scripts/render-probe.mjs"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

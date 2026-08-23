@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Проба сцены</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #100f0d;
+      }
+      canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script type="module">
+      import { mountBattleScene } from '/src/render/index.ts';
+      const h = mountBattleScene(document.getElementById('c'));
+      let frames = 0;
+      const t0 = performance.now();
+      const spin = () => {
+        frames++;
+        if (performance.now() - t0 < 3000) requestAnimationFrame(spin);
+        else
+          window.__probe = {
+            drawCalls: h.drawCalls(),
+            budget: h.budget,
+            msPerFrame: (performance.now() - t0) / frames,
+            frames,
+          };
+      };
+      requestAnimationFrame(spin);
+    </script>
+  </body>
+</html>

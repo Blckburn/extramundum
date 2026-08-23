@@ -7,7 +7,15 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true
   },
-  "include": ["index.ts", "assets.ts", "balance.json", "assets.json"],
+  "include": [
+    "index.ts",
+    "assets.ts",
+    "render.ts",
+    "balance.json",
+    "assets.json",
+    "palette.json",
+    "rigs/*.json"
+  ],
   "exclude": ["__tests__/**"],
   "references": [
     {

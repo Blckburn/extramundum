@@ -13,6 +13,11 @@
     "./assets": {
       "types": "./dist/assets.d.ts",
       "default": "./dist/assets.js"
+    },
+    "./palette.json": "./palette.json",
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "default": "./dist/render.js"
     }
   },
   "main": "./dist/index.js",
@@ -20,7 +25,9 @@
   "files": [
     "dist",
     "balance.json",
-    "assets.json"
+    "assets.json",
+    "palette.json",
+    "rigs"
   ],
   "scripts": {
     "build": "tsc --build",
