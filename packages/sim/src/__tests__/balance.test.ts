@@ -36,7 +36,8 @@ function build(archetype: (typeof ARCHETYPE_IDS)[number], extra: string[] = []):
     armorClass: 'medium',
     critBonus: 0,
     weapon: { dmgMin: 8, dmgMax: 14, ilvl: 1, class: 'balanced' },
-    shield: null,
+    offhand: null,
+    damageAffixes: [],
     statuses: [],
     traits: [a.trait, ...extra] as FighterConfig['traits'],
   };

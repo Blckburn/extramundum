@@ -5,7 +5,9 @@ import { randomUUID } from 'node:crypto';
 import { battles } from '../db/schema/runs.ts';
 import type { Database } from '../db/client.ts';
 
-import { combatBalance, fighterFromProfile, sparringDummy } from './setup.ts';
+import { fighterFromLoadout, type Loadout } from '../items/loadout.ts';
+
+import { combatBalance, sparringDummy } from './setup.ts';
 
 /**
  * Проведение боя. GDD §3.2.
@@ -43,10 +45,12 @@ export type RunBattleInput = {
   readonly profile: PlayerProfile;
   readonly zone: ZoneId;
   readonly difficulty: Difficulty;
+  /** Надетое, прочитанное из БД. Клиент о составе не сообщает ничего. */
+  readonly loadout: Loadout;
 };
 
 export async function runBattle(db: Database, input: RunBattleInput) {
-  const player = fighterFromProfile(input.profile);
+  const player = fighterFromLoadout(input.profile, input.loadout);
   const enemy = sparringDummy(input.profile.level, input.difficulty);
   const setup: BattleSetup = [player, enemy];
 

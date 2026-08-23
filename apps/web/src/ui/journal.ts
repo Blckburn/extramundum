@@ -45,6 +45,7 @@ const FACTORS = [
   'weaponRoll',
   'ilvlScale',
   'atkMultiplier',
+  'mightMultiplier',
   'matchupMultiplier',
   'mitigation',
   'critMultiplier',

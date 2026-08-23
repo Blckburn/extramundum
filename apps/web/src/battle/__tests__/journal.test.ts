@@ -27,6 +27,7 @@ function product(roll: RollBreakdown): number {
     roll.weaponRoll *
     roll.ilvlScale *
     roll.atkMultiplier *
+    roll.mightMultiplier *
     roll.matchupMultiplier *
     (1 - roll.mitigation) *
     roll.critMultiplier *

@@ -22,11 +22,21 @@ import { players } from '../db/schema/game.ts';
 export async function ensurePlayer(
   db: Database,
   input: { userId: string; username: string },
-): Promise<void> {
-  await db
+): Promise<{ created: boolean; player: PlayerProfile | null }> {
+  const inserted = await db
     .insert(players)
     .values({ userId: input.userId, username: input.username })
-    .onConflictDoNothing({ target: players.userId });
+    .onConflictDoNothing({ target: players.userId })
+    .returning();
+
+  // Возвращает СОЗДАННУЮ строку, а не факт вызова: набор разработки
+  // выдаётся один раз, а `ensurePlayer` зовётся и при регистрации,
+  // и лениво из GET /me. Без этого различия повторный вход удваивал бы
+  // инвентарь.
+  const row = inserted[0];
+  return row === undefined
+    ? { created: false, player: null }
+    : { created: true, player: toProfile(row) };
 }
 
 export async function findPlayerByUserId(

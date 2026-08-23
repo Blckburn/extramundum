@@ -369,10 +369,10 @@ describe('шесть трейтов из аудита v1.0 делают ровн
   });
 
   it('fortress: блок гасит урон полностью', () => {
-    const shield = { blockChance: 1, blockReduction: 0.22, ilvl: 1 };
+    const offhand = { kind: 'shield', blockChance: 1, blockReduction: 0.22 } as const;
     const setup: BattleSetup = [
       striker({ atk: 40 }),
-      dummy({ shield, traits: ['fortress'], pathBonusHp: 2000 }),
+      dummy({ offhand, traits: ['fortress'], pathBonusHp: 2000 }),
     ];
     const { log } = resolveBattle(setup, balance, 'fortress');
 
@@ -382,7 +382,7 @@ describe('шесть трейтов из аудита v1.0 делают ровн
 
     // Контроль: без трейта тот же щит с тем же сидом урон пропускает.
     const без = resolveBattle(
-      [striker({ atk: 40 }), dummy({ shield, pathBonusHp: 2000 })] as BattleSetup,
+      [striker({ atk: 40 }), dummy({ offhand, pathBonusHp: 2000 })] as BattleSetup,
       balance,
       'fortress',
     );

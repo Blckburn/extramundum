@@ -27,7 +27,7 @@
     "assets:check": "node scripts/process-assets.mjs --check",
     "check:docs": "node scripts/check-doc-refs.mjs",
     "balance:matrix": "node scripts/winrate-matrix.mjs",
-    "render:budget": "node scripts/render-budget.mjs",
+    "render:budget": "node --expose-gc scripts/render-budget.mjs",
     "render:probe": "node scripts/render-probe.mjs"
   },
   "pnpm": {

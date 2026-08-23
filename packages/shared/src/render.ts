@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { EQUIPMENT_SLOTS } from './items.js';
+
 /**
  * Контракт рендера. GDD §3.4, ART-BIBLE §2–3.
  *
@@ -75,16 +77,16 @@ export type Palette = z.infer<typeof paletteSchema>;
  * Слоты экипировки. GDD §5.3: их восемь, и ВСЕ видны на риге —
  * «визуальный прогресс бесплатно».
  */
-export const RIG_SLOTS = [
-  'weapon',
-  'offhand',
-  'helmet',
-  'chest',
-  'bracers',
-  'boots',
-  'amulet',
-  'ring',
-] as const;
+/**
+ * Слоты рига — ТЕ ЖЕ восемь, что и слоты экипировки (GDD §5.3).
+ *
+ * Список не копируется, а берётся из контракта предметов: две одинаковые
+ * копии разошлись бы на первой же правке, причём молча — риг просто
+ * перестал бы показывать один из слотов. Совпадение здесь обязательно
+ * по построению: слот, у которого нет узла на риге, — это предмет,
+ * который надет и не виден.
+ */
+export const RIG_SLOTS = EQUIPMENT_SLOTS;
 export const rigSlotSchema = z.enum(RIG_SLOTS);
 export type RigSlot = z.infer<typeof rigSlotSchema>;
 

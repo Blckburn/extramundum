@@ -11,6 +11,7 @@ import type { Logger } from './logger.ts';
 import { authRoutes } from './routes/auth.ts';
 import { battleRoutes } from './routes/battle.ts';
 import { healthRoutes } from './routes/health.ts';
+import { itemRoutes } from './routes/items.ts';
 import { meRoutes } from './routes/me.ts';
 
 export function createApp(db: Database, config: Config, log: Logger): Hono<AppEnv> {
@@ -40,6 +41,7 @@ export function createApp(db: Database, config: Config, log: Logger): Hono<AppEn
   app.route('/', healthRoutes(db));
   app.route('/', meRoutes(db));
   app.route('/', battleRoutes(db));
+  app.route('/', itemRoutes(db));
   app.route('/auth', authRoutes(db));
 
   // Вход, выход и чтение сессии обслуживает сам Better Auth.

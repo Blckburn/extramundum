@@ -27,10 +27,26 @@ export const battleStartInputSchema = z.object({
 });
 export type BattleStartInput = z.infer<typeof battleStartInputSchema>;
 
+/**
+ * Гипотетическая правка экипировки для превью. GDD §6.4.
+ *
+ * Клиент присылает ИДЕНТИФИКАТОР предмета, а не его характеристики.
+ * Сервер проверяет владение, собирает набор «как если бы надели»
+ * и считает по нему. Подменить силу нечем — схема таких полей
+ * не содержит, а предмет читается из БД (инвариант 1).
+ */
+export const previewChangeSchema = z.union([
+  z.object({ kind: z.literal('equip'), itemId: z.uuid() }),
+  z.object({ kind: z.literal('unequip'), slot: z.string().min(1) }),
+]);
+export type PreviewChange = z.infer<typeof previewChangeSchema>;
+
 export const simulatePreviewInputSchema = z.object({
   zone: zoneIdSchema,
   difficulty: difficultySchema,
   loadoutHash: loadoutHashSchema,
+  /** Что показать «если надеть». Без него считается текущий набор. */
+  change: previewChangeSchema.optional(),
   /**
    * Сколько прогонов Монте-Карло. GDD §6.4 фиксирует 300; параметр
    * ограничен сверху, чтобы запрос не превращался в способ нагрузить сервер.
@@ -85,8 +101,19 @@ export type BattleStartResponse = {
 };
 
 export type SimulatePreviewResponse = {
-  /** Оценка шанса победы, 0..1. */
+  /** Оценка шанса победы, 0..1. При `change` — уже С УЧЁТОМ правки. */
   readonly winRate: number;
+  /**
+   * Шанс победы БЕЗ правки. Присутствует только вместе с `change`.
+   *
+   * Возвращается вторым числом, а не разницей: разницу клиент покажет
+   * сам, а вот проверить её он не сможет, если исходного числа
+   * не увидит. «Стало лучше на 4%» без «было 61%» — это не ответ
+   * на вопрос §6.4, а его имитация.
+   */
+  readonly baseWinRate?: number;
+  /** Дельты производных статов от правки. Считает сервер. */
+  readonly deltas?: Readonly<Record<string, number>>;
   readonly runs: number;
   /**
    * На чём построена оценка.

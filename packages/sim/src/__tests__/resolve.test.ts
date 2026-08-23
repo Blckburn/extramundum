@@ -249,7 +249,7 @@ describe('границы значений в бою', () => {
   it('полный блок гасит урон до нуля и это видно в разборе', () => {
     const setup = duel(
       { atk: 30, spd: 12 },
-      { spd: 6, shield: { blockChance: 1, blockReduction: 1 } },
+      { spd: 6, offhand: { kind: 'shield', blockChance: 1, blockReduction: 1 } },
     );
     const { log } = resolveBattle(setup, balance, 'full-block');
 
@@ -272,7 +272,7 @@ describe('границы значений в бою', () => {
 
   it('без щита блока не бывает', () => {
     const { log } = resolveBattle(
-      duel({ atk: 15, spd: 12 }, { shield: null }),
+      duel({ atk: 15, spd: 12 }, { offhand: null }),
       balance,
       'no-shield',
     );

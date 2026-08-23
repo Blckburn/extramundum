@@ -16,6 +16,14 @@ export const API_ROUTES = {
   register: '/auth/register',
   battleStart: '/battle/start',
   simulatePreview: '/simulate/preview',
+
+  /** Инвентарь и экипировка. GDD §5.3, §6.3. */
+  items: '/items',
+  itemsEquip: '/items/equip',
+  itemsUnequip: '/items/unequip',
+  itemsMove: '/items/move',
+  itemsLock: '/items/lock',
+  itemsSell: '/items/sell',
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

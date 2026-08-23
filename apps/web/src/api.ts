@@ -5,6 +5,15 @@ import {
   type ApiError,
   type BattleStartInput,
   type BattleStartResponse,
+  type EquipInput,
+  type InventoryResponse,
+  type LockInput,
+  type MoveInput,
+  type SellInput,
+  type SellResponse,
+  type SimulatePreviewInput,
+  type SimulatePreviewResponse,
+  type UnequipInput,
   type MeResponse,
   type SignInInput,
   type SignUpInput,
@@ -117,6 +126,52 @@ export const api = {
       body: JSON.stringify(input),
     });
     return body as BattleStartResponse;
+  },
+
+  /**
+   * Инвентарь, стеш и надетое. GDD §5.3, §6.3.
+   *
+   * Всё, что ниже, присылает серверу ТОЛЬКО идентификаторы. Ни одного
+   * числа о предмете: состав и сила читаются сервером из БД, слот
+   * выводится из базы предмета. Выдать себе предмет нечем — маршрута,
+   * создающего предмет, в API нет вовсе (инвариант 1).
+   */
+  async items(): Promise<InventoryResponse> {
+    return (await request(API_ROUTES.items)) as InventoryResponse;
+  },
+
+  async equip(input: EquipInput): Promise<void> {
+    await request(API_ROUTES.itemsEquip, { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async unequip(input: UnequipInput): Promise<void> {
+    await request(API_ROUTES.itemsUnequip, { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async moveItem(input: MoveInput): Promise<void> {
+    await request(API_ROUTES.itemsMove, { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async lockItem(input: LockInput): Promise<void> {
+    await request(API_ROUTES.itemsLock, { method: 'POST', body: JSON.stringify(input) });
+  },
+
+  async sellItems(input: SellInput): Promise<SellResponse> {
+    return (await request(API_ROUTES.itemsSell, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as SellResponse;
+  },
+
+  /**
+   * Оценка шанса победы, при необходимости — «если надеть вот это».
+   * Считает сервер: 300 прогонов Монте-Карло (GDD §6.4).
+   */
+  async preview(input: SimulatePreviewInput): Promise<SimulatePreviewResponse> {
+    return (await request(API_ROUTES.simulatePreview, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as SimulatePreviewResponse;
   },
 
   /** Профиль текущего игрока. null — сессии нет. */
