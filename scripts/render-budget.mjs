@@ -83,19 +83,49 @@ const fx = [
    three лежит в node_modules клиента, а не в корне, и импортировать его
    отсюда по имени нечем — зато любой объект сцены уже приносит свой. */
 const point = built.camera.position.clone();
-let clock = 0;
-let sinceEvent = 0;
-let side = 0;
 
-/** Один кадр боя: сцена, партиклы, эффекты обоих бойцов. */
+/**
+ * ОБВЯЗКА ОБЯЗАНА ПОВТОРЯТЬ ФОРМУ ТОГО, ЧТО МЕРЯЕТ, иначе меряет себя.
+ * Здесь это стоило трёх ложных чисел подряд, поэтому подробно.
+ *
+ * Дробное число в переменной `let`, захваченной замыканием, V8 кладёт
+ * в контекст БОКСИРОВАННЫМ: каждое присваивание — новый HeapNumber,
+ * шестнадцать байт. Два таких счётчика давали под тридцать байт на кадр,
+ * и замер показывал их как аллокации РЕНДЕРА. Поэтому счётчик кадров
+ * здесь целый (V8 держит его меткой в слове, SMI), а всё дробное —
+ * локальные переменные: локальные не аллоцируют вовсе.
+ */
+const sim = { frame: 0 };
+
+/** Кадров между событиями: 300 мс при 60 кадрах в секунду — шаг `damage`. */
+const FRAMES_PER_EVENT = 18;
+const MS_PER_FRAME = 1000 / 60;
+
+/**
+ * Один кадр боя: сцена, партиклы, эффекты обоих бойцов.
+ *
+ * ЧАСЫ ЗДЕСЬ ЦЕЛЫЕ, и это не мелочь обвязки. Дробные часы, переданные
+ * аргументом в `FighterFx.update`, V8 материализует в куче: замерено
+ * 10.1 байта на кадр против нуля при целом аргументе, при одинаковой
+ * работе (133 мс против 144 мс на двух миллионах кадров). Ровно то же
+ * происходило в бою, поэтому чинилось не здесь, а в проигрывателе:
+ * `BattlePlayer.effectsMs` — целое поле, и обвязка повторяет его форму.
+ *
+ * `built.loop.update(dt)` и `particles.update(dt)` от дробного аргумента
+ * не аллоцируют — проверено отдельно, и на переменном dt тоже. То есть
+ * дело не в «дробном аргументе вообще», а в конкретном вызове, который
+ * V8 не встраивает.
+ */
 function battleFrame(dt) {
-  clock += dt * 1000;
-  sinceEvent += dt * 1000;
+  sim.frame += 1;
+  // ЦЕЛЫЕ миллисекунды — ровно то, что подаёт эффектам проигрыватель
+  // (`BattlePlayer.effectsMs`). Дробные здесь дали бы 10.1 байта
+  // на кадр, и это была бы честная цифра: боксирование аргумента
+  // происходило и в бою, пока часы были дробными.
+  const clock = Math.trunc(sim.frame * MS_PER_FRAME);
 
-  // Событие примерно раз в 300 мс — шаг `damage` из animations.json.
-  if (sinceEvent >= 300) {
-    sinceEvent = 0;
-    side = side === 0 ? 1 : 0;
+  if (sim.frame % FRAMES_PER_EVENT === 0) {
+    const side = (sim.frame / FRAMES_PER_EVENT) % 2 === 0 ? 0 : 1;
     const target = side === 0 ? 1 : 0;
     fx[side].startLunge(clock, 280, 0.55);
     fx[target].startShake(clock, 260, 0.16);
@@ -132,13 +162,50 @@ function measureAllocations(step, frames) {
   return Math.max(0, after - before);
 }
 
+/**
+ * СБОРЩИК МУСОРА ОБЯЗАН БЫТЬ ДОСТУПЕН, иначе замер недействителен.
+ *
+ * `measureAllocations` зовёт `globalThis.gc?.()` перед каждой серией,
+ * и без `--expose-gc` этот вызов — пустышка. Тогда в наклон попадает
+ * чужой мусор, накопленный к моменту серии, и число становится
+ * ДВУЗНАЧНЫМ: замерено 0.00 и 39.11 через раз на одном и том же коде,
+ * причём ровно эти два значения, а не разброс. В CI это дало красный
+ * прогон на коммите, который до того проходил.
+ *
+ * Молча мерить дальше нельзя: неверное число, выданное за верное, хуже
+ * отсутствующего. Поэтому без флага скрипт падает и говорит, что делать.
+ */
+if (typeof globalThis.gc !== 'function') {
+  console.error(
+    'Замер аллокаций требует --expose-gc: без него gc() ничего не делает, ' +
+      'и в наклон попадает посторонний мусор. Запускай через pnpm render:budget.',
+  );
+  process.exit(2);
+}
+
 const warmup = 20_000;
 measureAllocations(battleFrame, warmup); // прогрев: JIT и первые страницы кучи
 
-const short = measureAllocations(battleFrame, 50_000);
-const long = measureAllocations(battleFrame, 200_000);
-// Байт на кадр по наклону: (long − short) / (200k − 50k).
-const bytesPerFrame = Math.max(0, (long - short) / 150_000);
+/**
+ * Наклон берётся как МИНИМУМ из нескольких попыток, а не из одной.
+ *
+ * У цикла без аллокаций истинное значение — ноль, и шум может его
+ * только УВЕЛИЧИТЬ: посторонний мусор добавляет байты, но не отнимает.
+ * Значит минимум сходится к истине. А настоящая аллокация присутствует
+ * в каждой попытке, и минимум её не спрячет — это проверено диверсией.
+ *
+ * Разброс печатается рядом: если попытки разошлись, число стоит читать
+ * с оглядкой, и лучше это видеть, чем не видеть.
+ */
+const trials = [];
+for (let i = 0; i < 3; i++) {
+  const short = measureAllocations(battleFrame, 50_000);
+  const long = measureAllocations(battleFrame, 200_000);
+  // Байт на кадр по наклону: (long − short) / (200k − 50k).
+  trials.push(Math.max(0, (long - short) / 150_000));
+}
+const bytesPerFrame = Math.min(...trials);
+const trialSpread = Math.max(...trials) - bytesPerFrame;
 
 /* ───────────────── проекция координат для цифр урона ─────────────────
 
@@ -249,7 +316,13 @@ if (bytesPerFrame > 1) {
 const kb = (bytes) => `${(bytes / 1024).toFixed(1)} КБ`;
 
 if (AS_JSON) {
-  console.log(JSON.stringify({ scene, bundle, bytesPerFrame, projectionUs, violations }, null, 2));
+  console.log(
+    JSON.stringify(
+      { scene, bundle, bytesPerFrame, trials, trialSpread, projectionUs, violations },
+      null,
+      2,
+    ),
+  );
 } else {
   console.log('\nБЮДЖЕТЫ РЕНДЕРА · GDD §3.4\n');
   const row = (name, value, limit) =>
@@ -262,7 +335,13 @@ if (AS_JSON) {
   row('копий в инстансах', scene.instances, 'вызовов не добавляют, нагрузку — да');
   row('треугольников', Math.round(scene.triangles), 'прокси нагрузки');
   row('источников света', scene.lights, 'каждый удорожает шейдер');
-  row('байт на кадр В БОЮ', bytesPerFrame.toFixed(2), '0 — искры, эффекты, выпады');
+  row(
+    'байт на кадр В БОЮ',
+    bytesPerFrame.toFixed(2),
+    trialSpread > 1
+      ? `минимум из ${trials.length}, разброс ${trialSpread.toFixed(1)} — шум`
+      : '0 — искры, эффекты, выпады',
+  );
   row('проекция точки, мкс', projectionUs.toFixed(3), 'раз на цифру, не раз на кадр');
 
   if (bundle !== null) {

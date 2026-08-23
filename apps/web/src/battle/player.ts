@@ -66,6 +66,23 @@ export class BattlePlayer {
   private readonly point = new Vector3();
 
   private clock = 0;
+  /**
+   * Те же часы, ОКРУГЛЁННЫЕ ВНИЗ ДО ЦЕЛОЙ МИЛЛИСЕКУНДЫ. Отдельное поле,
+   * а не выражение в месте вызова, — и это единственный способ уложиться
+   * в «ноль аллокаций за кадр».
+   *
+   * Дробное число, переданное АРГУМЕНТОМ в вызов, который V8 не встроил,
+   * приходится материализовать в куче: получается HeapNumber, шестнадцать
+   * байт, каждый кадр. Замерено прямо, сменой одного аргумента:
+   * `fx.update(this.clock)` — 10.1 байта на кадр, `fx.update(целое)` —
+   * ноль. Целое до 2^31 V8 держит меткой в самом слове (SMI) и в кучу
+   * не кладёт, поэтому округление убирает аллокацию целиком.
+   *
+   * Цена — миллисекунда точности у эффектов, то есть шестнадцатая доля
+   * кадра. Момент события от этого не двигается: расписание сравнивается
+   * с ДРОБНЫМИ часами, целые идут только в анимацию.
+   */
+  private effectsMs = 0;
   private cursor = 0;
   private shown = 0;
   private speedValue = 1;
@@ -111,6 +128,15 @@ export class BattlePlayer {
 
   get clockMs(): number {
     return this.clock;
+  }
+
+  /**
+   * Часы, которые видят эффекты. Обязаны быть целыми — см. `effectsMs`.
+   * Открыто ради теста: свойство «ноль аллокаций» иначе держалось бы
+   * на комментарии, а комментарий не падает.
+   */
+  get effectsClockMs(): number {
+    return this.effectsMs;
   }
 
   get paused(): boolean {
@@ -162,6 +188,7 @@ export class BattlePlayer {
 
   seek(timeMs: number): void {
     this.clock = Math.max(0, Math.min(timeMs, this.totalMs));
+    this.effectsMs = Math.trunc(this.clock);
     this.cursor = stepCursorAt(this.steps, this.clock);
     // Перемотка гасит всё ПРЕХОДЯЩЕЕ: искры и числа от событий, которых
     // в новом моменте ещё (или уже) нет, — это ложь на экране.
@@ -209,9 +236,13 @@ export class BattlePlayer {
     }
 
     this.particles.update(scaled);
-    this.numbers.collect(this.clock);
-    this.fx[0].update(this.clock);
-    this.fx[1].update(this.clock);
+
+    // Целые часы — см. `effectsMs`. Читать здесь `this.clock` значит
+    // вернуть шестнадцать байт на кадр, и бюджет §3.4 это поймает.
+    this.effectsMs = Math.trunc(this.clock);
+    this.numbers.collect(this.effectsMs);
+    this.fx[0].update(this.effectsMs);
+    this.fx[1].update(this.effectsMs);
   }
 
   private refresh(): void {
