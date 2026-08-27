@@ -483,6 +483,9 @@ describe.skipIf(!HAS_DB)('предметы', () => {
    * Диверсия «шлём сумму» проходила все прочие тесты.
    */
   describe('бюджет «Верности руки» доходит до клиента', () => {
+    /** База причины изгнания. Её выдаёт `ensurePlayer`, см. §5.1. */
+    const base = balanceData.archetypes.forbidden;
+
     const accuracyItem = (seed: string, slot: EquipmentSlot, value: number) =>
       withAffixes(seed, slot, [{ family: 'truehand', tier: 'T1', value }]);
 
@@ -509,8 +512,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(flags.filter((c) => c === true)).toHaveLength(2);
       expect(flags.filter((c) => c === false)).toHaveLength(1);
 
-      // И производная точность — сумма ДВУХ, а не трёх.
-      expect(inv.stats.accuracy).toBe(20);
+      /* И производная точность — БАЗА АРХЕТИПА плюс сумма ДВУХ
+         аффиксов, а не трёх. База входит: она не аффикс и под бюджет
+         не попадает. Берётся из данных, а не числом в тесте: числа
+         архетипов калибруются матрицей, и тест не должен падать
+         от правки баланса. */
+      expect(inv.stats.accuracy).toBe(base.accuracy + 20);
     });
 
     it('без бюджета число было бы другим — иначе проверка пуста', async () => {
@@ -527,9 +534,110 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       const invTwo = (await get(ctx, API_ROUTES.items, two.jar))
         .body as unknown as InventoryResponse;
 
-      expect(invTwo.stats.accuracy).toBe(20);
-      // Три таких же дали бы 30 без бюджета — и дают 20 с ним.
-      expect(20).not.toBe(30);
+      // Два аффикса влезают целиком: база плюс 10 плюс 10.
+      expect(invTwo.stats.accuracy).toBe(base.accuracy + 20);
+      // Три таких же без бюджета дали бы на десять больше — и это
+      // ровно та разница, которую бюджет и снимает.
+      expect(base.accuracy + 20).not.toBe(base.accuracy + 30);
+    });
+  });
+
+  /**
+   * БАЗА АРХЕТИПА доходит до бойца. GDD §5.1.
+   *
+   * До этой правки `balance.archetypes.*.armor` и `.accuracy`
+   * не применялись к игроку НИГДЕ: их читала только матрица винрейтов.
+   * Следствий было два, и оба замерены — живой изгнанный входил
+   * в первую зону с нулевой бронёй (доходимость забега 2.8%),
+   * а коридор архетипов 44–56% был выверен на конфигурации, которой
+   * игра не производит.
+   */
+  describe('базовая броня и точность архетипа', () => {
+    const start = balanceData.archetypes.forbidden;
+
+    it('выдаются при регистрации и лежат в профиле', async () => {
+      const { jar } = await withItems([]);
+      const me = (await get(ctx, API_ROUTES.me, jar)).body as { player: PlayerProfile };
+
+      // Числа СРАВНИВАЮТСЯ С ДАННЫМИ, а не с константой в тесте:
+      // архетипы калибруются матрицей, и тест не должен падать
+      // от правки баланса. Проверяется, что они вообще применены.
+      expect(me.player.baseArmor).toBe(start.armor);
+      expect(me.player.baseAccuracy).toBe(start.accuracy);
+      // И это НЕ НОЛЬ — иначе равенство выполнялось бы и на игре,
+      // которая базу не выдаёт вовсе. Ровно тот баг и был.
+      expect(start.armor).toBeGreaterThan(0);
+      expect(me.player.baseArmor).toBeGreaterThan(0);
+    });
+
+    it('броня голого изгнанного равна базе, а не нулю', async () => {
+      const { jar } = await withItems([]);
+      const inv = (await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse;
+
+      /* Снаряжения нет — у игрока с первого дня только подобранный
+         у ворот клинок, а он брони не даёт. Значит вся броня здесь
+         базовая, и её обязано быть ровно столько. */
+      expect(inv.stats.armor).toBe(start.armor);
+    });
+
+    it('броня снаряжения складывается СВЕРХУ базы, а не заменяет её', async () => {
+      const { jar, ids } = await withItems([item('armored', { slot: 'chest', ilvl: 20 })]);
+      const before = (await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse;
+      expect((await post(ctx, API_ROUTES.itemsEquip, { itemId: ids[0] }, jar)).status).toBe(200);
+      const after = (await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse;
+
+      // Нагрудник обязан был что-то дать: иначе «сверху базы»
+      // проверять не на чем.
+      expect(after.stats.armor).toBeGreaterThan(before.stats.armor);
+      // И база при этом не потерялась.
+      expect(after.stats.armor).toBeGreaterThan(start.armor);
+    });
+  });
+
+  /**
+   * ДОБИВКА ПРОФИЛЕЙ ЭПОХИ M0. Миграция 0007.
+   *
+   * Найдено по жалобе игрока, а не тестом: «за весь бой я бью один раз,
+   * вся инициатива за врагом». Формулы боя оказались верны — виноват
+   * профиль, созданный до M3b и не получивший ни статов архетипа,
+   * ни базовой брони, ни клинка у ворот. При статах 5/5/5/5 против
+   * монстров с SPD 10–13 враг действует вдвое-втрое чаще: замерено
+   * 3–5 ходов игрока против 7–12 у врага.
+   *
+   * Тест держит СВОЙСТВО, а не текст миграции: после неё у игрока
+   * не может быть профиля, который не начинается в бою.
+   */
+  describe('профиль эпохи M0 добит миграцией', () => {
+    it('ни у одного игрока не осталось статов-умолчаний 5/5/5/5', async () => {
+      await withItems([]);
+      const rows = await ctx.db.select().from(players);
+      expect(rows.length, 'игроков нет — проверять нечего').toBeGreaterThan(0);
+
+      for (const row of rows) {
+        const legacy =
+          row.statAtk === 5 && row.statDef === 5 && row.statAgi === 5 && row.statSpd === 5;
+        expect(legacy, `профиль ${row.username} остался на умолчаниях M0`).toBe(false);
+      }
+    });
+
+    it('ни один игрок не остался без единого предмета', async () => {
+      /* Клинок у ворот §5.1: без оружия изгнанный берёт 0% побед
+         в первой же зоне, то есть игра начинается с гарантированной
+         смерти. Это ровно то, во что упёрся живой игрок. */
+      await withItems([]);
+      const rows = await ctx.db.select().from(players);
+
+      for (const row of rows) {
+        const owned = await ctx.db.select().from(items).where(eq(items.ownerId, row.id));
+        expect(owned.length, `у игрока ${row.username} нет ни одного предмета`).toBeGreaterThan(0);
+      }
+    });
+
+    it('и ни один не остался с нулевой базовой бронёй', async () => {
+      const rows = await ctx.db.select().from(players);
+      for (const row of rows) {
+        expect(row.baseArmor, `у игрока ${row.username} нулевая база брони`).toBeGreaterThan(0);
+      }
     });
   });
 });

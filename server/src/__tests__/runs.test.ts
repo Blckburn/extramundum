@@ -159,14 +159,14 @@ describe.skipIf(!HAS_DB)('забег', () => {
       // Множитель матчапа тоже готовым числом (§4.3, «ничего не спрятано»).
       expect(typeof wastes.matchup).toBe('number');
 
-      /* И восстановление — ЗОННОЕ, готовым числом. Подпись «между боями
-         четверть», написанная в клиенте один раз на все зоны, врала бы
-         на первой же из них. */
-      expect(wastes.hpRestore).toBe(WASTES.hpRestoreBetweenFights);
-      expect(wastes.hpRestore).not.toBe(raid.hpRestoreBetweenFights);
-
-      const catacombs = body.zones.find((z) => z.id === 'catacombs');
-      expect(catacombs?.hpRestore).toBe(raid.hpRestoreBetweenFights);
+      /* И восстановление приходит ГОТОВЫМ ЧИСЛОМ, а не подписью
+         в клиенте: величина зонная, и зона вправе её переопределить.
+         Сейчас своего числа не задаёт ни одна, поэтому все отдают
+         общее — но приходить оно обязано с сервера. */
+      expect(wastes.hpRestore).toBe(restoreFractionOf(WASTES));
+      for (const zone of body.zones) {
+        expect(zone.hpRestore, zone.id).toBe(raid.hpRestoreBetweenFights);
+      }
 
       expect(body.activeRun).toBeNull();
     });
@@ -439,22 +439,30 @@ describe.skipIf(!HAS_DB)('забег', () => {
   });
 
   describe('перенос HP и зелья', () => {
-    it('восстановление берётся ИЗ ЗОНЫ, а не одно на игру', async () => {
-      /* Свойство проверяемое, а не декларативное: у первой зоны своё
-         число, и оно ОБЯЗАНО отличаться от общего — иначе «берётся
-         из зоны» прошло бы и на коде, который читает только общее. */
+    it('восстановление берётся ИЗ ЗОНЫ, а общее — только запасной вариант', () => {
+      /* СЕЙЧАС СВОЕГО ЧИСЛА НЕТ НИ У ОДНОЙ ЗОНЫ, и это правильно:
+         половина в Пустошах маскировала баг с базовой бронёй, и после
+         его починки она стала лишней щедростью. Механизм при этом
+         остался — зона вправе назначить своё число, — поэтому
+         проверяется он, а не сегодняшние данные.
+
+         Зона для «своего числа» СИНТЕТИЧЕСКАЯ. Взять настоящую значило
+         бы, что тест молча превращается в тавтологию в тот день, когда
+         из данных уберут последнее переопределение, — ровно это здесь
+         и случилось. */
       const wastes = ZONES.find((zone) => zone.id === 'wastes');
       expect(wastes).toBeDefined();
-      expect(
-        wastes?.hpRestoreBetweenFights,
-        'у первой зоны нет своего восстановления — проверять нечего',
-      ).toBeDefined();
-      expect(restoreFractionOf(wastes!)).not.toBe(raid.hpRestoreBetweenFights);
+      if (wastes === undefined) return;
 
-      // А зона без своего числа падает обратно на общее.
-      const catacombs = ZONES.find((zone) => zone.id === 'catacombs');
-      expect(catacombs?.hpRestoreBetweenFights).toBeUndefined();
-      expect(restoreFractionOf(catacombs!)).toBe(raid.hpRestoreBetweenFights);
+      // Ни одна зона своего числа не задаёт — значит все берут общее.
+      for (const zone of ZONES) {
+        expect(restoreFractionOf(zone), zone.id).toBe(raid.hpRestoreBetweenFights);
+      }
+
+      // А назначенное зоной — перебивает общее.
+      const generous = { ...wastes, hpRestoreBetweenFights: 0.5 };
+      expect(restoreFractionOf(generous)).toBe(0.5);
+      expect(restoreFractionOf(generous)).not.toBe(raid.hpRestoreBetweenFights);
     });
 
     it('формула восстановления: доля зоны сверху, но не выше максимума', () => {
@@ -464,17 +472,19 @@ describe.skipIf(!HAS_DB)('забег', () => {
          в максимум. Ниже, в бою, доказывается, что сервер зовёт именно
          её. Пытаться доказать оба в одном интеграционном тесте значит
          привязать проверку формулы к тому, повезёт ли бойцу. */
-      const wastes = ZONES.find((zone) => zone.id === 'wastes')!;
-      const catacombs = ZONES.find((zone) => zone.id === 'catacombs')!;
+      const zone = WASTES;
+      const generous = { ...zone, hpRestoreBetweenFights: 0.5 };
 
       // Доля берётся ЗОННАЯ: то же состояние даёт разные числа.
-      expect(healBetweenFights(20, 200, wastes)).toBe(120);
-      expect(healBetweenFights(20, 200, catacombs)).toBe(70);
+      expect(healBetweenFights(20, 200, generous)).toBe(120);
+      expect(healBetweenFights(20, 200, zone)).toBe(
+        Math.round(20 + 200 * raid.hpRestoreBetweenFights),
+      );
 
       // Частичное: раненый не становится целым.
-      expect(healBetweenFights(20, 200, wastes)).toBeLessThan(200);
+      expect(healBetweenFights(20, 200, zone)).toBeLessThan(200);
       // И упирается в максимум, а не перескакивает его.
-      expect(healBetweenFights(190, 200, wastes)).toBe(200);
+      expect(healBetweenFights(190, 200, generous)).toBe(200);
     });
 
     it('сервер применяет восстановление зоны к настоящему бою', async () => {
@@ -482,12 +492,7 @@ describe.skipIf(!HAS_DB)('забег', () => {
       await gearUp(jar);
       await start(jar, 'wastes', 'dangerous');
 
-      const restore = WASTES.hpRestoreBetweenFights;
-      /* Без этого «число отличается от общего» проверять не на чем:
-         совпади доли, обе стороны сравнения были бы равны всегда. */
-      expect(restore, 'у первой зоны нет своей доли').toBeDefined();
-      expect(restore).not.toBe(raid.hpRestoreBetweenFights);
-      if (restore === undefined) return;
+      const restore = restoreFractionOf(WASTES);
 
       /* Нужен ВЫИГРАННЫЙ бой, стоивший игроку хотя бы единицы HP:
          на нетронутом здоровье формула верна тождественно. Условие
@@ -513,9 +518,6 @@ describe.skipIf(!HAS_DB)('забег', () => {
             );
 
           expect(result.run.hp).toBe(byZone(restore));
-          // И это ДРУГОЕ число, чем дала бы общая доля: иначе проверка
-          // прошла бы и на сервере, который зону не читает вовсе.
-          expect(result.run.hp).not.toBe(byZone(raid.hpRestoreBetweenFights));
           checked = true;
         }
 

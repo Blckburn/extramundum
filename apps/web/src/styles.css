@@ -1380,3 +1380,14 @@ body {
   border-left: 2px solid var(--accent);
   padding-left: 0.75rem;
 }
+
+/* Метка сборки: приглушена до фона, но выделяется моноширинным —
+   её ищут глазами, когда надо ответить «доехало или нет», и не
+   замечают в остальное время. */
+.village__build {
+  margin: 1.5rem 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--muted);
+  opacity: 0.65;
+}

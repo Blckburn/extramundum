@@ -99,14 +99,19 @@ function percentAffixesOf(loadout: Loadout): PercentAffixes {
 }
 
 /**
- * Броня со всех слотов плюс «Крепость».
+ * БАЗА АРХЕТИПА плюс броня со всех слотов плюс «Крепость».
+ *
+ * База была нулём, и это был баг, а не решение: `archetypes.*.armor`
+ * не читал никто, кроме матрицы винрейтов. Голый изгнанный получал
+ * полный урон от монстров, чья броня по кривой зоны равна 38 уже
+ * на первом уровне, — отсюда доходимость забега 2.8%.
  *
  * «Оплот» СЮДА НЕ ВХОДИТ: он множитель, и его держит движок вместе
  * с бюджетом семейства. Свернуть его здесь значило бы унести правило
  * туда, где его нечем проверить тестом.
  */
-function armorTotal(loadout: Loadout): number {
-  let total = 0;
+function armorTotal(profile: PlayerProfile, loadout: Loadout): number {
+  let total = profile.baseArmor;
   for (const item of loadout.values()) total += derive(item).armor ?? 0;
   return total + flatBonus(loadout, 'fortitude');
 }
@@ -179,13 +184,13 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
     // «Жила». ОТДЕЛЬНО от pathBonusHp: смешать два источника HP в одном
     // числе — это форма бага v1.0 из §13 пункта 2.
     gearBonusHp: flatBonus(loadout, 'vitality'),
-    // Базовая точность игрока — ноль: вся она приходит с «Верности
-    // руки», и приходит СПИСКОМ, потому что у семейства есть бюджет.
-    // Сложить их здесь значило бы отдать движку сумму, из которой
-    // сильнейшие обратно не выделить.
-    accuracy: 0,
+    /* Точность: БАЗА АРХЕТИПА плюс аффиксы «Верности руки» списком.
+       Списком — потому что у семейства есть бюджет, и сильнейшие
+       из суммы обратно не выделить. База отдельно — она не аффикс
+       и под бюджет не попадает. */
+    accuracy: profile.baseAccuracy,
     accuracyAffixes: affixValues(loadout, 'truehand'),
-    armor: armorTotal(loadout),
+    armor: armorTotal(profile, loadout),
     armorClass:
       chestItem === undefined ? 'medium' : (itemBase(chestItem.baseKey).armorClass ?? 'medium'),
     critBonus: 0,

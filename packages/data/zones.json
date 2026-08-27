@@ -18,16 +18,15 @@
       "id": "wastes",
       "levels": [1, 8],
       "armorClass": "light",
-      "power": 1.01,
-      "monsters": ["wastes.scavenger", "wastes.strayDog", "wastes.footpad"],
-      "boss": "wastes.tollman",
-      "hpRestoreBetweenFights": 0.5
+      "power": 1.12,
+      "monsters": ["wastes.scavenger", "wastes.carrionCrows", "wastes.footpad"],
+      "boss": "wastes.tollman"
     },
     {
       "id": "warcamp",
       "levels": [8, 16],
       "armorClass": "medium",
-      "power": 0.79,
+      "power": 0.84,
       "monsters": ["warcamp.picket", "warcamp.mercenary", "warcamp.shieldman"],
       "boss": "warcamp.serjeant"
     },
@@ -35,7 +34,7 @@
       "id": "catacombs",
       "levels": [16, 24],
       "armorClass": "cloth",
-      "power": 0.87,
+      "power": 0.94,
       "monsters": ["catacombs.plaguebearer", "catacombs.corpsehandler", "catacombs.emberkeeper"],
       "boss": "catacombs.quarantineWarden"
     },
@@ -43,17 +42,18 @@
       "id": "forge",
       "levels": [24, 32],
       "armorClass": "heavy",
-      "power": 0.81,
-      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.bellowsHound"],
+      "power": 0.9,
+      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.cinderCrawler"],
       "boss": "forge.masterSmith"
     },
     {
       "id": "abyss",
       "levels": [32, 40],
       "armorClass": "mixed",
-      "power": 1.23,
+      "power": 1.36,
       "monsters": ["abyss.pitCrawler", "abyss.boneStacker", "abyss.lastCarter"],
       "boss": "abyss.firstExile"
     }
-  ]
+  ],
+  "$power": "МНОЖИТЕЛИ ПЕРЕПОДОБРАНЫ ТРИЖДЫ в одну правку, и это не метание. Каждый раз менялся эталонный боец, по которому меряется кривая: сперва он получил базовую броню архетипа, потом новую формулу §4.2, потом перекалиброванную лестницу точности. Множитель зоны — последний шаг подбора, и переставлять его надо после КАЖДОГО изменения эталона, иначе кривая меряет старого бойца. Подбор делает `pnpm balance:matrix --calibrate`."
 }
