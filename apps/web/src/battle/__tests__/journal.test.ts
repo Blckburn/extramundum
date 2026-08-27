@@ -139,3 +139,39 @@ describe('порядок журнала', () => {
     expect(rows.length).toBeLessThan(log.events.length);
   });
 });
+
+describe('замах босса, GDD §7.5', () => {
+  /**
+   * «Телеграф важен именно потому, что игрок не может отреагировать:
+   * он видит, что удар был предсказуем, и понимает, что нужен был
+   * другой билд.» Значит проверять надо одно: строка стоит ВЫШЕ удара,
+   * который она предсказывает.
+   */
+  const telegraphs = rows.filter(
+    (row): row is Extract<JournalEntry, { kind: 'event' }> =>
+      row.kind === 'event' && row.event.t === 'telegraph',
+  );
+
+  it('замах попадает в журнал отдельной строкой', () => {
+    // Иначе он растворился бы среди срабатываний трейтов, и «предсказуем»
+    // осталось бы словом из документа.
+    expect(telegraphs.length, 'в эталонном логе нет ни одного замаха').toBeGreaterThan(0);
+  });
+
+  it('строка замаха стоит ВЫШЕ удара того же бойца', () => {
+    for (const telegraph of telegraphs) {
+      if (telegraph.event.t !== 'telegraph') continue;
+      const actor = telegraph.event.actor;
+
+      const nextStrike = strikes.find(
+        (strike) => strike.index > telegraph.index && strike.actor === actor,
+      );
+      expect(nextStrike, 'после замаха нет ни одного удара этого бойца').toBeDefined();
+      if (nextStrike === undefined) continue;
+
+      // Порядок в СПИСКЕ строк, а не только в логе: журнал игрок читает
+      // сверху вниз, и предупреждение ниже удара ничего не предупреждает.
+      expect(rows.indexOf(telegraph)).toBeLessThan(rows.indexOf(nextStrike));
+    }
+  });
+});

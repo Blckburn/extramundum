@@ -1,6 +1,7 @@
 import {
   ALL_TRAIT_IDS,
   INNATE_TRAIT_IDS,
+  MONSTER_TRAIT_IDS,
   TRAIT_IDS,
   type BattleEvent,
   type BattleSetup,
@@ -657,6 +658,32 @@ describe('каждый трейт наблюдаем', () => {
       applyStatus(plain, 1, 'poison', 1, 0, balance, clock);
       void caster;
       return (victim.statuses[0]?.duration ?? 0) > (plain.statuses[0]?.duration ?? 0);
+    },
+
+    /* Трейты монстров (§7.5). Наблюдаемость доказывается тем же
+       способом, что у остальных: событием в логе, а не рассуждением. */
+    bossEnrage: () => {
+      // Боец, начинающий бой уже раненым ниже порога: иначе «вошёл
+      // в ярость» проверялось бы на бое, где порог не пересекается.
+      const boss = striker({
+        traits: ['bossEnrage'],
+        atk: 3,
+        // Кровотечение на САМОМ боссе доводит его до порога, а мешок
+        // с большим запасом HP не даёт бою кончиться раньше.
+        statuses: [{ id: 'bleed', stacks: 9, duration: 400 }],
+      });
+      const { log } = fight(boss, dummy({ pathBonusHp: 6000 }), 'enrage');
+      return (
+        fires(log.events, 'bossEnrage', 0).length > 0 && applies(log.events, 'enrage', 0).length > 0
+      );
+    },
+    bossHeavyStrike: () => {
+      const { log } = fight(
+        striker({ traits: ['bossHeavyStrike'], atk: 5 }),
+        dummy({ pathBonusHp: 3000 }),
+        'heavy',
+      );
+      return log.events.some((e) => e.t === 'telegraph');
     },
   };
 
@@ -1387,6 +1414,102 @@ describe('описания сверены с реализацией', () => {
       expect(numbers, `«${desc}» не содержит ${value} (${id}.${key} из balance.json)`).toContain(
         Number(value.toFixed(4)),
       );
+    }
+  });
+});
+
+/* ───────────────────── механики босса, GDD §7.5 ──────────────────────── */
+
+describe('босс', () => {
+  it('bossEnrage срабатывает ОДИН раз и вешает enrage на себя', () => {
+    const boss = striker({
+      traits: ['bossEnrage'],
+      atk: 3,
+      statuses: [{ id: 'bleed', stacks: 9, duration: 400 }],
+    });
+    const { log } = fight(boss, dummy({ pathBonusHp: 6000 }), 'enrage-once');
+
+    // Сработал — и ровно однажды: «входит в ярость» не значит «входит
+    // каждый ход», а состояние трейта — единственное, что его держит.
+    expect(fires(log.events, 'bossEnrage', 0)).toHaveLength(1);
+    expect(applies(log.events, 'enrage', 0).length).toBeGreaterThan(0);
+  });
+
+  it('bossEnrage НЕ срабатывает, пока HP выше порога', () => {
+    /* Проверка отсутствия обязана доказать, что событие в этой же
+       выборке вообще бывает, — иначе она проходит и на бое, где порог
+       не пересекается ни разу. Второй бой ровно за этим. */
+    const healthy = fight(
+      striker({ traits: ['bossEnrage'], atk: 0, pathBonusHp: 4000 }),
+      dummy({ pathBonusHp: 40 }),
+      'enrage-healthy',
+    );
+    expect(fires(healthy.log.events, 'bossEnrage', 0)).toHaveLength(0);
+
+    const wounded = fight(
+      striker({
+        traits: ['bossEnrage'],
+        atk: 3,
+        statuses: [{ id: 'bleed', stacks: 9, duration: 400 }],
+      }),
+      dummy({ pathBonusHp: 6000 }),
+      'enrage-wounded',
+    );
+    expect(fires(wounded.log.events, 'bossEnrage', 0).length).toBeGreaterThan(0);
+  });
+
+  it('телеграф стоит в логе ДО удара, а не рядом с ним', () => {
+    /* В этом вся механика §7.5: игрок не может отреагировать, но обязан
+       увидеть, что удар был предсказуем. Событие, выпущенное в тот же
+       ход, стояло бы в журнале рядом с уроном и ничего бы
+       не предсказывало. */
+    const every = T('bossHeavyStrike', 'everyNTurns');
+    const { log } = fight(
+      striker({ traits: ['bossHeavyStrike'], atk: 5 }),
+      dummy({ pathBonusHp: 6000 }),
+      'telegraph',
+    );
+
+    const telegraphs = log.events.filter((e) => e.t === 'telegraph');
+    expect(telegraphs.length, 'замаха не случилось вовсе').toBeGreaterThan(0);
+
+    // Ходы босса по порядку. Замах обязан приходиться на ход, ЗА КОТОРЫМ
+    // идёт тяжёлый: то есть на каждый (every − 1)-й от начала цикла.
+    let turns = 0;
+    const telegraphTurns: number[] = [];
+    for (const event of log.events) {
+      if (event.t === 'turn_start' && event.actor === 0) turns += 1;
+      if (event.t === 'telegraph') telegraphTurns.push(turns);
+    }
+
+    for (const turn of telegraphTurns) {
+      expect((turn + 1) % every, `замах на ходу ${turn}, а тяжёлый удар не на следующем`).toBe(0);
+    }
+  });
+
+  it('обещанный удар действительно тяжелее обычного', () => {
+    // Телеграф, за которым не следует усиленный удар, — это пункт 4
+    // аудита v1.0: число в описании без последствий в бою.
+    const every = T('bossHeavyStrike', 'everyNTurns');
+    const mult = T('bossHeavyStrike', 'damageMultiplier');
+
+    const plain = createFighterState(fighter({ traits: ['bossHeavyStrike'] }), balance);
+    const target = createFighterState(fighter(), balance);
+
+    // Ход, который НЕ кратен периоду: множителя нет.
+    plain.traitStates.get('bossHeavyStrike')!.turns = every - 1;
+    expect(effectiveStats(plain, target, balance).outgoingDamageMultiplier).toBe(1);
+
+    // Ход, который кратен: множитель ровно заявленный.
+    plain.traitStates.get('bossHeavyStrike')!.turns = every;
+    expect(effectiveStats(plain, target, balance).outgoingDamageMultiplier).toBe(mult);
+  });
+
+  it('трейты монстров не входят в пул выбора игрока', () => {
+    // Иначе игрок однажды взял бы «замах босса» карточкой на уровне.
+    for (const id of MONSTER_TRAIT_IDS) {
+      expect(TRAIT_IDS as readonly string[]).not.toContain(id);
+      expect(traitDefinition(id).school).toBe('monster');
     }
   });
 });

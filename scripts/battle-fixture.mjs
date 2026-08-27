@@ -79,7 +79,11 @@ const SETUP = [
     offhand: { kind: 'shield', blockChance: 0.35, blockReduction: 0.7 },
     percentAffixes: { might: [], bastion: [], swiftness: [] },
     statuses: [],
-    traits: ['thorns', 'pyromancer', 'innateGuard'],
+    // Механики босса (§7.5): вход в ярость ниже порога HP и замах
+    // с телеграфом. Без них в эталоне не было бы события `telegraph`,
+    // и «показ не падает ни на одном событии» снова проверялось бы
+    // на неполной выборке.
+    traits: ['thorns', 'pyromancer', 'innateGuard', 'bossEnrage', 'bossHeavyStrike'],
   },
 ];
 
@@ -93,6 +97,7 @@ const REQUIRED = [
   'status_tick',
   'status_expire',
   'trait_fire',
+  'telegraph',
   'death',
 ];
 

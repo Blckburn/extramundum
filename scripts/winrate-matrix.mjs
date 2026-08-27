@@ -173,13 +173,23 @@ const combos = COMBOS.map(([label, archetype, traits]) => ({
  */
 const { TRAITS } = await import(fileURLToPath(new URL('packages/sim/dist/traits.js', root)));
 
-/** Выбираемые трейты по школам — из реестра движка, а не из копии здесь. */
+/**
+ * Выбираемые трейты по школам — из реестра движка, а не из копии здесь.
+ *
+ * Исключены врождённые (приходят с прошлым персонажа, выбрать нельзя)
+ * и трейты со школой `monster`: механики босса из §7.5 принадлежат
+ * противнику, и мерить их разбросом внутри школы игрока бессмысленно.
+ * Исключение идёт ПО ШКОЛЕ, а не по списку имён: список пришлось бы
+ * пополнять с каждым новым монстровым трейтом, и однажды его забыли бы.
+ */
+const HOST = { agi: 'advocacy', str: 'theft', def: 'brawl', mag: 'forbidden' };
+
 const SCHOOL_PROBE = {};
 for (const [id, def] of TRAITS) {
   if (id.startsWith('innate')) continue;
+  if (HOST[def.school] === undefined) continue;
   (SCHOOL_PROBE[def.school] ??= []).push(id);
 }
-const HOST = { agi: 'advocacy', str: 'theft', def: 'brawl', mag: 'forbidden' };
 
 const soloRuns = Math.max(200, Math.round(RUNS / 5));
 const solo = {};

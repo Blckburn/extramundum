@@ -275,6 +275,16 @@ function renderHead(entry: JournalEntry): (string | Node)[] {
             ]),
             el('span', { class: 'journal__hp' }, [t('battle.hpAfter', { hp: event.hpAfter })]),
           ];
+        case 'telegraph':
+          /* Замах босса. Строка стоит В ЖУРНАЛЕ ДО удара, потому что
+             событие в логе идёт до него, — и в этом вся механика §7.5:
+             игрок не может отреагировать, но обязан увидеть, что удар
+             был предсказуем. Своя пометка, а не «сработал трейт»:
+             предупреждение и срабатывание — разные вещи. */
+          return [
+            el('span', { class: 'journal__who' }, [fighterName(event.actor)]),
+            el('span', { class: 'journal__what journal__what--warn' }, [t('battle.telegraph')]),
+          ];
         case 'death':
           return [
             el('span', { class: 'journal__what' }, [

@@ -17,6 +17,7 @@
   --muted: #8a867c; /* tin */
   --accent: #9a7434; /* ochre */
   --danger: #6b2621; /* blood */
+  --warn: #a85f28; /* flame — предупреждение, а не урон */
   --radius: 10px;
 }
 
@@ -647,6 +648,16 @@ body {
 
 .journal__who {
   color: var(--muted);
+}
+
+/* Замах босса (GDD §7.5). Предупреждение обязано ЧИТАТЬСЯ иначе, чем
+   срабатывание трейта: игрок должен успеть связать строку со следующим
+   ударом, а не найти её потом при разборе. */
+.journal__what--warn {
+  color: var(--warn);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.78rem;
 }
 
 .journal__amount {

@@ -317,5 +317,11 @@
   "monster.abyss.lastCarter": "Последний возчик",
   "monster.abyss.firstExile": "Первый изгнанный",
   "monster.boss": "босс",
-  "armorClass.mixed": "смешанная"
+  "armorClass.mixed": "смешанная",
+  "trait.bossEnrage.name": "Ярость",
+  "trait.bossEnrage.desc": "Ниже 30% здоровья входит в ярость: +50% урона, −20% защиты.",
+  "trait.bossHeavyStrike.name": "Замах",
+  "trait.bossHeavyStrike.desc": "Каждый третий ход — тяжёлый удар ×1.5. В журнале виден за ход до нанесения.",
+  "battle.telegraph": "Замахивается — следующий удар тяжёлый",
+  "battle.telegraph.short": "замах"
 }

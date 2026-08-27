@@ -115,7 +115,7 @@
         "dmgMin": 1.15,
         "dmgMax": 1.25
       },
-      "traits": ["ironGrip"]
+      "traits": ["ironGrip", "bossEnrage", "bossHeavyStrike"]
     },
     {
       "key": "warcamp.picket",
@@ -210,7 +210,7 @@
         "dmgMin": 1.15,
         "dmgMax": 1.25
       },
-      "traits": ["hardened"]
+      "traits": ["hardened", "bossEnrage", "bossHeavyStrike"]
     },
     {
       "key": "catacombs.plaguebearer",
@@ -308,7 +308,7 @@
         "dmgMin": 1.1,
         "dmgMax": 1.2
       },
-      "traits": ["amplifier"]
+      "traits": ["amplifier", "bossEnrage", "bossHeavyStrike"]
     },
     {
       "key": "forge.hammerhand",
@@ -405,7 +405,7 @@
         "dmgMin": 1.2,
         "dmgMax": 1.3
       },
-      "traits": ["thorns"]
+      "traits": ["thorns", "bossEnrage", "bossHeavyStrike"]
     },
     {
       "key": "abyss.pitCrawler",
@@ -504,7 +504,7 @@
         "dmgMin": 1.25,
         "dmgMax": 1.35
       },
-      "traits": ["warlord"]
+      "traits": ["warlord", "bossEnrage", "bossHeavyStrike"]
     }
   ]
 }

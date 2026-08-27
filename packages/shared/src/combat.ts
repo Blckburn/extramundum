@@ -120,7 +120,22 @@ export const INNATE_TRAIT_IDS = [
   'innateScholar',
 ] as const;
 
-export const ALL_TRAIT_IDS = [...TRAIT_IDS, ...INNATE_TRAIT_IDS] as const;
+/**
+ * Трейты МОНСТРОВ. GDD §7.5.
+ *
+ * Две механики босса — вход в `enrage` ниже порога HP и телеграфированный
+ * тяжёлый удар — сделаны трейтами, а не ветками в `resolve.ts`. Причина
+ * та же, по которой там не упомянут по имени ни один статус: реестр
+ * хуков уже есть и покрыт тестами, а `if (isBoss)` в цикле боя сломал бы
+ * ровно то свойство, ради которого реестр писался.
+ *
+ * В пул выбора игрока не входят — как и врождённые. Отличаются от них
+ * тем, что игроку недоступны вовсе: врождённый приходит с прошлым
+ * персонажа, а эти принадлежат противнику.
+ */
+export const MONSTER_TRAIT_IDS = ['bossEnrage', 'bossHeavyStrike'] as const;
+
+export const ALL_TRAIT_IDS = [...TRAIT_IDS, ...INNATE_TRAIT_IDS, ...MONSTER_TRAIT_IDS] as const;
 export const traitIdSchema = z.enum(ALL_TRAIT_IDS);
 export type TraitId = z.infer<typeof traitIdSchema>;
 
@@ -610,6 +625,24 @@ export type BattleEvent =
       readonly actor: ActorIndex;
       readonly trait: TraitId;
       readonly note?: string;
+    }
+  | {
+      /**
+       * ТЕЛЕГРАФ ТЯЖЁЛОГО УДАРА. GDD §7.5.
+       *
+       * Появляется в логе ЗА ХОД ДО нанесения, и в этом вся механика:
+       * игрок не может отреагировать в бою, но обязан увидеть, что удар
+       * был предсказуем, — тогда поражение читается как «нужен был другой
+       * билд», а не как несправедливость.
+       *
+       * Отдельное событие, а не `trait_fire` с примечанием: журнал обязан
+       * поставить строку ДО удара и оформить её иначе, чем срабатывание
+       * трейта, а рендер — сыграть предупреждение, а не вспышку урона.
+       */
+      readonly t: 'telegraph';
+      readonly actor: ActorIndex;
+      /** Через сколько СВОИХ ходов ударит. Всегда 1: предупреждение одно. */
+      readonly inTurns: number;
     }
   | { readonly t: 'death'; readonly actor: ActorIndex };
 
