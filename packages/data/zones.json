@@ -20,7 +20,8 @@
       "armorClass": "light",
       "power": 1.01,
       "monsters": ["wastes.scavenger", "wastes.strayDog", "wastes.footpad"],
-      "boss": "wastes.tollman"
+      "boss": "wastes.tollman",
+      "hpRestoreBetweenFights": 0.5
     },
     {
       "id": "warcamp",

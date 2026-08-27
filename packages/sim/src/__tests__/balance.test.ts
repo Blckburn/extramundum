@@ -40,6 +40,7 @@ function build(archetype: (typeof ARCHETYPE_IDS)[number], extra: string[] = []):
     weapon: { dmgMin: 8, dmgMax: 14, ilvl: 1, class: 'balanced' },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
     statuses: [],
     traits: [a.trait, ...extra] as FighterConfig['traits'],
   };

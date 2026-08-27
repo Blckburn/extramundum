@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { resolveAttack } from '../damage.js';
-import { createFighterState, effectiveStats, familyMultiplier, maxHp } from '../fighter.js';
+import {
+  createFighterState,
+  effectiveStats,
+  familyMultiplier,
+  familySum,
+  maxHp,
+} from '../fighter.js';
 import { rngFromSeed } from '../rng.js';
 
 import { balance, fighter } from './helpers.js';
@@ -334,5 +340,82 @@ describe('защитные семейства аффиксов (M3b)', () => {
     expect(missesBlind).toBeGreaterThan(40);
     expect(missesSharp).toBeGreaterThan(0);
     expect(missesSharp).toBeLessThan(missesBlind);
+  });
+});
+
+/**
+ * Бюджет «Верности руки» — ПЛОСКОГО семейства. GDD §6.1, §4.2.
+ *
+ * Бюджет считался свойством формы: «процентные перемножаются, значит
+ * их надо ограничивать». Замер показал, что он свойство НАСЫЩЕНИЯ:
+ * у шанса уклонения есть потолок, и точность сверх него не даёт
+ * ничего — третий аффикс T1 добавляет 0.6 п.п., четвёртый ноль.
+ * Без бюджета они пропадали бы молча.
+ */
+describe('бюджет «Верности руки»', () => {
+  it('складываются ДВЕ сильнейшие, остальные не считаются', () => {
+    expect(balance.items.familyBudget.truehand).toBe(2);
+
+    expect(familySum([10, 10], balance, 'truehand')).toBe(20);
+    // Третья и четвёртая не добавляют НИЧЕГО.
+    expect(familySum([10, 10, 10], balance, 'truehand')).toBe(20);
+    expect(familySum([10, 10, 10, 10], balance, 'truehand')).toBe(20);
+  });
+
+  it('третий аффикс БЫЛ БЫ значим, если бы считался', () => {
+    // Иначе «третий не добавляет ничего» проходило бы и на наборе,
+    // где третьего попросту нет: проверять надо, что он был отброшен,
+    // а не что его не было.
+    const two = familySum([10, 10], balance, 'truehand');
+    const three = [10, 10, 10].reduce((a, b) => a + b, 0);
+    expect(three).toBeGreaterThan(two);
+  });
+
+  it('берутся именно СИЛЬНЕЙШИЕ, а не первые попавшиеся', () => {
+    for (const order of [
+      [3, 12, 7, 15],
+      [15, 12, 7, 3],
+      [7, 15, 3, 12],
+    ]) {
+      expect(familySum(order, balance, 'truehand')).toBe(27);
+    }
+  });
+
+  it('складывается СУММА, а не произведение', () => {
+    // Разница видна только на числах, где сумма и произведение
+    // расходятся: на [1, 1] обе дали бы 2 и 1 соответственно,
+    // но на [3, 4] сумма 7, а произведение 12.
+    expect(familySum([3, 4], balance, 'truehand')).toBe(7);
+  });
+
+  it('не мутирует переданный список', () => {
+    const affixes = [3, 12, 7];
+    const copy = [...affixes];
+    familySum(affixes, balance, 'truehand');
+    expect(affixes).toEqual(copy);
+  });
+
+  it('пустой список даёт ноль, а не единицу', () => {
+    // У множителя нейтральный элемент — единица, у суммы ноль.
+    // Перепутать их значит выдать всем бойцам единицу точности.
+    expect(familySum([], balance, 'truehand')).toBe(0);
+  });
+
+  it('бюджет доходит до БОЙЦА, а не остаётся в функции', () => {
+    const budgeted = createFighterState(
+      fighter({ accuracy: 0, accuracyAffixes: [10, 10, 10, 10] }),
+      balance,
+    );
+    const two = createFighterState(fighter({ accuracy: 0, accuracyAffixes: [10, 10] }), balance);
+    const bare = createFighterState(fighter({ accuracy: 0, accuracyAffixes: [] }), balance);
+
+    const acc = (state: typeof bare) => effectiveStats(state, bare, balance).accuracy;
+
+    // Четыре аффикса дают ровно столько же, сколько два.
+    expect(acc(budgeted)).toBe(acc(two));
+    // И это НЕ ноль: иначе равенство выполнялось бы и на движке,
+    // который точность из снаряжения не читает вовсе.
+    expect(acc(two)).toBeGreaterThan(acc(bare));
+    expect(acc(two)).toBe(20);
   });
 });

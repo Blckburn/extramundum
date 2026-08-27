@@ -11,6 +11,8 @@ import {
   type RunView,
   type ZoneCard,
   type ZonesResponse,
+  isZoneUnlocked,
+  zoneMinLevel,
 } from '@extramundum/shared';
 import { matchupMultiplier } from '@extramundum/sim';
 import { Hono, type Context } from 'hono';
@@ -91,6 +93,11 @@ export function runRoutes(db: Database): Hono<AppEnv> {
           zone.armorClass === 'mixed'
             ? null
             : matchupMultiplier(weapon, zone.armorClass, combatBalance),
+        // Замок считает та же функция, что откажет в старте забега:
+        // второе место означало бы экран, обещающий то, чего сервер
+        // не даст.
+        unlocked: isZoneUnlocked(profile.level, zone),
+        minLevel: zoneMinLevel(zone),
       };
     });
 

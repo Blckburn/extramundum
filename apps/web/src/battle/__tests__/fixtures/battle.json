@@ -32,6 +32,7 @@
         "bastion": [],
         "swiftness": []
       },
+      "accuracyAffixes": [],
       "statuses": [],
       "traits": ["plaguebearer", "hexblade", "innateScholar"]
     },
@@ -64,6 +65,7 @@
         "bastion": [],
         "swiftness": []
       },
+      "accuracyAffixes": [],
       "statuses": [],
       "traits": ["thorns", "pyromancer", "innateGuard", "bossEnrage", "bossHeavyStrike"]
     }

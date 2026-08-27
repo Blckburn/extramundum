@@ -115,19 +115,44 @@ export type AffixFamily = z.infer<typeof affixFamilySchema>;
  * Семейства, работающие МНОЖИТЕЛЕМ, а не слагаемым.
  *
  * Отдельный список, потому что от формы зависит всё остальное: плоские
- * складываются в один стат и бюджета не требуют, процентные
- * перемножаются и потому могут его требовать. Бюджет держит движок
- * (`familyMultiplier`), и он же читает этот список.
+ * складываются в один стат, процентные перемножаются. Бюджет держит
+ * движок (`familyMultiplier`), и он же читает этот список.
  */
 export const PERCENT_AFFIX_FAMILIES = ['might', 'bastion', 'swiftness'] as const;
 export type PercentAffixFamily = (typeof PERCENT_AFFIX_FAMILIES)[number];
 
-/** Плоские семейства: складываются в стат носителя, потолка счёта нет. */
+/** Плоские семейства: складываются в стат носителя. */
 export const FLAT_AFFIX_FAMILIES = ['strength', 'fortitude', 'vitality', 'truehand'] as const;
 export type FlatAffixFamily = (typeof FLAT_AFFIX_FAMILIES)[number];
 
+/**
+ * Плоские семейства, которым бюджет ВСЁ РАВНО нужен.
+ *
+ * «Форма» и «нужен ли бюджет» — разные вопросы, и первое время они
+ * совпадали: бюджет требовался процентным, потому что они
+ * перемножаются. «Верность руки» показала, что это было совпадением.
+ * У шанса уклонения есть потолок (§4.2), поэтому точность сверх
+ * некоторого значения не даёт НИЧЕГО — замерено: третий аффикс T1
+ * добавляет 0.6 п.п., четвёртый ноль. Без бюджета они пропадали бы
+ * молча, и игрок решил бы, что система сломана.
+ *
+ * Отсюда отдельный список, а не «все плоские»: у «Силы», «Крепости»
+ * и «Жилы» насыщения нет, и ограничивать их незачем.
+ */
+export const FLAT_BUDGET_FAMILIES = ['truehand'] as const;
+export type FlatBudgetFamily = (typeof FLAT_BUDGET_FAMILIES)[number];
+
+/** Семейства под бюджетом — процентные плюс плоские с насыщением. */
+export const BUDGETED_FAMILIES = [...PERCENT_AFFIX_FAMILIES, ...FLAT_BUDGET_FAMILIES] as const;
+export type BudgetedFamily = (typeof BUDGETED_FAMILIES)[number];
+
 export function isPercentFamily(family: AffixFamily): family is PercentAffixFamily {
   return (PERCENT_AFFIX_FAMILIES as readonly string[]).includes(family);
+}
+
+/** Считается ли это семейство по бюджету (и потому может быть зачёркнуто). */
+export function isBudgetedFamily(family: AffixFamily): family is BudgetedFamily {
+  return (BUDGETED_FAMILIES as readonly string[]).includes(family);
 }
 
 export const itemAffixSchema = z.object({

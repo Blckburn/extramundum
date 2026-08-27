@@ -2,6 +2,7 @@ import type {
   ArmorClass,
   CombatBalance,
   FighterConfig,
+  FlatBudgetFamily,
   PercentAffixFamily,
   TraitId,
   WeaponClass,
@@ -193,7 +194,13 @@ export function effectiveStats(
         (tm.spdMultiplier ?? 1),
     ),
     armor,
-    accuracy: Math.max(0, base.accuracy + (sm.accuracy ?? 0) + (tm.accuracy ?? 0)),
+    accuracy: Math.max(
+      0,
+      base.accuracy +
+        familySum(base.accuracyAffixes, balance, 'truehand') +
+        (sm.accuracy ?? 0) +
+        (tm.accuracy ?? 0),
+    ),
     attackMultiplierBonus: sm.attackMultiplierBonus ?? 0,
     avoidChance: tm.avoidChance ?? 0,
     blockReductionOverride: tm.blockReductionOverride,
@@ -224,6 +231,31 @@ export function effectiveStats(
  * на весь прогон матрицы, и мутировать её здесь значило бы менять
  * входные данные из функции, которая обязана быть чистой.
  */
+/**
+ * Сумма ПЛОСКОГО семейства под тем же бюджетом. GDD §6.1.
+ *
+ * Отдельная функция, а не флаг в `familyMultiplier`: там значения
+ * перемножаются, здесь складываются, и «умножать или складывать»
+ * внутри одной функции решалось бы условием — то есть двумя функциями
+ * в одном теле.
+ *
+ * Правило отбора при этом ОДНО и то же: N сильнейших, остальные
+ * не считаются. Разойдись эти два правила, игрок увидел бы у процента
+ * и у плоского разную логику зачёркивания в тултипе.
+ */
+export function familySum(
+  affixes: readonly number[],
+  balance: CombatBalance,
+  family: FlatBudgetFamily,
+): number {
+  if (affixes.length === 0) return 0;
+
+  const counted = [...affixes].sort((a, b) => b - a).slice(0, balance.items.familyBudget[family]);
+  let total = 0;
+  for (const value of counted) total += value;
+  return total;
+}
+
 export function familyMultiplier(
   affixes: readonly number[],
   balance: CombatBalance,

@@ -1,7 +1,9 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
 import { monsterSpec } from '@extramundum/data/zones';
 import {
+  isZoneUnlocked,
   lootBalanceSchema,
+  zoneMinLevel,
   type Difficulty,
   type FightRewards,
   type MonsterSpec,
@@ -176,6 +178,22 @@ export async function startRun(
   // без противника.
   const zone = requireZone(input.zone);
 
+  /* ЗАПЕРТАЯ ЗОНА — ОТКАЗ, и это не декорация.
+
+     Уровень врага зажат диапазоном зоны (§7.3 плюс §7.4), поэтому
+     в зоне выше своего уровня игрок видит ОДНОГО И ТОГО ЖЕ врага
+     на всех трёх сложностях, а множители добычи там ×1 / ×1.6 / ×2.5.
+     То есть «Кошмар» в переросшей зоне — бесплатное умножение добычи;
+     сейчас оно ничего не даёт только потому, что там убивают. Как
+     только снаряжение позволит выжить, это стало бы лучшей стратегией
+     в игре, и чинить пришлось бы уже с накопленной добычей на руках. */
+  if (!isZoneUnlocked(profile.level, zone)) {
+    throw new AppError('forbidden', {
+      messageKey: 'error.run.zoneLocked',
+      message: `зона «${zone.id}» открывается с уровня ${zoneMinLevel(zone)}`,
+    });
+  }
+
   const existing = await findActiveRun(db, profile.id);
   if (existing !== null) {
     // Два забега сразу означали бы две сумки и возможность «переложить»
@@ -263,7 +281,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     won,
     /* Выжил — добираем четверть максимума (§7.2). Погиб — HP обнуляется,
        и следующий забег начнётся с полного: тело и его сумка — это M4. */
-    hpAfter: won ? healBetweenFights(outcome.hpRemaining[0], maxHp) : 0,
+    hpAfter: won ? healBetweenFights(outcome.hpRemaining[0], maxHp, zone) : 0,
     xp: rewards.xp,
     // Погибший теряет ПОЛОВИНУ золота боя, но не всё: XP за пройденные
     // бои остаётся целиком (§7.2).
@@ -296,9 +314,24 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   };
 }
 
-/** Четверть максимума сверху, но не выше самого максимума. GDD §7.2. */
-function healBetweenFights(hp: number, maxHp: number): number {
-  return Math.min(maxHp, Math.max(1, Math.round(hp + maxHp * raid.hpRestoreBetweenFights)));
+/**
+ * Доля максимума, возвращаемая между боями. GDD §7.2.
+ *
+ * ВЕЛИЧИНА ЗОНЫ, а не одна на игру. Общая четверть оставляла свежего
+ * изгнанного без первой встречи с решением об эвакуации: до неё
+ * доходило 2.8% забегов. Первая зона возвращает половину — она учит,
+ * а не отбирает; дальше игрок приходит снаряжённым, и четверть там
+ * снова становится ставкой.
+ *
+ * Зона своего числа не задала — берётся общее из `balance.raid`.
+ */
+export function restoreFractionOf(zone: ZoneSpec): number {
+  return zone.hpRestoreBetweenFights ?? raid.hpRestoreBetweenFights;
+}
+
+/** Доля максимума сверху, но не выше самого максимума. GDD §7.2. */
+export function healBetweenFights(hp: number, maxHp: number, zone: ZoneSpec): number {
+  return Math.min(maxHp, Math.max(1, Math.round(hp + maxHp * restoreFractionOf(zone))));
 }
 
 export async function drinkPotion(db: Database, profile: PlayerProfile): Promise<RunView> {

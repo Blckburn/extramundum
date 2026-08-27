@@ -80,6 +80,7 @@ function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
     weapon: { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
     statuses: [],
     traits: [a.trait, ...extraTraits],
   };
@@ -384,6 +385,7 @@ function monsterFighter(spec, level, power) {
     },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
     statuses: [],
     traits: spec.traits,
   };
@@ -406,7 +408,7 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
   let armor = 0;
   let atk = 0;
   let hp = 0;
-  let accuracy = 0;
+  const accuracyAffixes = [];
   let weapon = null;
   let offhand = null;
   let armorClass = 'medium';
@@ -457,7 +459,9 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
       if (affix.family === 'strength') atk += affix.value;
       else if (affix.family === 'fortitude') armor += affix.value;
       else if (affix.family === 'vitality') hp += affix.value;
-      else if (affix.family === 'truehand') accuracy += affix.value;
+      // СПИСКОМ, а не суммой: у семейства бюджет, и сильнейшие
+      // из суммы обратно не выделить.
+      else if (affix.family === 'truehand') accuracyAffixes.push(affix.value);
       else percentAffixes[affix.family].push(affix.value);
     }
   }
@@ -470,7 +474,7 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
     spd: Math.round(a.spd * statScale),
     pathBonusHp: 0,
     gearBonusHp: hp,
-    accuracy: a.accuracy + accuracy,
+    accuracy: a.accuracy,
     armor: Math.round(armor),
     armorClass,
     critBonus: 0,
@@ -478,6 +482,7 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
     weapon: weapon ?? { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
     offhand,
     percentAffixes,
+    accuracyAffixes,
     statuses: [],
     traits: [a.trait],
   };
@@ -578,6 +583,160 @@ const zoneCurve = zones.map((zone, index) => {
 
 const zoneBreaches = zoneCurve.filter((z) => !z.within);
 
+/* ─────────────────── ДОХОДИМОСТЬ ЗАБЕГА · GDD §7.2 ───────────────────
+ *
+ * Кривая зон меряет ОДИН бой при равном снаряжении. Забег — другая
+ * величина, и одна из первой не выводится: HP переносится между боями,
+ * поэтому пять боёв по 85% дают вовсе не 0.85⁵, а заметно меньше —
+ * победа с четвертью запаса делает следующий бой не 85-процентным.
+ *
+ * Меряется то, ради чего рейд написан: доходит ли новый игрок
+ * до РЕШЕНИЯ. Решений три (после боёв 2, 3 и 4, §7.2); не увидев
+ * ни одного, игрок не увидел центральной механики игры.
+ *
+ * Боец — НАСТОЯЩИЙ СВЕЖИЙ ИЗГНАННИК: статы архетипа первого уровня,
+ * из снаряжения один обычный меч первого уровня, ровно то, что выдаёт
+ * `grantStartingWeapon`. Не «эталон в тир-комплекте»: комплекта у него
+ * нет и взяться ему неоткуда, а мерить первую сессию на снаряжённом
+ * бойце значит мерить не первую сессию.
+ */
+const { maxHp: maxHpOf } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
+
+const STARTING_WEAPON = 'weapon.sword';
+
+function freshExile(archetype) {
+  const a = balance.archetypes[archetype];
+  const base = itemBases[STARTING_WEAPON];
+  const gear = 1 + 1 * balance.items.ilvlScale;
+
+  return {
+    level: 1,
+    atk: a.atk,
+    def: a.def,
+    agi: a.agi,
+    spd: a.spd,
+    pathBonusHp: 0,
+    gearBonusHp: 0,
+    accuracy: a.accuracy,
+    armor: 0,
+    armorClass: 'medium',
+    critBonus: 0,
+    startHp: null,
+    // Обычная редкость — ноль аффиксов (§6.2). Первый лут обязан
+    // быть шагом вперёд, а не догоняющим.
+    weapon: {
+      dmgMin: base.dmgMin * gear,
+      dmgMax: base.dmgMax * gear,
+      ilvl: 1,
+      class: base.weaponClass,
+    },
+    offhand: null,
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
+    statuses: [],
+    traits: [a.trait],
+  };
+}
+
+/** Доля максимума, возвращаемая между боями. Зона может её переопределить. */
+function restoreFractionOf(zone) {
+  return zone.hpRestoreBetweenFights ?? balance.raid.hpRestoreBetweenFights;
+}
+
+/**
+ * Один забег до конца или до смерти. Повторяет server/src/runs/service.ts.
+ *
+ * `withPotions` — не «читерский режим», а вторая честная величина:
+ * без зелий меряется САМА настройка, с зельями — то, что увидит игрок,
+ * который ими пользуется. Числа расходятся, и показывать одно значило бы
+ * выбрать за человека, какой вопрос он задал.
+ */
+function simulateRun(player, zone, seedTag, withPotions) {
+  const maxHp = maxHpOf(player, balance);
+  const restore = restoreFractionOf(zone);
+  const enemyLevel = Math.min(
+    zone.levels[1],
+    Math.max(zone.levels[0], player.level + balance.raid.difficulty.normal.enemyLevelOffset),
+  );
+
+  let hp = maxHp;
+  let potions = withPotions ? balance.raid.potionChargesPerRun : 0;
+  let cleared = 0;
+
+  for (let fight = 0; fight < balance.raid.fightsPerRun; fight++) {
+    /* Зелье пьётся МЕЖДУ боями, и политика здесь простейшая: ниже
+       половины запаса — пить. Сложная политика мерила бы мастерство
+       игрока, а не настройку. */
+    if (potions > 0 && hp < maxHp * (1 - balance.raid.potionHealFraction)) {
+      hp = Math.min(maxHp, Math.round(hp + maxHp * balance.raid.potionHealFraction));
+      potions--;
+    }
+
+    const last = fight === balance.raid.fightsPerRun - 1;
+    const spec = last
+      ? monsterSpecs[zone.boss]
+      : monsterSpecs[zone.monsters[fight % zone.monsters.length]];
+
+    const { outcome } = resolveBattle(
+      [{ ...player, startHp: hp }, monsterFighter(spec, enemyLevel, zone.power)],
+      balance,
+      `${seedTag}-f${fight}`,
+    );
+
+    if (outcome.winner !== 0) return cleared;
+    cleared++;
+    hp = Math.min(maxHp, Math.max(1, Math.round(outcome.hpRemaining[0] + maxHp * restore)));
+  }
+
+  return cleared;
+}
+
+/** Доходимость меряется на ПЕРВОЙ зоне: первая сессия идёт туда. */
+const REACH_ZONE = zones[0];
+
+/**
+ * ЦЕЛЬ дизайна и ПОРОГ проверки — разные числа, и их нельзя путать.
+ *
+ * Цель: до первого решения доходит больше половины забегов. Она
+ * НЕ ДОСТИГНУТА и рычагом восстановления недостижима — замерено:
+ * даже при полном исцелении между боями (доля 1.0, потолок рычага)
+ * выходит 35%, потому что связывает не перенос HP, а винрейт свежего
+ * изгнанного в ОДНОМ бою при полном запасе: у него ноль брони, вся
+ * броня в игре приходит с предметов.
+ *
+ * Порог: то, что достигнуто сейчас, минус запас на шум. Он сторожит
+ * РЕГРЕССИЮ, а не подтверждает цель. Ставить порогом цель значило бы
+ * держать сборку красной на известном и вынесенном человеку вопросе;
+ * молча опустить цель до порога — выдать недостигнутое за достигнутое.
+ * Поэтому печатаются оба.
+ */
+const REACH_TARGET = 0.5;
+const REACH_FLOOR = 0.08;
+const reachRuns = Math.max(200, Math.round(RUNS / 10));
+
+const reach = ARCHETYPES.map((archetype) => {
+  const player = freshExile(archetype);
+  const tally = (withPotions) => {
+    const counts = [0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < reachRuns; i++) {
+      counts[simulateRun(player, REACH_ZONE, `reach-${archetype}-${i}`, withPotions)]++;
+    }
+    // Доля забегов, в которых пройдено НЕ МЕНЬШЕ n боёв.
+    const atLeast = (n) => counts.slice(n).reduce((a, b) => a + b, 0) / reachRuns;
+    return { first: atLeast(2), second: atLeast(3), third: atLeast(4), full: atLeast(5) };
+  };
+  return { archetype, dry: tally(false), potions: tally(true) };
+});
+
+const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) / reach.length;
+
+/* Порог стоит на ПЕРВОМ решении и на замере БЕЗ зелий. Первое решение —
+   потому что не увидев ни одного, игрок не увидел механики вовсе.
+   Без зелий — потому что зелья это выбор игрока, а порог обязан мерить
+   настройку, а не то, догадался ли он пить. */
+const reachBreached = reachAvg('first', 'dry') < REACH_FLOOR;
+const reachShort = reachAvg('first', 'dry') < REACH_TARGET;
+
 /* ─────────────────────────────── вывод ──────────────────────────────── */
 
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
@@ -597,6 +756,7 @@ if (AS_JSON) {
         solo,
         budgetProbe,
         zoneCurve,
+        reach,
         breaches,
         zoneBreaches,
       },
@@ -746,6 +906,63 @@ if (AS_JSON) {
     );
   }
   console.log('');
+  console.log('');
+  console.log('ДОХОДИМОСТЬ ЗАБЕГА · §7.2, первая зона, нормальная сложность');
+  console.log('Свежий изгнанный: статы архетипа, один обычный меч, больше ничего.');
+  console.log(
+    `Восстановление между боями: ${(restoreFractionOf(REACH_ZONE) * 100).toFixed(0)}% максимума.`,
+  );
+  console.log('');
+  console.log(
+    pad('архетип', 12) +
+      padL('решение 1', 11) +
+      padL('решение 2', 11) +
+      padL('решение 3', 11) +
+      padL('весь забег', 12) +
+      '   (без зелий / с зельями)',
+  );
+  console.log('─'.repeat(86));
+  for (const r of reach) {
+    console.log(
+      pad(r.archetype, 12) +
+        padL(`${pct(r.dry.first)}/${pct(r.potions.first)}`, 11) +
+        padL(`${pct(r.dry.second)}/${pct(r.potions.second)}`, 11) +
+        padL(`${pct(r.dry.third)}/${pct(r.potions.third)}`, 11) +
+        padL(`${pct(r.dry.full)}/${pct(r.potions.full)}`, 12),
+    );
+  }
+  console.log('─'.repeat(86));
+  console.log(
+    pad('в среднем', 12) +
+      padL(`${pct(reachAvg('first', 'dry'))}/${pct(reachAvg('first', 'potions'))}`, 11) +
+      padL(`${pct(reachAvg('second', 'dry'))}/${pct(reachAvg('second', 'potions'))}`, 11) +
+      padL(`${pct(reachAvg('third', 'dry'))}/${pct(reachAvg('third', 'potions'))}`, 11) +
+      padL(`${pct(reachAvg('full', 'dry'))}/${pct(reachAvg('full', 'potions'))}`, 12),
+  );
+  console.log('');
+  console.log(`ЦЕЛЬ ${pct(REACH_TARGET)} до первого решения · ПОРОГ ПРОВЕРКИ ${pct(REACH_FLOOR)}`);
+  console.log('Оба берутся без зелий: зелья — выбор игрока, а число обязано');
+  console.log('мерить настройку, а не догадливость.');
+  if (reachShort && !reachBreached) {
+    console.log('');
+    console.log(
+      `ЦЕЛЬ НЕ ДОСТИГНУТА: ${pct(reachAvg('first', 'dry'))} против ${pct(REACH_TARGET)}.`,
+    );
+    console.log('Рычагом восстановления она и недостижима: при доле 1.0 — потолке');
+    console.log('рычага — выходит 35%. Связывает не перенос HP, а винрейт свежего');
+    console.log('изгнанного в ОДНОМ бою: у него ноль брони, вся броня в игре');
+    console.log('приходит с предметов. Вопрос вынесен человеку, сборка не красная:');
+    console.log('порог сторожит регрессию, а цель напечатана, чтобы её не забыли.');
+  }
+  if (reachBreached) {
+    console.log('');
+    console.log(
+      `ДОХОДИМОСТЬ УПАЛА НИЖЕ ПОРОГА: ${pct(reachAvg('first', 'dry'))} против ${pct(REACH_FLOOR)}.`,
+    );
+    console.log('Это РЕГРЕССИЯ: было выше. Смотреть надо, что изменилось');
+    console.log('в первой зоне или в стартовом оружии.');
+  }
+  console.log('');
   console.log('Босс считается ОТДЕЛЬНО и в кривую не входит: он пятый бой,');
   console.log('а не типичный противник зоны. Смешать их значило бы занижать');
   console.log('оценку первых четырёх боёв.');
@@ -780,4 +997,4 @@ if (AS_JSON) {
    за допуск. Второе добавлено в M3b: пункт 4 §4.6 перестал быть
    «не проверяется», а проверка, которая печатает число и не роняет
    сборку, — это комментарий, а не проверка. */
-process.exit(breaches.length > 0 || zoneBreaches.length > 0 ? 1 : 0);
+process.exit(breaches.length > 0 || zoneBreaches.length > 0 || reachBreached ? 1 : 0);

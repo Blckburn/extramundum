@@ -77,6 +77,9 @@ export function monsterFighter(spec: MonsterSpec, level: number, power: number):
     },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },
+    // У монстра нет снаряжения, поэтому и аффиксов точности нет:
+    // его точность — это его базовая характеристика и ничего больше.
+    accuracyAffixes: [],
     statuses: [],
     traits: spec.traits,
   });

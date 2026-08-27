@@ -1,4 +1,5 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
+import { ZONES } from '@extramundum/data/zones';
 import {
   API_ROUTES,
   EQUIPMENT_SLOTS,
@@ -17,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { players } from '../db/schema/game.ts';
 import { runs } from '../db/schema/runs.ts';
 import { grantItems } from '../items/repository.ts';
+import { healBetweenFights, restoreFractionOf } from '../runs/service.ts';
 
 import {
   createTestContext,
@@ -31,6 +33,8 @@ import {
 const HAS_DB = databaseUrl() !== undefined;
 const raid = balanceData.raid;
 const loot = lootBalanceSchema.parse(balanceData.items);
+/** Первая зона: у неё своё восстановление, и на ней всё это меряется. */
+const WASTES = ZONES.find((zone) => zone.id === 'wastes')!;
 
 /**
  * Забег с эвакуацией против настоящей базы. GDD §7.2, §7.3.
@@ -178,6 +182,35 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(res.status).toBeGreaterThanOrEqual(400);
     });
 
+    it('зона выше уровня заперта, и сервер отказывает, а не только экран', async () => {
+      const { jar } = await register(ctx);
+      const res = await get(ctx, API_ROUTES.zones, jar);
+      const body = res.body as unknown as ZonesResponse;
+
+      const wastes = body.zones.find((z) => z.id === 'wastes');
+      const forge = body.zones.find((z) => z.id === 'forge');
+      expect(wastes?.unlocked, 'первая зона обязана быть открыта новичку').toBe(true);
+      // Проверка «запертая заперта» пуста, если запертых нет вовсе:
+      // тогда она проходит и на игре без запирания.
+      expect(forge?.unlocked, 'зона 24–32 не может быть открыта первому уровню').toBe(false);
+      expect(forge?.minLevel).toBeGreaterThan(1);
+
+      /* И ГЛАВНОЕ: отказывает СЕРВЕР, а не экран. Замок на карточке
+         обходится одним запросом мимо интерфейса, и без этой проверки
+         «Кошмар» в переросшей зоне остался бы бесплатным умножением
+         добычи — уровень врага там зажат диапазоном и от сложности
+         не зависит, а множитель лута ×2.5. */
+      const denied = await post(
+        ctx,
+        API_ROUTES.runStart,
+        { zone: 'forge', difficulty: 'nightmare' },
+        jar,
+      );
+      expect(denied.status).toBe(403);
+      expect(denied.body).toMatchObject({ error: { messageKey: 'error.run.zoneLocked' } });
+      expect(await runOf(jar), 'отказ не должен оставлять начатый забег').toBeNull();
+    });
+
     it('свежий забег: пять боёв впереди, три зелья, пустая сумка', async () => {
       const { jar } = await register(ctx);
       const run = await start(jar);
@@ -265,14 +298,26 @@ describe.skipIf(!HAS_DB)('забег', () => {
 
   describe('смерть необратима', () => {
     /**
-     * Игрок первого уровня в Чумных ямах на кошмаре встречает врага
-     * 32 уровня: `clamp(1 + 5, 32, 40)`. Это гарантированная смерть —
-     * и ровно тот случай, о котором §7.3 говорит «враг МОЖЕТ быть
-     * сильнее игрока, и это выбор игрока».
+     * Гарантированная смерть В ОТКРЫТОЙ зоне.
+     *
+     * Раньше здесь были Чумные ямы на кошмаре — враг 32 уровня против
+     * первого. Теперь зоны заперты по уровню, и этот путь закрыт
+     * сервером, что и правильно: обходить собственное запирание ради
+     * удобства теста значило бы проверять игру, которой нет.
+     *
+     * Замена — первая зона на «Кошмаре»: `clamp(1 + 5, 1, 8)` даёт
+     * врага шестого уровня против голого первого. Тоже гарантированно
+     * смертельно, и это ровно тот случай, о котором §7.3 говорит
+     * «враг МОЖЕТ быть сильнее игрока, и это выбор игрока».
+     *
+     * Снаряжение НЕ выдаётся намеренно: с комплектом под восьмой
+     * уровень исход перестал бы быть гарантированным.
      */
     const suicide = async (jar: CookieJar) => {
-      await start(jar, 'abyss', 'nightmare');
-      return fight(jar);
+      await start(jar, 'wastes', 'nightmare');
+      const result = await fight(jar);
+      expect(result.run.state, 'бой не убил — тест на смерть ничего не проверит').toBe('wiped');
+      return result;
     };
 
     /**
@@ -384,37 +429,83 @@ describe.skipIf(!HAS_DB)('забег', () => {
   });
 
   describe('перенос HP и зелья', () => {
-    it('HP переносится между боями и добирается ровно на четверть', async () => {
+    it('восстановление берётся ИЗ ЗОНЫ, а не одно на игру', async () => {
+      /* Свойство проверяемое, а не декларативное: у первой зоны своё
+         число, и оно ОБЯЗАНО отличаться от общего — иначе «берётся
+         из зоны» прошло бы и на коде, который читает только общее. */
+      const wastes = ZONES.find((zone) => zone.id === 'wastes');
+      expect(wastes).toBeDefined();
+      expect(
+        wastes?.hpRestoreBetweenFights,
+        'у первой зоны нет своего восстановления — проверять нечего',
+      ).toBeDefined();
+      expect(restoreFractionOf(wastes!)).not.toBe(raid.hpRestoreBetweenFights);
+
+      // А зона без своего числа падает обратно на общее.
+      const catacombs = ZONES.find((zone) => zone.id === 'catacombs');
+      expect(catacombs?.hpRestoreBetweenFights).toBeUndefined();
+      expect(restoreFractionOf(catacombs!)).toBe(raid.hpRestoreBetweenFights);
+    });
+
+    it('формула восстановления: доля зоны сверху, но не выше максимума', () => {
+      /* ЧИСТАЯ функция, поэтому проверяется точно и без боя. Разделение
+         намеренное: здесь доказывается САМА формула — что доля берётся
+         зонная, что восстановление частичное и что оно упирается
+         в максимум. Ниже, в бою, доказывается, что сервер зовёт именно
+         её. Пытаться доказать оба в одном интеграционном тесте значит
+         привязать проверку формулы к тому, повезёт ли бойцу. */
+      const wastes = ZONES.find((zone) => zone.id === 'wastes')!;
+      const catacombs = ZONES.find((zone) => zone.id === 'catacombs')!;
+
+      // Доля берётся ЗОННАЯ: то же состояние даёт разные числа.
+      expect(healBetweenFights(20, 200, wastes)).toBe(120);
+      expect(healBetweenFights(20, 200, catacombs)).toBe(70);
+
+      // Частичное: раненый не становится целым.
+      expect(healBetweenFights(20, 200, wastes)).toBeLessThan(200);
+      // И упирается в максимум, а не перескакивает его.
+      expect(healBetweenFights(190, 200, wastes)).toBe(200);
+    });
+
+    it('сервер применяет восстановление зоны к настоящему бою', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
-      /* Сложность «опасно» взята НЕ ради суровости: игрок первого уровня
-         в комплекте под восьмой заметно выше тира, и на нормале он может
-         не получить ни одного удара за весь забег. */
       await start(jar, 'wastes', 'dangerous');
 
-      /* Нужен ВЫИГРАННЫЙ бой, который стоил игроку HP. На полном
-         здоровье формула «остаток плюс четверть» верна тождественно
-         и не доказывает ничего, а на проигранном HP обнуляется
-         по другому правилу. Поэтому — до первого подходящего боя,
-         и отдельная проверка, что он вообще случился. */
+      const restore = WASTES.hpRestoreBetweenFights;
+      /* Без этого «число отличается от общего» проверять не на чем:
+         совпади доли, обе стороны сравнения были бы равны всегда. */
+      expect(restore, 'у первой зоны нет своей доли').toBeDefined();
+      expect(restore).not.toBe(raid.hpRestoreBetweenFights);
+      if (restore === undefined) return;
+
+      /* Нужен ВЫИГРАННЫЙ бой, стоивший игроку хотя бы единицы HP:
+         на нетронутом здоровье формула верна тождественно. Условие
+         мягкое (урон > 0, а не «урон больше доли восстановления»)
+         именно потому, что жёсткое перестало выполняться: зона
+         возвращает половину, а снаряжённый игрок столько в Пустошах
+         не теряет. Что формула частичная, доказано выше — там, где
+         это не зависит от броска. */
       let checked = false;
       for (let i = 0; i < raid.fightsPerRun && !checked; i++) {
         const result = await fight(jar);
         const remaining = result.outcome.hpRemaining[0];
-        const maxHp = result.run.maxHp;
 
-        /* Нужен бой, где урон ПРЕВЫСИЛ четверть максимума: иначе
-           восстановление добьёт до полного, и «не полностью» из §7.2
-           проверять будет не на чем. */
-        if (result.outcome.winner === 0 && remaining < maxHp * (1 - raid.hpRestoreBetweenFights)) {
-          // Ровно формула §7.2: остаток плюс четверть максимума, но
-          // не выше максимума. Не «примерно меньше» — точное число.
-          const expected = Math.min(
-            maxHp,
-            Math.max(1, Math.round(remaining + maxHp * raid.hpRestoreBetweenFights)),
-          );
-          expect(result.run.hp).toBe(expected);
-          expect(result.run.hp).toBeLessThan(maxHp);
+        if (result.outcome.winner === 0 && remaining < result.run.maxHp) {
+          /* Ожидаемое считается ИЗ ДАННЫХ ЗОНЫ, а не вызовом
+             `healBetweenFights`. Через неё тест был тавтологией:
+             диверсия «читать только общую долю» ломала обе стороны
+             сравнения разом, и он проходил на сломанном сервере. */
+          const byZone = (fraction: number): number =>
+            Math.min(
+              result.run.maxHp,
+              Math.max(1, Math.round(remaining + result.run.maxHp * fraction)),
+            );
+
+          expect(result.run.hp).toBe(byZone(restore));
+          // И это ДРУГОЕ число, чем дала бы общая доля: иначе проверка
+          // прошла бы и на сервере, который зону не читает вовсе.
+          expect(result.run.hp).not.toBe(byZone(raid.hpRestoreBetweenFights));
           checked = true;
         }
 
@@ -427,18 +518,21 @@ describe.skipIf(!HAS_DB)('забег', () => {
     it('зелье тратит заряд и лечит, а без зарядов — отказ', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
-      await start(jar, 'wastes', 'dangerous');
+      const playerId = await playerIdOf(jar);
+      await start(jar, 'wastes', 'nightmare');
 
       /* Игрока надо ПОРАНИТЬ: на полном здоровье зелье не отличается
-         от бездействия, и тест ничего не докажет. Бои идут до первого
-         подходящего состояния. */
-      let hurt = await runOf(jar);
-      for (let i = 0; i < raid.fightsPerRun; i++) {
-        const result = await fight(jar);
-        hurt = result.run;
-        if (result.run.state !== 'active') break;
-        if (result.run.hp < result.run.maxHp) break;
-      }
+         от бездействия, и тест ничего не докажет.
+
+         Рана ставится прямой записью, а не подбором боя: исход боя
+         случаен, и тест, который ждёт удачного расклада, — это тест,
+         который однажды покраснеет без единой правки кода. Проверяется
+         здесь зелье, а не бой; подготовка состояния законна ровно тем,
+         что сам механизм зелья идёт обычным путём через эндпоинт. */
+      const full = await runOf(jar);
+      expect(full).not.toBeNull();
+      await ctx.db.update(players).set({ hpCurrent: 1 }).where(eq(players.id, playerId));
+      const hurt = await runOf(jar);
 
       expect(hurt?.state).toBe('active');
       expect(hurt?.hp, 'лечить нечего — тест не докажет ничего').toBeLessThan(hurt?.maxHp ?? 0);

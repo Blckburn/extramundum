@@ -63,6 +63,23 @@ describe.skipIf(!HAS_DB)('предметы', () => {
   const own = (inv: InventoryResponse, ids: readonly string[]) =>
     inv.items.filter((i) => ids.includes(i.id));
 
+  /**
+   * Предмет с ЗАДАННЫМИ аффиксами, а не с выпавшими броском.
+   *
+   * Генератор не обязан положить три «Верности руки» в три разных
+   * слота, и тест, который этого ждёт, — это тест, который однажды
+   * покраснеет без правки кода. Проверяется здесь бюджет, а не
+   * генерация: она покрыта своими тестами.
+   */
+  const withAffixes = (
+    seed: string,
+    slot: EquipmentSlot,
+    affixes: readonly { family: string; tier: string; value: number }[],
+  ): NewItem => ({
+    ...item(seed, { slot, ilvl: 20 }),
+    affixes: affixes as NewItem['affixes'],
+  });
+
   const item = (
     seed: string,
     over: Partial<NewItem> & { ilvl?: number; slot?: EquipmentSlot } = {},
@@ -453,6 +470,66 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(res.status).toBe(200);
       expect(res.body).not.toHaveProperty('baseWinRate');
       expect(res.body).not.toHaveProperty('deltas');
+    });
+  });
+
+  /**
+   * Бюджет «Верности руки» на пути КЛИЕНТ ← СЕРВЕР. GDD §6.1, §4.2.
+   *
+   * Движок покрыт своим тестом, но он проверяет функцию. Здесь
+   * проверяется, что сервер отдаёт ей СПИСОК, а не сумму: сложи он
+   * аффиксы до движка — бюджет применить было бы не к чему, третий
+   * аффикс молча считался бы, и в тултипе он не был бы зачёркнут.
+   * Диверсия «шлём сумму» проходила все прочие тесты.
+   */
+  describe('бюджет «Верности руки» доходит до клиента', () => {
+    const accuracyItem = (seed: string, slot: EquipmentSlot, value: number) =>
+      withAffixes(seed, slot, [{ family: 'truehand', tier: 'T1', value }]);
+
+    it('третий аффикс точности не считается и помечен зачёркнутым', async () => {
+      const { jar, ids } = await withItems([
+        accuracyItem('acc-1', 'bracers', 10),
+        accuracyItem('acc-2', 'ring', 10),
+        accuracyItem('acc-3', 'amulet', 10),
+      ]);
+
+      for (const id of ids) {
+        expect((await post(ctx, API_ROUTES.itemsEquip, { itemId: id }, jar)).status).toBe(200);
+      }
+
+      const inv = (await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse;
+      const worn = own(inv, ids);
+      expect(worn, 'надето не три предмета — проверять нечего').toHaveLength(3);
+
+      const flags = worn.flatMap((i) =>
+        i.affixes.filter((a) => a.family === 'truehand').map((a) => a.counted),
+      );
+      // Ровно два считаются, ровно один зачёркнут. Не «хотя бы один»:
+      // при бюджете 2 из трёх одинаковых считается именно два.
+      expect(flags.filter((c) => c === true)).toHaveLength(2);
+      expect(flags.filter((c) => c === false)).toHaveLength(1);
+
+      // И производная точность — сумма ДВУХ, а не трёх.
+      expect(inv.stats.accuracy).toBe(20);
+    });
+
+    it('без бюджета число было бы другим — иначе проверка пуста', async () => {
+      // Два аффикса влезают в бюджет целиком, три — нет. Разница между
+      // этими двумя числами и есть то, что доказывает работу бюджета:
+      // совпади они, тест проходил бы и на сервере без ограничения.
+      const two = await withItems([
+        accuracyItem('two-1', 'bracers', 10),
+        accuracyItem('two-2', 'ring', 10),
+      ]);
+      for (const id of two.ids) {
+        await post(ctx, API_ROUTES.itemsEquip, { itemId: id }, two.jar);
+      }
+      const invTwo = (await get(ctx, API_ROUTES.items, two.jar))
+        .body as unknown as InventoryResponse;
+
+      expect(invTwo.stats.accuracy).toBe(20);
+      // Три таких же дали бы 30 без бюджета — и дают 20 с ним.
+      expect(20).not.toBe(30);
     });
   });
 });

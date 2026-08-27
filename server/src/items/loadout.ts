@@ -1,7 +1,8 @@
 import { balance as balanceData, itemBase } from '@extramundum/data';
 import {
   baseValue,
-  isPercentFamily,
+  BUDGETED_FAMILIES,
+  isBudgetedFamily,
   PERCENT_AFFIX_FAMILIES,
   type AffixFamily,
   type EquipmentSlot,
@@ -13,12 +14,13 @@ import {
   type LoadoutStats,
   type OffhandConfig,
   type PercentAffixes,
+  type BudgetedFamily,
   type PercentAffixFamily,
   type PlayerProfile,
   type WeaponClass,
   weaponClassSchema,
 } from '@extramundum/shared';
-import { familyMultiplier, maxHp as maxHpOf } from '@extramundum/sim';
+import { familyMultiplier, familySum, maxHp as maxHpOf } from '@extramundum/sim';
 
 import { combatBalance } from '../battle/setup.ts';
 
@@ -177,9 +179,12 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
     // «Жила». ОТДЕЛЬНО от pathBonusHp: смешать два источника HP в одном
     // числе — это форма бага v1.0 из §13 пункта 2.
     gearBonusHp: flatBonus(loadout, 'vitality'),
-    // «Верность руки». До M3b здесь стоял ноль, и точность из §4.2
-    // существовала в документе и не существовала в игре.
-    accuracy: flatBonus(loadout, 'truehand'),
+    // Базовая точность игрока — ноль: вся она приходит с «Верности
+    // руки», и приходит СПИСКОМ, потому что у семейства есть бюджет.
+    // Сложить их здесь значило бы отдать движку сумму, из которой
+    // сильнейшие обратно не выделить.
+    accuracy: 0,
+    accuracyAffixes: affixValues(loadout, 'truehand'),
     armor: armorTotal(loadout),
     armorClass:
       chestItem === undefined ? 'medium' : (itemBase(chestItem.baseKey).armorClass ?? 'medium'),
@@ -220,7 +225,9 @@ export function loadoutStats(profile: PlayerProfile, loadout: Loadout): LoadoutS
     dmgMin: config.weapon.dmgMin + (config.offhand?.kind === 'weapon' ? config.offhand.dmgMin : 0),
     dmgMax: config.weapon.dmgMax + (config.offhand?.kind === 'weapon' ? config.offhand.dmgMax : 0),
     spd: config.spd * familyMultiplier(config.percentAffixes.swiftness, combatBalance, 'swiftness'),
-    accuracy: config.accuracy,
+    // Точность ПОСЛЕ бюджета: считает движок, поэтому и число берётся
+    // у него, а не складывается здесь вторым способом.
+    accuracy: config.accuracy + familySum(config.accuracyAffixes, combatBalance, 'truehand'),
     maxHp: maxHpOf(config, combatBalance),
     mightMultiplier: familyMultiplier(config.percentAffixes.might, combatBalance, 'might'),
     bastionMultiplier: familyMultiplier(config.percentAffixes.bastion, combatBalance, 'bastion'),
@@ -240,9 +247,8 @@ export function loadoutStats(profile: PlayerProfile, loadout: Loadout): LoadoutS
  * Пометка ставится ТОЛЬКО надетым и только «Мощи»: для лежащего
  * в стеше вопрос не имеет смысла, пока он не надет вместе с остальными.
  */
-export function toView(item: Item, loadout: Loadout | null): ItemView {
+export function toView(item: Item, quotas: CountedQuotas | null): ItemView {
   const base = itemBase(item.baseKey);
-  const quotas = loadout === null ? null : countedQuotas(loadout);
 
   return {
     ...item,
@@ -251,7 +257,7 @@ export function toView(item: Item, loadout: Loadout | null): ItemView {
     ...(base.weaponClass === undefined ? {} : { weaponClass: base.weaponClass }),
     ...(base.armorClass === undefined ? {} : { armorClass: base.armorClass }),
     affixes: item.affixes.map((affix) => {
-      if (quotas === null || !isPercentFamily(affix.family)) return affix;
+      if (quotas === null || !isBudgetedFamily(affix.family)) return affix;
       const counted = quotas[affix.family];
       // Одинаковые значения неразличимы, поэтому расходуется квота:
       // из двух аффиксов по 0.15 считается ровно один, если бюджет занят.
@@ -262,10 +268,33 @@ export function toView(item: Item, loadout: Loadout | null): ItemView {
   };
 }
 
-/** Сколько экземпляров каждого значения попадает в бюджет — по семействам. */
-function countedQuotas(loadout: Loadout): Record<PercentAffixFamily, Map<number, number>> {
-  const quotas = {} as Record<PercentAffixFamily, Map<number, number>>;
-  for (const family of PERCENT_AFFIX_FAMILIES) {
+/**
+ * Квота бюджета, ОБЩАЯ на весь набор.
+ *
+ * Тип назван, потому что делиться ею обязаны все предметы разом:
+ * квота РАСХОДУЕТСЯ при показе, и посчитанная заново для каждого
+ * предмета она никогда не кончается.
+ */
+export type CountedQuotas = Record<BudgetedFamily, Map<number, number>>;
+
+/**
+ * Сколько экземпляров каждого значения попадает в бюджет — по семействам.
+ *
+ * Перебор идёт по ВСЕМ семействам под бюджетом, а не только по
+ * процентным: у «Верности руки» бюджет тоже есть, и зачёркивать
+ * её сверхбюджетные аффиксы надо по тому же правилу. Разойдись эти
+ * два места, игрок увидел бы у процента и у плоского разную логику.
+ *
+ * СЧИТАЕТСЯ ОДИН РАЗ НА НАБОР, и это исправление настоящего бага M3a.
+ * Прежде квота считалась внутри `toView`, то есть заново для каждого
+ * предмета: у каждого оказывался полный бюджет, и зачёркнутым
+ * не становился НИКОГДА — ни у «Мощи», ни у кого. «Правило двух видно
+ * в тултипе» было записано в памятке и не работало. Поймано тестом
+ * на третий аффикс точности.
+ */
+export function countedQuotas(loadout: Loadout): CountedQuotas {
+  const quotas = {} as Record<BudgetedFamily, Map<number, number>>;
+  for (const family of BUDGETED_FAMILIES) {
     const sorted = affixValues(loadout, family).sort((a, b) => b - a);
     const quota = new Map<number, number>();
     for (const value of sorted.slice(0, combatBalance.items.familyBudget[family])) {

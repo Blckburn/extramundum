@@ -48,6 +48,7 @@ export {
   matchupMultiplier,
   maxHp,
   familyMultiplier,
+  familySum,
   mitigation,
   type EffectiveStats,
   type FighterState,

@@ -80,7 +80,7 @@ async function render(surface: Surface): Promise<void> {
   }
 
   function zoneCard(zone: ZoneCard): HTMLElement {
-    const card = el('li', { class: 'zone' }, [
+    const card = el('li', { class: zone.unlocked ? 'zone' : 'zone zone--locked' }, [
       el('div', { class: 'zone__head' }, [
         renderIcon(`zone.${zone.id}`, 128, t(`zone.${zone.id}`)),
         el('div', {}, [
@@ -115,30 +115,34 @@ async function render(surface: Surface): Promise<void> {
           ),
         ),
       ),
-      el(
-        'div',
-        { class: 'zone__difficulties' },
-        (['normal', 'dangerous', 'nightmare'] as const).map((difficulty) => {
-          const rules = zone.difficulties[difficulty];
-          const button = el('button', { class: 'button button--small', type: 'button' }, [
-            `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })} · ×${rules.lootMultiplier}`,
-          ]) as HTMLButtonElement;
-
-          button.addEventListener('click', () => {
-            button.disabled = true;
-            void api
-              .startRun({ zone: zone.id, difficulty })
-              .then(async () => {
-                await refresh();
-                draw();
-              })
-              .catch(fail);
-          });
-          return button;
-        }),
-      ),
+      // Запертая зона показывает ЗАМОК И УРОВЕНЬ, а не пустое место:
+      // «сюда нельзя» без «а когда можно» — это тупик, а не правило.
+      zone.unlocked
+        ? el('div', { class: 'zone__difficulties' }, difficultyButtons(zone))
+        : el('p', { class: 'zone__locked' }, [t('zone.locked', { level: zone.minLevel })]),
     ]);
     return card;
+  }
+
+  function difficultyButtons(zone: ZoneCard): HTMLElement[] {
+    return (['normal', 'dangerous', 'nightmare'] as const).map((difficulty) => {
+      const rules = zone.difficulties[difficulty];
+      const button = el('button', { class: 'button button--small', type: 'button' }, [
+        `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })} · ×${rules.lootMultiplier}`,
+      ]) as HTMLButtonElement;
+
+      button.addEventListener('click', () => {
+        button.disabled = true;
+        void api
+          .startRun({ zone: zone.id, difficulty })
+          .then(async () => {
+            await refresh();
+            draw();
+          })
+          .catch(fail);
+      });
+      return button;
+    });
   }
 
   function matchupPlate(matchup: number | null): HTMLElement {

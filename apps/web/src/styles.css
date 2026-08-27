@@ -1352,3 +1352,31 @@ body {
 .raid__error {
   color: var(--danger);
 }
+
+/* Запертая зона приглушена, но ЧИТАЕМА: игрок должен видеть, что там
+   есть и с какого уровня туда пускают. Спрятать карточку значило бы
+   спрятать и цель, ради которой он растёт. */
+.zone--locked {
+  opacity: 0.62;
+}
+
+.zone__locked {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  border: 1px dashed var(--border);
+  border-radius: calc(var(--radius) / 2);
+}
+
+/* Первый урок мира. Курсив и цвет пергамента: это голос мира,
+   а не подпись интерфейса, и путать их нельзя. */
+.village__first-blade {
+  margin: 0.75rem 0 0;
+  max-width: 42ch;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--text);
+  border-left: 2px solid var(--accent);
+  padding-left: 0.75rem;
+}
