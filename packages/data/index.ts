@@ -15,3 +15,4 @@ export type Balance = typeof balanceJson;
 export * from './assets.ts';
 export * from './items.ts';
 export * from './render.ts';
+export * from './zones.ts';

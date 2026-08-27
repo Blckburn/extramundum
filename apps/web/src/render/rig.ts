@@ -146,10 +146,25 @@ function fromTriangles(positions: number[]): BufferGeometry {
   return geometry;
 }
 
+/**
+ * Перекраска рига: ключ палитры → другой ключ палитры.
+ *
+ * Нужна затем, что силуэтов монстров четыре, а самих монстров два
+ * десятка: форма говорит, КТО это по повадке, цвет — кто именно.
+ * Подмена идёт по КЛЮЧУ, а не по хексу: цвет мимо палитры — это
+ * ассет, про который забыли (ART-BIBLE §3), и `paletteColor` обязан
+ * на него падать, а не подставлять фиолетовый.
+ *
+ * Кэш материалов от этого не страдает: он ключуется парой «вид + цвет»
+ * уже ПОСЛЕ подмены, поэтому два монстра одного тона делят материал.
+ */
+export type Recolor = Readonly<Record<string, string>>;
+
 export function buildRig(
   spec: RigSpec,
   materials: MaterialCache,
   geometries: GeometryCache,
+  recolor?: Recolor,
 ): BuiltRig {
   const nodes = new Map<string, Object3D>();
   const slots = new Map<RigSlot, Mesh[]>();
@@ -169,7 +184,10 @@ export function buildRig(
     const object: Object3D = isMesh
       ? new Mesh(
           geometries.get(w, h, d, node.shape),
-          materials.get(paletteColor(node.color), node.origin === 'city' ? 'city' : 'world'),
+          materials.get(
+            paletteColor(recolor?.[node.color] ?? node.color),
+            node.origin === 'city' ? 'city' : 'world',
+          ),
         )
       : new Object3D();
 

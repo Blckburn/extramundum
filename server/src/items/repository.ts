@@ -253,21 +253,33 @@ export type NewItem = {
   readonly container: 'inv' | 'stash';
 };
 
-/** Положить предметы игроку. Единственный путь появления предметов. */
+/**
+ * Положить предметы игроку. Единственный путь появления предметов.
+ *
+ * Возвращает идентификаторы В ПОРЯДКЕ ВХОДА. Нужны они не рантайму,
+ * а вызывающему: и сумка забега, и тесты обязаны знать, что именно
+ * выдано, а не искать выданное по индексу в инвентаре. Поиск по индексу
+ * ломается от любого предмета, появившегося рядом, — на этом уже
+ * поймались, когда игроку добавилось стартовое оружие.
+ */
 export async function grantItems(
   db: Database,
   playerId: string,
   granted: readonly NewItem[],
-): Promise<void> {
-  if (granted.length === 0) return;
-  await db.insert(items).values(
-    granted.map((item) => ({
-      ownerId: playerId,
-      baseKey: item.baseKey,
-      ilvl: item.ilvl,
-      rarity: item.rarity,
-      affixes: item.affixes,
-      container: item.container,
-    })),
-  );
+): Promise<readonly string[]> {
+  if (granted.length === 0) return [];
+  const rows = await db
+    .insert(items)
+    .values(
+      granted.map((item) => ({
+        ownerId: playerId,
+        baseKey: item.baseKey,
+        ilvl: item.ilvl,
+        rarity: item.rarity,
+        affixes: item.affixes,
+        container: item.container,
+      })),
+    )
+    .returning({ id: items.id });
+  return rows.map((row) => row.id);
 }

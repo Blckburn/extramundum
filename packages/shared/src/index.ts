@@ -17,3 +17,4 @@ export * from './player.js';
 export * from './render.js';
 export * from './routes.js';
 export * from './validation.js';
+export * from './zones.js';

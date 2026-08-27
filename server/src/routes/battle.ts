@@ -149,7 +149,9 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
     const body: SimulatePreviewResponse = {
       winRate,
       runs,
-      basis: 'sparring-dummy',
+      basis: base.basis,
+      ...(base.against === undefined ? {} : { against: base.against }),
+      ...(base.enemyLevel === undefined ? {} : { enemyLevel: base.enemyLevel }),
       ...(hypothetical === null
         ? {}
         : {

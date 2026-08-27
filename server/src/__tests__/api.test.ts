@@ -393,13 +393,25 @@ describe.skipIf(!HAS_DB)('API', () => {
       const res = await post(ctx, API_ROUTES.simulatePreview, { ...body, runs: 100 }, jar);
 
       expect(res.status).toBe(200);
-      const payload = res.body as { winRate: number; runs: number; basis: string };
+      const payload = res.body as {
+        winRate: number;
+        runs: number;
+        basis: string;
+        against?: string[];
+        enemyLevel?: number;
+      };
 
       expect(payload.runs).toBe(100);
       expect(payload.winRate).toBeGreaterThanOrEqual(0);
       expect(payload.winRate).toBeLessThanOrEqual(1);
-      // Соперник помечен честно: зонных врагов ещё нет (M3).
-      expect(payload.basis).toBe('sparring-dummy');
+
+      /* Противники берутся ИЗ ЗОНЫ (M3b). До этого здесь стоял манекен,
+         и превью упиралось в потолок на снаряжённом персонаже. Ответ
+         обязан сказать, против кого считали: без этого «62%» игроку
+         не проверить. */
+      expect(payload.basis).toBe('zone-enemy');
+      expect(payload.against?.length ?? 0).toBeGreaterThan(0);
+      expect(payload.enemyLevel).toBeGreaterThanOrEqual(1);
     });
 
     it('одинаковый запрос даёт одинаковый ответ', async () => {
@@ -429,13 +441,18 @@ describe.skipIf(!HAS_DB)('API', () => {
         jar,
       );
 
-      const easy = (normal.body as { winRate: number }).winRate;
-      const hard = (nightmare.body as { winRate: number }).winRate;
+      const read = (res: typeof normal) => res.body as { winRate: number; enemyLevel?: number };
 
-      // Кошмар даёт противнику +5 уровней (balance.raid.difficulty).
-      // Если сложность не влияет — числа совпадут, и превью бесполезно.
-      expect(hard).toBeLessThanOrEqual(easy);
-      expect(easy - hard).toBeGreaterThan(0);
+      const easy = read(normal);
+      const hard = read(nightmare);
+
+      /* Кошмар даёт противнику +5 уровней, но уровень ещё и КЛАМПИТСЯ
+         диапазоном зоны (§7.3 + §7.4). Проверяется поэтому сам уровень,
+         а не только винрейт: у свежего персонажа обе оценки могут
+         упереться в одно и то же число, и тогда сравнение винрейтов
+         не докажет ничего — ни что сложность работает, ни что нет. */
+      expect(hard.enemyLevel).toBeGreaterThan(easy.enemyLevel ?? 0);
+      expect(hard.winRate).toBeLessThanOrEqual(easy.winRate);
     });
 
     it('инвариант 1: статы бойца в теле запроса игнорируются', async () => {

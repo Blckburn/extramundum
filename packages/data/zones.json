@@ -1,0 +1,58 @@
+{
+  "$comment": [
+    "Зоны. GDD §7.4, диапазоны и классы врагов перенесены из документа.",
+    "",
+    "ЧЕГО ЗДЕСЬ НЕТ: Разлома. Бесконечная процедурная зона — эндгейм,",
+    "и §11 относит её к M4. Ключ `rift` в перечислениях остаётся,",
+    "записи о зоне нет: зона без монстров хуже отсутствующей, потому что",
+    "выглядит как реализованная.",
+    "",
+    "`power` — множитель силы врагов зоны, ОТДЕЛЬНО от уровня. Уровень",
+    "один кривой 85/75/65/55/45% из §4.6 не даёт: игрок приходит в зону",
+    "уровнем по ней. Числа выставлены замером — см. $calibration."
+  ],
+  "$source": "GDD §7.4",
+  "$calibration": "pending — выверяется `pnpm balance:matrix`, секция «КРИВАЯ ЗОН»",
+  "zones": [
+    {
+      "id": "wastes",
+      "levels": [1, 8],
+      "armorClass": "light",
+      "power": 1.0,
+      "monsters": ["wastes.scavenger", "wastes.strayDog", "wastes.footpad"],
+      "boss": "wastes.tollman"
+    },
+    {
+      "id": "warcamp",
+      "levels": [8, 16],
+      "armorClass": "medium",
+      "power": 1.0,
+      "monsters": ["warcamp.picket", "warcamp.mercenary", "warcamp.shieldman"],
+      "boss": "warcamp.serjeant"
+    },
+    {
+      "id": "catacombs",
+      "levels": [16, 24],
+      "armorClass": "cloth",
+      "power": 1.0,
+      "monsters": ["catacombs.plaguebearer", "catacombs.corpsehandler", "catacombs.emberkeeper"],
+      "boss": "catacombs.quarantineWarden"
+    },
+    {
+      "id": "forge",
+      "levels": [24, 32],
+      "armorClass": "heavy",
+      "power": 1.0,
+      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.bellowsHound"],
+      "boss": "forge.masterSmith"
+    },
+    {
+      "id": "abyss",
+      "levels": [32, 40],
+      "armorClass": "mixed",
+      "power": 1.0,
+      "monsters": ["abyss.pitCrawler", "abyss.boneStacker", "abyss.lastCarter"],
+      "boss": "abyss.firstExile"
+    }
+  ]
+}

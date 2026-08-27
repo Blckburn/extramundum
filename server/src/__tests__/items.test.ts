@@ -1,5 +1,10 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
-import { API_ROUTES, lootBalanceSchema, type InventoryResponse } from '@extramundum/shared';
+import {
+  API_ROUTES,
+  lootBalanceSchema,
+  type EquipmentSlot,
+  type InventoryResponse,
+} from '@extramundum/shared';
 import { generateItem } from '@extramundum/sim';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -39,23 +44,41 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     await ctx.close();
   });
 
-  /** Заводит игрока и кладёт ему предметы СЕРВЕРНОЙ функцией. */
+  /**
+   * Заводит игрока и кладёт ему предметы СЕРВЕРНОЙ функцией.
+   *
+   * Возвращает идентификаторы выданного. Искать выданное по индексу
+   * в инвентаре нельзя: у игрока с первого дня есть стартовое оружие
+   * (GDD §5.1), и «первый предмет» — это уже не тот, что положили.
+   */
   const withItems = async (spec: readonly NewItem[]) => {
     const { jar } = await register(ctx);
     const me = await get(ctx, API_ROUTES.me, jar);
     const playerId = (me.body as { player: { id: string } }).player.id;
-    await grantItems(ctx.db, playerId, spec);
-    return { jar, playerId };
+    const ids = await grantItems(ctx.db, playerId, spec);
+    return { jar, playerId, ids };
   };
 
-  const item = (seed: string, over: Partial<NewItem> & { ilvl?: number } = {}): NewItem => {
+  /** Только выданное тестом: стартовое оружие в счёт не идёт. */
+  const own = (inv: InventoryResponse, ids: readonly string[]) =>
+    inv.items.filter((i) => ids.includes(i.id));
+
+  const item = (
+    seed: string,
+    over: Partial<NewItem> & { ilvl?: number; slot?: EquipmentSlot } = {},
+  ): NewItem => {
+    const { slot, ...rest } = over;
     const generated = generateItem(
       seed,
-      { ilvl: over.ilvl ?? 20, ...(over.rarity === undefined ? {} : { rarity: over.rarity }) },
+      {
+        ilvl: over.ilvl ?? 20,
+        ...(over.rarity === undefined ? {} : { rarity: over.rarity }),
+        ...(slot === undefined ? {} : { slot }),
+      },
       loot,
       ITEM_BASES,
     );
-    return { ...generated, container: over.container ?? 'inv', ...over };
+    return { ...generated, container: over.container ?? 'inv', ...rest };
   };
 
   const inventory = async (jar: CookieJar): Promise<InventoryResponse> => {
@@ -80,15 +103,25 @@ describe.skipIf(!HAS_DB)('предметы', () => {
   });
 
   describe('изгнанного вывели ни с чем', () => {
-    it('новый аккаунт получает НОЛЬ предметов', async () => {
-      // Стартовый набор существует только за флагом разработки:
-      // он спорит и с лором (LORE §2), и с прогрессией. Источник
-      // лута в игре появится в M3b вместе с рейдами.
+    it('новый аккаунт получает РОВНО ОДНО: надетое стартовое оружие', async () => {
+      /* Набор разработки существует только за флагом: он спорит и с лором
+         (LORE §2), и с прогрессией, а источник лута — рейды.
+
+         Оружие — исключение, и оно измерено, а не выторговано: с голыми
+         кулаками игрок первого уровня выигрывает в Пустошах 0% боёв,
+         то есть петля не начинается вовсе. GDD §5.1 стартовое оружие
+         и требует. Подробности — в шапке starting-weapon.ts. */
       const { jar } = await register(ctx);
       const inv = await inventory(jar);
 
-      expect(inv.items).toHaveLength(0);
-      expect(Object.keys(inv.equipped)).toHaveLength(0);
+      expect(inv.items).toHaveLength(1);
+      expect(inv.items[0]?.slot).toBe('weapon');
+      expect(inv.items[0]?.rarity).toBe('common');
+      // Надето, а не лежит в сумке: предмет в сумке от кулаков не спасает.
+      expect(inv.items[0]?.container).toBe('equipped');
+      expect(inv.equipped.weapon).toBe(inv.items[0]?.id);
+      // Ноль аффиксов — стартовое оружие не опережает первый лут.
+      expect(inv.items[0]?.affixes).toHaveLength(0);
       expect(inv.gold).toBe(0);
     });
   });
@@ -191,14 +224,14 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
   describe('массовая продажа', () => {
     it('продаёт по фильтру редкости и начисляет золото', async () => {
-      const { jar, playerId } = await withItems([
+      const { jar, playerId, ids } = await withItems([
         item('sell-1', { rarity: 'common' }),
         item('sell-2', { rarity: 'common' }),
         item('sell-3', { rarity: 'rare' }),
       ]);
 
       const before = await inventory(jar);
-      const commons = before.items.filter((i) => i.rarity === 'common');
+      const commons = own(before, ids).filter((i) => i.rarity === 'common');
       expect(commons).toHaveLength(2);
 
       const res = await post(ctx, API_ROUTES.itemsSell, { rarities: ['common'], from: 'inv' }, jar);
@@ -206,8 +239,10 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(res.body).toMatchObject({ sold: 2, provisional: true });
 
       const after = await inventory(jar);
-      expect(after.items).toHaveLength(1);
-      expect(after.items[0]?.rarity).toBe('rare');
+      // Считаем ТОЛЬКО выданное тестом: стартовое оружие надето
+      // и под фильтр «из инвентаря» не попадает по определению.
+      expect(own(after, ids)).toHaveLength(1);
+      expect(own(after, ids)[0]?.rarity).toBe('rare');
 
       // Золото начислено, а не потеряно: удаление без выплаты было бы
       // необратимым разрушением без компенсации.
@@ -220,12 +255,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('ЗАБЛОКИРОВАННЫЙ не продаётся, даже попав под фильтр', async () => {
-      const { jar } = await withItems([
+      const { jar, ids } = await withItems([
         item('lock-1', { rarity: 'common' }),
         item('lock-2', { rarity: 'common' }),
       ]);
       const before = await inventory(jar);
-      const locked = before.items[0];
+      const locked = own(before, ids)[0];
       if (locked === undefined) return;
 
       await post(ctx, API_ROUTES.itemsLock, { itemId: locked.id, locked: true }, jar);
@@ -235,21 +270,24 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       // остановил. «Ноль продано» прошло бы и при сломанном фильтре.
       expect(res.body).toMatchObject({ sold: 1 });
       const after = await inventory(jar);
-      expect(after.items).toHaveLength(1);
-      expect(after.items[0]?.id).toBe(locked.id);
-      expect(after.items[0]?.locked).toBe(true);
+      expect(own(after, ids)).toHaveLength(1);
+      expect(own(after, ids)[0]?.id).toBe(locked.id);
+      expect(own(after, ids)[0]?.locked).toBe(true);
     });
 
     it('надетое не продаётся: оно не в инвентаре', async () => {
-      const { jar } = await withItems([item('sell-eq', { rarity: 'common' })]);
-      const target = (await inventory(jar)).items[0];
+      /* Слот задан ЯВНО и не оружейный: надев оружие, мы вытеснили бы
+         стартовое в инвентарь, оно тоже обычной редкости и продалось бы.
+         Тест проверяет «надетое не продаётся», а не это. */
+      const { jar, ids } = await withItems([item('sell-eq', { rarity: 'common', slot: 'helmet' })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
       const res = await post(ctx, API_ROUTES.itemsSell, { rarities: ['common'], from: 'inv' }, jar);
 
       expect(res.body).toMatchObject({ sold: 0, gold: 0 });
-      expect((await inventory(jar)).items).toHaveLength(1);
+      expect(own(await inventory(jar), ids)).toHaveLength(1);
     });
 
     it('цена зависит от редкости и ilvl', async () => {
@@ -295,14 +333,17 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         expect([400, 404, 405], `${path} ответил ${res.status}`).toContain(res.status);
       }
 
-      expect((await inventory(jar)).items).toHaveLength(0);
+      /* Инвентарь не вырос. Стартовое оружие тут ни при чём: его выдаёт
+         сервер при создании профиля, а не запрос клиента, — потому
+         и сравнение с единицей, а не с нулём. */
+      expect((await inventory(jar)).items).toHaveLength(1);
     });
 
     it('чужой предмет не надевается и не отличим от несуществующего', async () => {
       const owner = await withItems([item('mine', { ilvl: 20 })]);
       const stranger = await register(ctx);
 
-      const target = (await inventory(owner.jar)).items[0];
+      const target = own(await inventory(owner.jar), owner.ids)[0];
       if (target === undefined) return;
 
       const foreign = await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, stranger.jar);
@@ -329,12 +370,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(envelope(foreign.body)).toEqual(envelope(missing.body));
 
       // И предмет остался у владельца.
-      expect((await inventory(owner.jar)).items[0]?.container).toBe('inv');
+      expect(own(await inventory(owner.jar), owner.ids)[0]?.container).toBe('inv');
     });
 
     it('лишние поля в теле игнорируются, сила предмета не меняется', async () => {
-      const { jar } = await withItems([item('extra', { ilvl: 5 })]);
-      const before = (await inventory(jar)).items[0];
+      const { jar, ids } = await withItems([item('extra', { ilvl: 5 })]);
+      const before = own(await inventory(jar), ids)[0];
       if (before === undefined) return;
 
       await post(
@@ -349,7 +390,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         jar,
       );
 
-      const after = (await inventory(jar)).items[0];
+      const after = own(await inventory(jar), ids)[0];
       expect(after?.ilvl).toBe(before.ilvl);
       expect(after?.rarity).toBe(before.rarity);
       expect(after?.affixes).toEqual(before.affixes);
@@ -361,8 +402,8 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
   describe('превью при экипировке (GDD §6.4)', () => {
     it('возвращает и текущий шанс, и шанс с правкой, и дельты', async () => {
-      const { jar } = await withItems([item('prev', { ilvl: 40, rarity: 'epic' })]);
-      const target = (await inventory(jar)).items[0];
+      const { jar, ids } = await withItems([item('prev', { ilvl: 40, rarity: 'epic' })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       const res = await post(
