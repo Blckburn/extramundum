@@ -118,7 +118,8 @@ export function createBattleScene(aspect = 16 / 9, enemy?: EnemyLook): BattleSce
 
   /* Форм четыре на два десятка монстров, а кто есть кто внутри формы,
      говорит перекраска. Обе величины — из данных монстра. */
-  const enemyRig = (enemy === undefined ? undefined : RIGS[enemy.rig as keyof typeof RIGS]) ?? RIGS.humanoid;
+  const enemyRig =
+    (enemy === undefined ? undefined : RIGS[enemy.rig as keyof typeof RIGS]) ?? RIGS.humanoid;
   const right = buildRig(enemyRig, materials, geometries, enemy?.recolor);
   right.root.position.set(FIGHTER_X, 0, FIGHTER_Z);
   right.root.rotation.y = -Math.PI / 2;

@@ -65,5 +65,4 @@ describe('облик противника из данных монстра', () 
     expect(colors(0)).toContain(paletteHex('bone'));
     expect(colors(0)).not.toContain(paletteHex('blood'));
   });
-
 });

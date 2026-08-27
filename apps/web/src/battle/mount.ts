@@ -56,7 +56,10 @@ export type BattleToShow = {
    * в браузер не попадает. Без него бой идёт с человекоподобным —
    * силуэт важен, но не настолько, чтобы из-за него не показать бой.
    */
-  readonly enemyLook?: { readonly rig: string; readonly recolor?: Readonly<Record<string, string>> };
+  readonly enemyLook?: {
+    readonly rig: string;
+    readonly recolor?: Readonly<Record<string, string>>;
+  };
 };
 
 export async function mountBattle(

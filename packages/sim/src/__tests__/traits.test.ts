@@ -1513,9 +1513,7 @@ describe('босс', () => {
       // Ничего, кроме этого трейта, множитель атаки у бойца не трогает,
       // поэтому обещанный удар отличается от обычного ровно в `mult` раз.
       const plain = (
-        log.events.filter(
-          (e) => e.t === 'attack' && e.actor === 0,
-        ) as (typeof after)[number][]
+        log.events.filter((e) => e.t === 'attack' && e.actor === 0) as (typeof after)[number][]
       ).map((e) => e.roll.atkMultiplier);
       const base = Math.min(...plain);
 
