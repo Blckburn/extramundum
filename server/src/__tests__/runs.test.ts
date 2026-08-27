@@ -385,41 +385,62 @@ describe.skipIf(!HAS_DB)('забег', () => {
 
   describe('перенос HP и зелья', () => {
     it('HP переносится между боями и добирается ровно на четверть', async () => {
-      /* Сложность «кошмар» взята НЕ для суровости, а чтобы бой стоил
-         игроку HP: на нормале в тир-снаряжении он может не получить
-         ни одного удара, и тогда «переносится» проверялось бы на бое,
-         где переносить нечего. */
       const { jar } = await register(ctx);
       await gearUp(jar);
-      await start(jar, 'wastes', 'nightmare');
+      /* Сложность «опасно» взята НЕ ради суровости: игрок первого уровня
+         в комплекте под восьмой заметно выше тира, и на нормале он может
+         не получить ни одного удара за весь забег. */
+      await start(jar, 'wastes', 'dangerous');
 
-      const first = await fight(jar);
-      const remaining = first.outcome.hpRemaining[0];
-      const maxHp = first.run.maxHp;
+      /* Нужен ВЫИГРАННЫЙ бой, который стоил игроку HP. На полном
+         здоровье формула «остаток плюс четверть» верна тождественно
+         и не доказывает ничего, а на проигранном HP обнуляется
+         по другому правилу. Поэтому — до первого подходящего боя,
+         и отдельная проверка, что он вообще случился. */
+      let checked = false;
+      for (let i = 0; i < raid.fightsPerRun && !checked; i++) {
+        const result = await fight(jar);
+        const remaining = result.outcome.hpRemaining[0];
+        const maxHp = result.run.maxHp;
 
-      // Урон ОБЯЗАН был случиться: без этого проверка ниже верна и при
-      // полном здоровье, то есть не доказывает ничего.
-      expect(remaining, 'бой не стоил игроку ни одного HP').toBeLessThan(maxHp);
+        /* Нужен бой, где урон ПРЕВЫСИЛ четверть максимума: иначе
+           восстановление добьёт до полного, и «не полностью» из §7.2
+           проверять будет не на чем. */
+        if (result.outcome.winner === 0 && remaining < maxHp * (1 - raid.hpRestoreBetweenFights)) {
+          // Ровно формула §7.2: остаток плюс четверть максимума, но
+          // не выше максимума. Не «примерно меньше» — точное число.
+          const expected = Math.min(
+            maxHp,
+            Math.max(1, Math.round(remaining + maxHp * raid.hpRestoreBetweenFights)),
+          );
+          expect(result.run.hp).toBe(expected);
+          expect(result.run.hp).toBeLessThan(maxHp);
+          checked = true;
+        }
 
-      // Ровно формула §7.2: остаток плюс четверть максимума, но не выше
-      // максимума. Не «примерно меньше» — точное число.
-      const expected = Math.min(
-        maxHp,
-        Math.max(1, Math.round(remaining + maxHp * raid.hpRestoreBetweenFights)),
-      );
-      expect(first.run.hp).toBe(expected);
-      expect(first.run.hp).toBeLessThan(maxHp);
+        if (result.run.state !== 'active') break;
+      }
+
+      expect(checked, 'ни один бой не стоил игроку HP — проверять нечего').toBe(true);
     });
 
     it('зелье тратит заряд и лечит, а без зарядов — отказ', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
-      // «Кошмар» — чтобы игроку было что лечить: на полном здоровье
-      // зелье не отличается от бездействия, и тест ничего не докажет.
-      await start(jar, 'wastes', 'nightmare');
-      await fight(jar);
+      await start(jar, 'wastes', 'dangerous');
 
-      const hurt = await runOf(jar);
+      /* Игрока надо ПОРАНИТЬ: на полном здоровье зелье не отличается
+         от бездействия, и тест ничего не докажет. Бои идут до первого
+         подходящего состояния. */
+      let hurt = await runOf(jar);
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        const result = await fight(jar);
+        hurt = result.run;
+        if (result.run.state !== 'active') break;
+        if (result.run.hp < result.run.maxHp) break;
+      }
+
+      expect(hurt?.state).toBe('active');
       expect(hurt?.hp, 'лечить нечего — тест не докажет ничего').toBeLessThan(hurt?.maxHp ?? 0);
 
       let potions = hurt?.potionsLeft ?? 0;

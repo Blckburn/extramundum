@@ -312,6 +312,272 @@ for (const family of PERCENT_FAMILIES) {
   }
 }
 
+/* ──────────────────── кривая зон (§4.6, пункт 4) ─────────────────────── */
+
+/**
+ * КРИВАЯ ЗОН. «Ожидаемый винрейт игрока в тир-снаряжении по зонам:
+ * 85% / 75% / 65% / 55% / 45%.»
+ *
+ * До M3b этот пункт был не реализован и честно печатался как
+ * не проверяемый: зон не существовало, и подставить вместо них манекенов
+ * значило бы проверять выдуманные числа о выдуманных зонах.
+ *
+ * ЧТО ЗДЕСЬ СЧИТАЕТСЯ. Игрок берётся на ВЕРХНЕМ уровне зоны и в полном
+ * эпическом комплекте того же ilvl — это и есть «тир-снаряжение».
+ * Противники — обычные монстры зоны (босс отдельной строкой: он пятый
+ * бой, а не типичный враг, и смешивать их значило бы занижать оценку
+ * первых четырёх). Сложность нормальная.
+ *
+ * Рычаг калибровки — `power` в zones.json, множитель силы врагов зоны.
+ * Уровень один кривой не даёт: игрок приходит в зону уровнем по ней,
+ * и без множителя пятая зона была бы ровно так же трудна, как первая.
+ */
+const zones = JSON.parse(readFileSync(new URL('packages/data/zones.json', root), 'utf8')).zones;
+const monsterSpecs = Object.fromEntries(
+  JSON.parse(readFileSync(new URL('packages/data/monsters.json', root), 'utf8')).monsters.map(
+    (m) => [m.key, m],
+  ),
+);
+/* Базы читаются из json НАПРЯМУЮ, поэтому умолчания схемы надо
+   подставить руками: `minIlvl` в файле указан не у всех, а генератор
+   сравнивает его с уровнем и на `undefined` отбрасывает базу молча.
+   Ловится это не ошибкой, а пустым пулом слота — то есть «у игрока
+   почему-то нет амулета». */
+const itemBases = Object.fromEntries(
+  JSON.parse(readFileSync(new URL('packages/data/items/bases.json', root), 'utf8')).bases.map(
+    (b) => [b.key, { minIlvl: 1, ...b }],
+  ),
+);
+
+/** Цель §4.6 по зонам, в порядке их следования. */
+const ZONE_TARGETS = [0.85, 0.75, 0.65, 0.55, 0.45];
+/** Допуск. Кривая — ориентир дизайна, а не физическая константа. */
+const ZONE_TOLERANCE = 0.07;
+
+const { generateItem } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
+
+/** Монстр как боец. Повторяет server/src/battle/monsters.ts по данным. */
+function monsterFighter(spec, level, power) {
+  const curve = balance.monsters;
+  const stat = curve.baseStat + (level - 1) * curve.statPerLevel;
+  const armor = curve.armorBase + level * curve.armorPerLevel;
+  const sc = (m) => Math.round(stat * m * power);
+
+  return {
+    level,
+    atk: sc(spec.stats.atk),
+    def: sc(spec.stats.def),
+    agi: sc(spec.stats.agi),
+    spd: sc(spec.stats.spd),
+    pathBonusHp: 0,
+    gearBonusHp: 0,
+    accuracy: 0,
+    armor: Math.round(armor * spec.armor * power),
+    armorClass: spec.armorClass,
+    critBonus: 0,
+    startHp: null,
+    weapon: {
+      dmgMin: curve.weapon.dmgMin * spec.weapon.dmgMin,
+      dmgMax: curve.weapon.dmgMax * spec.weapon.dmgMax,
+      ilvl: level,
+      class: spec.weaponClass,
+    },
+    offhand: null,
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    statuses: [],
+    traits: spec.traits,
+  };
+}
+
+/**
+ * Игрок «в тир-снаряжении»: полный эпический комплект под уровень зоны.
+ *
+ * Сборка повторяет server/src/items/loadout.ts. Это дубль, и он назван:
+ * импортировать серверную сборку сюда нельзя — она тянет доступ к базе,
+ * а матрица обязана считаться без неё. Что дубль не разошёлся, видно
+ * по самой кривой: разойдись он — числа поехали бы разом во всех зонах.
+ */
+function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
+  const a = balance.archetypes[archetype];
+  const statScale = 1 + ((level - 1) * balance.sparring.statPerLevel) / 12;
+  const gear = 1 + ilvl * balance.items.ilvlScale;
+  const slots = ['weapon', 'offhand', 'helmet', 'chest', 'bracers', 'boots', 'amulet', 'ring'];
+
+  let armor = 0;
+  let atk = 0;
+  let hp = 0;
+  let accuracy = 0;
+  let weapon = null;
+  let offhand = null;
+  let armorClass = 'medium';
+  const percentAffixes = { might: [], bastion: [], swiftness: [] };
+
+  for (const slot of slots) {
+    const item = generateItem(
+      `${seedTag}-${slot}-${ilvl}`,
+      { ilvl, slot, rarity: 'epic' },
+      balance.items,
+      Object.values(itemBases),
+    );
+    const base = itemBases[item.baseKey];
+
+    if (base.armor !== undefined) armor += base.armor * gear;
+    if (base.slot === 'chest' && base.armorClass !== undefined) armorClass = base.armorClass;
+    if (base.slot === 'weapon') {
+      /* Класс оружия задаётся СНАРУЖИ, а не достаётся броском.
+         Кривая зон меряется усреднением по трём классам: игрок оружие
+         ВЫБИРАЕТ под зону (§4.3, ради этого таблица матчапов и написана),
+         и мерить зону одним случайно выпавшим классом значит мерить,
+         повезло ли сегодня. Первый замер так и вышел: в Пустошах эталону
+         достался лёгкий клинок против средней брони босса, и босс
+         показал 0% — не потому что непроходим, а потому что комплект
+         был худшим из возможных. */
+      const chosen =
+        forceWeaponClass === undefined
+          ? base
+          : (Object.values(itemBases).find(
+              (b) => b.slot === 'weapon' && b.weaponClass === forceWeaponClass && b.minIlvl <= ilvl,
+            ) ?? base);
+      weapon = {
+        dmgMin: chosen.dmgMin * gear,
+        dmgMax: chosen.dmgMax * gear,
+        ilvl,
+        class: chosen.weaponClass,
+      };
+    }
+    if (base.slot === 'offhand' && base.offhandKind === 'shield') {
+      offhand = {
+        kind: 'shield',
+        blockChance: base.blockChance,
+        blockReduction: base.blockReduction,
+      };
+    }
+
+    for (const affix of item.affixes) {
+      if (affix.family === 'strength') atk += affix.value;
+      else if (affix.family === 'fortitude') armor += affix.value;
+      else if (affix.family === 'vitality') hp += affix.value;
+      else if (affix.family === 'truehand') accuracy += affix.value;
+      else percentAffixes[affix.family].push(affix.value);
+    }
+  }
+
+  return {
+    level,
+    atk: Math.round(a.atk * statScale) + atk,
+    def: Math.round(a.def * statScale),
+    agi: Math.round(a.agi * statScale),
+    spd: Math.round(a.spd * statScale),
+    pathBonusHp: 0,
+    gearBonusHp: hp,
+    accuracy: a.accuracy + accuracy,
+    armor: Math.round(armor),
+    armorClass,
+    critBonus: 0,
+    startHp: null,
+    weapon: weapon ?? { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
+    offhand,
+    percentAffixes,
+    statuses: [],
+    traits: [a.trait],
+  };
+}
+
+const zoneRuns = Math.max(200, Math.round(RUNS / 5));
+
+/**
+ * Режим подбора: печатает, какой `power` дал бы целевой винрейт.
+ *
+ * Живёт ЗДЕСЬ, а не отдельным скриптом, и это существенно: подбор
+ * обязан идти тем же кодом, что и проверка. Отдельный скрипт разошёлся
+ * бы с матрицей на первой же правке эталонного бойца — и подобранные
+ * им числа не прошли бы её собственную проверку.
+ *
+ *   node scripts/winrate-matrix.mjs --calibrate
+ */
+const CALIBRATE = argv.includes('--calibrate');
+
+const zoneCurve = zones.map((zone, index) => {
+  const playerLevel = zone.levels[1];
+  // Нормальная сложность: уровень игрока −1, зажатый диапазоном зоны.
+  const enemyLevel = Math.min(
+    zone.levels[1],
+    Math.max(zone.levels[0], playerLevel + balance.raid.difficulty.normal.enemyLevelOffset),
+  );
+
+  /* Носитель ОДИН на все зоны и сложности — `forbidden`, самый ровный
+     из четырёх. Разный носитель по зонам смешал бы трудность зоны
+     с силой архетипа, а меряется здесь первое.
+
+     ТРИ КОМПЛЕКТА, по одному на класс оружия, и результат усредняется:
+     игрок оружие выбирает под зону, а не получает броском. */
+  const kits = ['light', 'balanced', 'heavy'].map((weaponClass) =>
+    tierGearedPlayer('forbidden', playerLevel, playerLevel, `tier-${zone.id}`, weaponClass),
+  );
+
+  const across = (spec, tag) => {
+    const rates = kits.map(
+      (player, i) =>
+        duel(player, monsterFighter(spec, enemyLevel, zone.power), `${tag}-${i}`, zoneRuns).rate,
+    );
+    return rates.reduce((a, b) => a + b, 0) / rates.length;
+  };
+
+  const perMonster = zone.monsters.map((key) => ({
+    key,
+    rate: across(monsterSpecs[key], `zone-${zone.id}-${key}`),
+  }));
+
+  const bossRate = across(monsterSpecs[zone.boss], `zone-${zone.id}-boss`);
+
+  const rate = perMonster.reduce((sum, m) => sum + m.rate, 0) / perMonster.length;
+  const target = ZONE_TARGETS[index] ?? 0;
+
+  /* Подбор: двоичный поиск по множителю зоны. Печатается предложение,
+     файл не трогается — числа баланса правит человек, увидев их. */
+  let suggested = null;
+  if (CALIBRATE) {
+    let lo = 0.15;
+    let hi = 4;
+    for (let step = 0; step < 11; step++) {
+      const mid = (lo + hi) / 2;
+      const probe =
+        zone.monsters
+          .map((key) => {
+            const rates = kits.map(
+              (player, i) =>
+                duel(
+                  player,
+                  monsterFighter(monsterSpecs[key], enemyLevel, mid),
+                  `cal-${zone.id}-${key}-${mid.toFixed(3)}-${i}`,
+                  zoneRuns,
+                ).rate,
+            );
+            return rates.reduce((a, b) => a + b, 0) / rates.length;
+          })
+          .reduce((a, b) => a + b, 0) / zone.monsters.length;
+      if (probe > target) lo = mid;
+      else hi = mid;
+    }
+    suggested = Math.round(((lo + hi) / 2) * 100) / 100;
+  }
+
+  return {
+    id: zone.id,
+    power: zone.power,
+    playerLevel,
+    enemyLevel,
+    rate,
+    target,
+    within: Math.abs(rate - target) <= ZONE_TOLERANCE,
+    perMonster,
+    boss: bossRate,
+    suggested,
+  };
+});
+
+const zoneBreaches = zoneCurve.filter((z) => !z.within);
+
 /* ─────────────────────────────── вывод ──────────────────────────────── */
 
 const pct = (x) => `${(x * 100).toFixed(1)}%`;
@@ -323,7 +589,17 @@ const breaches = pairs.filter((p) => p.rate < LOW || p.rate > HIGH);
 if (AS_JSON) {
   console.log(
     JSON.stringify(
-      { runs: RUNS, corridor: [LOW, HIGH], pairs, combos, solo, budgetProbe, breaches },
+      {
+        runs: RUNS,
+        corridor: [LOW, HIGH],
+        pairs,
+        combos,
+        solo,
+        budgetProbe,
+        zoneCurve,
+        breaches,
+        zoneBreaches,
+      },
       null,
       2,
     ),
@@ -449,11 +725,45 @@ if (AS_JSON) {
   console.log('обязано давать то же, что при двух. Для «Оплота» и «Проворства»');
   console.log('числа бюджета назначены по аналогии и проверяются здесь же.');
 
-  console.log(`\nКРИВАЯ ЗОН (§4.6, пункт 4) — НЕ ПРОВЕРЯЕТСЯ.`);
-  console.log('Отложено до M3b: зон и их противников ещё нет. Подставить');
-  console.log('манекенов означало бы проверять выдуманные числа о выдуманных');
-  console.log('зонах — такая проверка хуже отсутствующей, потому что');
-  console.log('выглядит как гарантия.\n');
+  console.log(`\nКРИВАЯ ЗОН · §4.6, пункт 4`);
+  console.log('Игрок в полном эпическом комплекте на верхнем уровне зоны,');
+  console.log(`нормальная сложность, ${zoneRuns} боёв на монстра.`);
+  console.log(`Допуск ±${(ZONE_TOLERANCE * 100).toFixed(0)} п.п.\n`);
+  console.log(
+    `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('винрейт', 9)}${padL('цель', 7)}${padL('босс', 8)}   по монстрам`,
+  );
+  console.log('─'.repeat(86));
+  for (const z of zoneCurve) {
+    console.log(
+      pad(z.id, 12) +
+        padL(`${z.playerLevel}/${z.enemyLevel}`, 5) +
+        padL(z.power.toFixed(2), 8) +
+        padL(pct(z.rate), 9) +
+        padL(pct(z.target), 7) +
+        padL(pct(z.boss), 8) +
+        '   ' +
+        z.perMonster.map((m) => `${m.key.split('.')[1]} ${pct(m.rate)}`).join(' · '),
+    );
+  }
+  console.log('');
+  console.log('Босс считается ОТДЕЛЬНО и в кривую не входит: он пятый бой,');
+  console.log('а не типичный противник зоны. Смешать их значило бы занижать');
+  console.log('оценку первых четырёх боёв.');
+
+  if (CALIBRATE) {
+    console.log('ПОДБОР МНОЖИТЕЛЕЙ (файл не тронут — числа правит человек):');
+    for (const z of zoneCurve) console.log(`  ${pad(z.id, 12)} power ${z.suggested}`);
+    console.log('');
+  }
+
+  if (zoneBreaches.length > 0) {
+    console.log(`\nКРИВАЯ ЗОН НАРУШЕНА в ${zoneBreaches.length} зон(ах):`);
+    for (const z of zoneBreaches) {
+      console.log(`  ${z.id}: ${pct(z.rate)} против цели ${pct(z.target)}`);
+    }
+    console.log('Править надо power в zones.json, а не цель в §4.6.');
+  }
+  console.log('');
 
   if (breaches.length > 0) {
     console.log(`КОРИДОР НАРУШЕН в ${breaches.length} пар(ах):`);
@@ -466,4 +776,8 @@ if (AS_JSON) {
   }
 }
 
-process.exit(breaches.length > 0 ? 1 : 0);
+/* Красным считается и нарушение коридора архетипов, и выход кривой зон
+   за допуск. Второе добавлено в M3b: пункт 4 §4.6 перестал быть
+   «не проверяется», а проверка, которая печатает число и не роняет
+   сборку, — это комментарий, а не проверка. */
+process.exit(breaches.length > 0 || zoneBreaches.length > 0 ? 1 : 0);

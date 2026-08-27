@@ -17,7 +17,22 @@
     "",
     "Класс брони монстра работает через таблицу матчапов §4.3 и есть",
     "главная причина переодеваться перед зоной. Класс оружия — то же",
-    "самое с другой стороны."
+    "самое с другой стороны.",
+    "",
+    "МНОЖИТЕЛИ БОССОВ ВЫВЕРЕНЫ ЗАМЕРОМ (M3b, pnpm balance:matrix) под 40%",
+    "побед у игрока в тир-снаряжении: труднее рядового боя, но проходимо.",
+    "Вышло 36–42% по пяти зонам.",
+    "",
+    "ПОЧЕМУ ЧАСТЬ МНОЖИТЕЛЕЙ НИЖЕ ЕДИНИЦЫ, хотя это боссы. Силу боссу дают",
+    "МЕХАНИКИ, а не статы: ярость ниже 30% HP и тяжёлый удар каждый третий",
+    "ход (§7.5) плюс класс брони и оружия, работающий через матчапы §4.3.",
+    "С исходными множителями 1.20–1.45 замер показывал 0–33% побед — то есть",
+    "пятый бой был не трудным, а закрытым. Уменьшать пришлось именно статы:",
+    "механики §7.5 заданы документом и трогать их нельзя.",
+    "",
+    "Отсюда практическое следствие: править числа босса на глаз нельзя.",
+    "Прибавка к atk у него стоит куда меньше, чем кажется, а смена класса",
+    "брони — куда больше."
   ],
   "$source": "GDD §7.4, §7.5",
   "monsters": [
@@ -41,7 +56,7 @@
       "armor": 0.8,
       "weapon": {
         "dmgMin": 0.9,
-        "dmgMax": 1.0
+        "dmgMax": 1
       },
       "traits": ["bleedout"]
     },
@@ -84,7 +99,7 @@
         "atk": 1.05,
         "def": 0.95,
         "agi": 1.05,
-        "spd": 1.0
+        "spd": 1
       },
       "armor": 0.9,
       "weapon": {
@@ -105,15 +120,15 @@
       "weaponClass": "heavy",
       "boss": true,
       "stats": {
-        "atk": 1.2,
-        "def": 1.35,
-        "agi": 0.85,
-        "spd": 0.9
+        "atk": 0.98,
+        "def": 0.96,
+        "agi": 1.02,
+        "spd": 1.01
       },
-      "armor": 1.25,
+      "armor": 0.97,
       "weapon": {
-        "dmgMin": 1.15,
-        "dmgMax": 1.25
+        "dmgMin": 0.98,
+        "dmgMax": 0.97
       },
       "traits": ["ironGrip", "bossEnrage", "bossHeavyStrike"]
     },
@@ -137,7 +152,7 @@
       "armor": 1.15,
       "weapon": {
         "dmgMin": 0.9,
-        "dmgMax": 1.0
+        "dmgMax": 1
       },
       "traits": ["bulwark"]
     },
@@ -153,11 +168,11 @@
       "boss": false,
       "stats": {
         "atk": 1.15,
-        "def": 1.0,
+        "def": 1,
         "agi": 0.9,
         "spd": 0.95
       },
-      "armor": 1.0,
+      "armor": 1,
       "weapon": {
         "dmgMin": 1.1,
         "dmgMax": 1.2
@@ -200,15 +215,15 @@
       "weaponClass": "heavy",
       "boss": true,
       "stats": {
-        "atk": 1.2,
-        "def": 1.3,
-        "agi": 0.9,
-        "spd": 0.95
+        "atk": 1.17,
+        "def": 1.26,
+        "agi": 0.91,
+        "spd": 0.96
       },
-      "armor": 1.35,
+      "armor": 1.3,
       "weapon": {
-        "dmgMin": 1.15,
-        "dmgMax": 1.25
+        "dmgMin": 1.13,
+        "dmgMax": 1.22
       },
       "traits": ["hardened", "bossEnrage", "bossHeavyStrike"]
     },
@@ -250,7 +265,7 @@
       "boss": false,
       "stats": {
         "atk": 1.1,
-        "def": 1.0,
+        "def": 1,
         "agi": 0.9,
         "spd": 0.9
       },
@@ -273,7 +288,7 @@
       "weaponClass": "light",
       "boss": false,
       "stats": {
-        "atk": 1.0,
+        "atk": 1,
         "def": 0.85,
         "agi": 1.1,
         "spd": 1.05
@@ -281,7 +296,7 @@
       "armor": 0.55,
       "weapon": {
         "dmgMin": 0.9,
-        "dmgMax": 1.0
+        "dmgMax": 1
       },
       "traits": ["pyromancer"]
     },
@@ -298,15 +313,15 @@
       "weaponClass": "balanced",
       "boss": true,
       "stats": {
-        "atk": 1.15,
-        "def": 1.2,
-        "agi": 1.0,
-        "spd": 1.0
+        "atk": 0.85,
+        "def": 0.8,
+        "agi": 1,
+        "spd": 1
       },
-      "armor": 0.75,
+      "armor": 1.25,
       "weapon": {
-        "dmgMin": 1.1,
-        "dmgMax": 1.2
+        "dmgMin": 0.9,
+        "dmgMax": 0.8
       },
       "traits": ["amplifier", "bossEnrage", "bossHeavyStrike"]
     },
@@ -354,7 +369,7 @@
       "armor": 1.45,
       "weapon": {
         "dmgMin": 0.9,
-        "dmgMax": 1.0
+        "dmgMax": 1
       },
       "traits": ["stoneskin"]
     },
@@ -378,7 +393,7 @@
       "armor": 0.9,
       "weapon": {
         "dmgMin": 0.85,
-        "dmgMax": 1.0
+        "dmgMax": 1
       },
       "traits": ["bloodlust"]
     },
@@ -395,15 +410,15 @@
       "weaponClass": "heavy",
       "boss": true,
       "stats": {
-        "atk": 1.25,
-        "def": 1.3,
-        "agi": 0.9,
-        "spd": 0.95
+        "atk": 1.06,
+        "def": 1.07,
+        "agi": 0.98,
+        "spd": 0.99
       },
-      "armor": 1.45,
+      "armor": 1.1,
       "weapon": {
-        "dmgMin": 1.2,
-        "dmgMax": 1.3
+        "dmgMin": 1.05,
+        "dmgMax": 1.07
       },
       "traits": ["thorns", "bossEnrage", "bossHeavyStrike"]
     },
@@ -448,11 +463,11 @@
         "atk": 1.1,
         "def": 0.95,
         "agi": 1.05,
-        "spd": 1.0
+        "spd": 1
       },
       "armor": 0.7,
       "weapon": {
-        "dmgMin": 1.0,
+        "dmgMin": 1,
         "dmgMax": 1.1
       },
       "traits": ["hexblade"]
@@ -494,15 +509,15 @@
       "weaponClass": "heavy",
       "boss": true,
       "stats": {
-        "atk": 1.3,
-        "def": 1.35,
-        "agi": 1.0,
-        "spd": 1.0
+        "atk": 0.91,
+        "def": 0.9,
+        "agi": 1,
+        "spd": 1
       },
-      "armor": 1.35,
+      "armor": 0.9,
       "weapon": {
-        "dmgMin": 1.25,
-        "dmgMax": 1.35
+        "dmgMin": 0.93,
+        "dmgMax": 0.9
       },
       "traits": ["warlord", "bossEnrage", "bossHeavyStrike"]
     }
