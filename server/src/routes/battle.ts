@@ -1,9 +1,8 @@
 import {
   API_ROUTES,
-  battleStartInputSchema,
+  LOADOUT_STAT_KEYS,
   equipmentSlotSchema,
   simulatePreviewInputSchema,
-  type BattleStartResponse,
   type LoadoutStats,
   type PreviewChange,
   type SimulatePreviewResponse,
@@ -11,7 +10,6 @@ import {
 import { Hono } from 'hono';
 
 import { estimateWinRate } from '../battle/preview.ts';
-import { runBattle } from '../battle/run.ts';
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { parseBody, type AppEnv } from '../http/middleware.ts';
@@ -21,69 +19,21 @@ import { findPlayerByUserId } from '../players/repository.ts';
 import { requireSession } from '../auth/session.ts';
 
 /**
- * Боевые эндпоинты. GDD §3.2, §6.4.
+ * Превью шанса победы. GDD §6.4.
  *
- * Оба обработчика намеренно НЕ принимают состояние игрока из тела
- * запроса: идентификатор берётся из проверенной сессии, профиль
- * читается из БД (инвариант 1, GDD §3.2 шаг 1). Схемы запросов таких
- * полей не содержат вовсе — подменить статы нечем.
+ * Одиночного боя здесь больше нет: бой бывает только внутри забега
+ * (`/run/fight`, GDD §7.2), потому что бой без забега — это бой без
+ * ставки, и награду за него пришлось бы либо не давать вовсе, либо
+ * выдавать в обход эвакуации. Первое было положением M2b, второе
+ * обнулило бы решение, ради которого рейд и существует.
+ *
+ * Обработчик намеренно НЕ принимает состояние игрока из тела запроса:
+ * идентификатор берётся из проверенной сессии, профиль читается из БД
+ * (инвариант 1, GDD §3.2 шаг 1). Схема запроса таких полей не содержит
+ * вовсе — подменить статы нечем.
  */
 export function battleRoutes(db: Database): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
-
-  /**
-   * POST /battle/start — провести бой. GDD §3.2.
-   *
-   * В теле запроса нет ни одного числа о бойце, и схема таких полей
-   * не содержит: состав читается из БД по проверенной сессии. Сид
-   * генерируется здесь же. Клиент узнаёт исход уже записанным.
-   *
-   * НАГРАД НЕТ. Шаг 5 документа требует применить HP, XP, золото и лут
-   * в одной транзакции, но прогрессия — это M3. Бой помечается
-   * `provisional` и в ответе, и в базе.
-   */
-  app.post(API_ROUTES.battleStart, async (c) => {
-    const sessionUser = await requireSession(c);
-    const input = await parseBody(c, battleStartInputSchema);
-
-    const profile = await findPlayerByUserId(db, sessionUser.id);
-    if (profile === null) {
-      throw new AppError('not_found', {
-        messageKey: 'error.not_found',
-        message: 'профиль не найден',
-      });
-    }
-
-    // Надетое читается ИЗ БАЗЫ по владельцу. Клиент не сообщает
-    // ни состава, ни характеристик — и не может: схема запроса
-    // таких полей не содержит (инвариант 1, GDD §3.2 шаг 1).
-    const loadout = await loadoutOf(db, profile.id);
-
-    const battle = await runBattle(db, {
-      profile,
-      zone: input.zone,
-      difficulty: input.difficulty,
-      loadout,
-    });
-
-    c.get('log').info('бой проведён', {
-      battleId: battle.battleId,
-      zone: input.zone,
-      difficulty: input.difficulty,
-      events: battle.log.events.length,
-      provisional: battle.provisional,
-    });
-
-    const body: BattleStartResponse = {
-      battleId: battle.battleId,
-      log: battle.log,
-      outcome: battle.outcome,
-      maxHp: battle.maxHp,
-      rewards: {},
-      provisional: battle.provisional,
-    };
-    return c.json(body);
-  });
 
   /**
    * POST /simulate/preview — оценка шанса победы. GDD §6.4.
@@ -148,7 +98,9 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
     const body: SimulatePreviewResponse = {
       winRate,
       runs,
-      basis: 'sparring-dummy',
+      basis: base.basis,
+      ...(base.against === undefined ? {} : { against: base.against }),
+      ...(base.enemyLevel === undefined ? {} : { enemyLevel: base.enemyLevel }),
       ...(hypothetical === null
         ? {}
         : {
@@ -190,10 +142,17 @@ async function applyChange(
   return next;
 }
 
-/** Разница производных набора. Только изменившееся. */
+/**
+ * Разница производных набора. Только изменившееся.
+ *
+ * Перебираются ЧИСЛОВЫЕ поля по явному списку, а не все ключи подряд:
+ * в наборе есть и составное поле (сколько аффиксов надето и сколько
+ * считается), и вычитание дало бы `NaN`, который на экране выглядит
+ * как «стало хуже», а не как ошибка.
+ */
 function statDeltas(before: LoadoutStats, after: LoadoutStats): Record<string, number> {
   const deltas: Record<string, number> = {};
-  for (const key of Object.keys(before) as Array<keyof LoadoutStats>) {
+  for (const key of LOADOUT_STAT_KEYS) {
     const diff = after[key] - before[key];
     // Ноль не показывается: строка «ATK +0» не сообщает ничего,
     // а список из восьми нулей прячет то единственное, что изменилось.

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { Box3, Mesh, PointLight, Vector3 } from 'three';
 
 import { MaterialCache } from '../materials.js';
+import { paletteHex } from '../palette.js';
 import { buildRig, GeometryCache } from '../rig.js';
 
 /**
@@ -346,5 +347,58 @@ describe('свет из спецификации', () => {
     // И различны: одинаковые фазы дали бы два факела, мигающих в такт,
     // то есть пульсирующую лампу вместо огня.
     expect(new Set(first).size).toBe(first.length);
+  });
+});
+
+/**
+ * Перекраска силуэта. GDD §7.5, ART-BIBLE §3.
+ *
+ * Форм четыре на два десятка монстров: кто есть кто ВНУТРИ формы,
+ * говорит цвет из записи монстра. Без этих тестов «монстры это данные»
+ * держалось бы на одной строке в `buildRig`, которую нечем отличить
+ * от опечатки.
+ */
+describe('перекраска рига из данных монстра', () => {
+  const colorOf = (spec: RigSpec, recolor?: Record<string, string>): number => {
+    const materials = new MaterialCache();
+    const geometries = new GeometryCache();
+    const rig = buildRig(spec, materials, geometries, recolor);
+    const body = rig.nodes.get('body');
+    expect(body).toBeInstanceOf(Mesh);
+    return ((body as Mesh).material as { color: { getHex(): number } }).color.getHex();
+  };
+
+  it('подмена по ключу палитры меняет цвет узла', () => {
+    const plain = colorOf(testSpec(1));
+    const recolored = colorOf(testSpec(1), { bone: 'blood' });
+
+    // Проверка «стало другим» бессмысленна, если исходный цвет
+    // и целевой совпадают: тогда равенство ничего не значило бы.
+    expect(paletteHex('bone')).not.toBe(paletteHex('blood'));
+    expect(plain).toBe(paletteHex('bone'));
+    expect(recolored).toBe(paletteHex('blood'));
+  });
+
+  it('узлы, которых нет в подмене, сохраняют свой цвет', () => {
+    // Иначе «перекрасить одну деталь» перекрашивало бы фигуру целиком,
+    // и четыре формы стали бы четырьмя одноцветными пятнами.
+    const materials = new MaterialCache();
+    const geometries = new GeometryCache();
+    const rig = buildRig(testSpec(1), materials, geometries, { bone: 'blood' });
+
+    const hat = rig.nodes.get('hat') as Mesh;
+    expect((hat.material as { color: { getHex(): number } }).color.getHex()).toBe(
+      paletteHex('ash'),
+    );
+  });
+
+  it('подмена на несуществующий ключ — ошибка данных, а не тихий фиолетовый', () => {
+    // Ровно то же правило, что у прямого цвета узла: цвет мимо палитры
+    // означает, что про ассет забыли, и падать это обязано на сборке.
+    expect(() => colorOf(testSpec(1), { bone: 'нет-такого-цвета' })).toThrow();
+  });
+
+  it('без подмены цвет остаётся тем, что записан в риге', () => {
+    expect(colorOf(testSpec(1), {})).toBe(paletteHex('bone'));
   });
 });

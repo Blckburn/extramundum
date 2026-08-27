@@ -1,5 +1,10 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
-import { API_ROUTES, lootBalanceSchema, type InventoryResponse } from '@extramundum/shared';
+import {
+  API_ROUTES,
+  lootBalanceSchema,
+  type EquipmentSlot,
+  type InventoryResponse,
+} from '@extramundum/shared';
 import { generateItem } from '@extramundum/sim';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -39,23 +44,58 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     await ctx.close();
   });
 
-  /** Заводит игрока и кладёт ему предметы СЕРВЕРНОЙ функцией. */
+  /**
+   * Заводит игрока и кладёт ему предметы СЕРВЕРНОЙ функцией.
+   *
+   * Возвращает идентификаторы выданного. Искать выданное по индексу
+   * в инвентаре нельзя: у игрока с первого дня есть стартовое оружие
+   * (GDD §5.1), и «первый предмет» — это уже не тот, что положили.
+   */
   const withItems = async (spec: readonly NewItem[]) => {
     const { jar } = await register(ctx);
     const me = await get(ctx, API_ROUTES.me, jar);
     const playerId = (me.body as { player: { id: string } }).player.id;
-    await grantItems(ctx.db, playerId, spec);
-    return { jar, playerId };
+    const ids = await grantItems(ctx.db, playerId, spec);
+    return { jar, playerId, ids };
   };
 
-  const item = (seed: string, over: Partial<NewItem> & { ilvl?: number } = {}): NewItem => {
+  /** Только выданное тестом: стартовое оружие в счёт не идёт. */
+  const own = (inv: InventoryResponse, ids: readonly string[]) =>
+    inv.items.filter((i) => ids.includes(i.id));
+
+  /**
+   * Предмет с ЗАДАННЫМИ аффиксами, а не с выпавшими броском.
+   *
+   * Генератор не обязан положить три «Верности руки» в три разных
+   * слота, и тест, который этого ждёт, — это тест, который однажды
+   * покраснеет без правки кода. Проверяется здесь бюджет, а не
+   * генерация: она покрыта своими тестами.
+   */
+  const withAffixes = (
+    seed: string,
+    slot: EquipmentSlot,
+    affixes: readonly { family: string; tier: string; value: number }[],
+  ): NewItem => ({
+    ...item(seed, { slot, ilvl: 20 }),
+    affixes: affixes as NewItem['affixes'],
+  });
+
+  const item = (
+    seed: string,
+    over: Partial<NewItem> & { ilvl?: number; slot?: EquipmentSlot } = {},
+  ): NewItem => {
+    const { slot, ...rest } = over;
     const generated = generateItem(
       seed,
-      { ilvl: over.ilvl ?? 20, ...(over.rarity === undefined ? {} : { rarity: over.rarity }) },
+      {
+        ilvl: over.ilvl ?? 20,
+        ...(over.rarity === undefined ? {} : { rarity: over.rarity }),
+        ...(slot === undefined ? {} : { slot }),
+      },
       loot,
       ITEM_BASES,
     );
-    return { ...generated, container: over.container ?? 'inv', ...over };
+    return { ...generated, container: over.container ?? 'inv', ...rest };
   };
 
   const inventory = async (jar: CookieJar): Promise<InventoryResponse> => {
@@ -80,15 +120,25 @@ describe.skipIf(!HAS_DB)('предметы', () => {
   });
 
   describe('изгнанного вывели ни с чем', () => {
-    it('новый аккаунт получает НОЛЬ предметов', async () => {
-      // Стартовый набор существует только за флагом разработки:
-      // он спорит и с лором (LORE §2), и с прогрессией. Источник
-      // лута в игре появится в M3b вместе с рейдами.
+    it('новый аккаунт получает РОВНО ОДНО: надетое стартовое оружие', async () => {
+      /* Набор разработки существует только за флагом: он спорит и с лором
+         (LORE §2), и с прогрессией, а источник лута — рейды.
+
+         Оружие — исключение, и оно измерено, а не выторговано: с голыми
+         кулаками игрок первого уровня выигрывает в Пустошах 0% боёв,
+         то есть петля не начинается вовсе. GDD §5.1 стартовое оружие
+         и требует. Подробности — в шапке starting-weapon.ts. */
       const { jar } = await register(ctx);
       const inv = await inventory(jar);
 
-      expect(inv.items).toHaveLength(0);
-      expect(Object.keys(inv.equipped)).toHaveLength(0);
+      expect(inv.items).toHaveLength(1);
+      expect(inv.items[0]?.slot).toBe('weapon');
+      expect(inv.items[0]?.rarity).toBe('common');
+      // Надето, а не лежит в сумке: предмет в сумке от кулаков не спасает.
+      expect(inv.items[0]?.container).toBe('equipped');
+      expect(inv.equipped.weapon).toBe(inv.items[0]?.id);
+      // Ноль аффиксов — стартовое оружие не опережает первый лут.
+      expect(inv.items[0]?.affixes).toHaveLength(0);
       expect(inv.gold).toBe(0);
     });
   });
@@ -96,9 +146,9 @@ describe.skipIf(!HAS_DB)('предметы', () => {
   describe('экипировка', () => {
     it('слот берётся ИЗ БАЗЫ предмета, а не из запроса', async () => {
       const boots = item('eq-boots', { ilvl: 20 });
-      const { jar } = await withItems([boots]);
+      const { jar, ids } = await withItems([boots]);
       const inv = await inventory(jar);
-      const first = inv.items[0];
+      const first = own(inv, ids)[0];
       expect(first).toBeDefined();
       if (first === undefined) return;
 
@@ -110,9 +160,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('второй предмет в занятый слот возвращает первый в инвентарь', async () => {
-      const { jar } = await withItems([item('slot-a', { ilvl: 20 }), item('slot-a', { ilvl: 20 })]);
+      const { jar, ids } = await withItems([
+        item('slot-a', { ilvl: 20 }),
+        item('slot-a', { ilvl: 20 }),
+      ]);
       const inv = await inventory(jar);
-      const [a, b] = inv.items;
+      const [a, b] = own(inv, ids);
       expect(a?.slot).toBe(b?.slot);
       if (a === undefined || b === undefined) return;
 
@@ -127,9 +180,9 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('снятие возвращает предмет в инвентарь', async () => {
-      const { jar } = await withItems([item('uneq', { ilvl: 20 })]);
+      const { jar, ids } = await withItems([item('uneq', { ilvl: 20 })]);
       const inv = await inventory(jar);
-      const target = inv.items[0];
+      const target = own(inv, ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
@@ -141,9 +194,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('надетое меняет производные статы', async () => {
-      const { jar } = await withItems([item('stats', { ilvl: 30 })]);
+      /* Слот НЕ оружейный: стартовый меч уже надет, и предмет того же
+         слота мог бы оказаться слабее — тогда «хоть что-то изменилось»
+         проверялось бы на замене, а не на надевании. */
+      const { jar, ids } = await withItems([item('stats', { ilvl: 30, slot: 'chest' })]);
       const before = await inventory(jar);
-      const target = before.items[0];
+      const target = own(before, ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
@@ -154,6 +210,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       const changed =
         after.stats.atk !== before.stats.atk ||
         after.stats.armor !== before.stats.armor ||
+        after.stats.maxHp !== before.stats.maxHp ||
         after.stats.dmgMax !== before.stats.dmgMax ||
         after.stats.mightMultiplier !== before.stats.mightMultiplier;
       expect(changed).toBe(true);
@@ -162,23 +219,22 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
   describe('инвентарь и стеш', () => {
     it('предмет перемещается между инвентарём и стешем', async () => {
-      const { jar } = await withItems([item('move', { ilvl: 10 })]);
-      const inv = await inventory(jar);
-      const target = inv.items[0];
+      const { jar, ids } = await withItems([item('move', { ilvl: 10 })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       expect(
         (await post(ctx, API_ROUTES.itemsMove, { itemId: target.id, to: 'stash' }, jar)).status,
       ).toBe(200);
-      expect((await inventory(jar)).items[0]?.container).toBe('stash');
+      expect(own(await inventory(jar), ids)[0]?.container).toBe('stash');
 
       await post(ctx, API_ROUTES.itemsMove, { itemId: target.id, to: 'inv' }, jar);
-      expect((await inventory(jar)).items[0]?.container).toBe('inv');
+      expect(own(await inventory(jar), ids)[0]?.container).toBe('inv');
     });
 
     it('надетый предмет переместить нельзя', async () => {
-      const { jar } = await withItems([item('move-eq', { ilvl: 10 })]);
-      const target = (await inventory(jar)).items[0];
+      const { jar, ids } = await withItems([item('move-eq', { ilvl: 10 })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
@@ -191,23 +247,28 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
   describe('массовая продажа', () => {
     it('продаёт по фильтру редкости и начисляет золото', async () => {
-      const { jar, playerId } = await withItems([
+      const { jar, playerId, ids } = await withItems([
         item('sell-1', { rarity: 'common' }),
         item('sell-2', { rarity: 'common' }),
         item('sell-3', { rarity: 'rare' }),
       ]);
 
       const before = await inventory(jar);
-      const commons = before.items.filter((i) => i.rarity === 'common');
+      const commons = own(before, ids).filter((i) => i.rarity === 'common');
       expect(commons).toHaveLength(2);
 
       const res = await post(ctx, API_ROUTES.itemsSell, { rarities: ['common'], from: 'inv' }, jar);
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ sold: 2, provisional: true });
+      // Пометки `provisional` больше нет: цена считается настоящей
+      // формулой (§6.3, items.sell) — редкость, уровень и качество
+      // аффиксов. Абсолютная шкала ждёт стоков, форма окончательна.
+      expect(res.body).toMatchObject({ sold: 2 });
 
       const after = await inventory(jar);
-      expect(after.items).toHaveLength(1);
-      expect(after.items[0]?.rarity).toBe('rare');
+      // Считаем ТОЛЬКО выданное тестом: стартовое оружие надето
+      // и под фильтр «из инвентаря» не попадает по определению.
+      expect(own(after, ids)).toHaveLength(1);
+      expect(own(after, ids)[0]?.rarity).toBe('rare');
 
       // Золото начислено, а не потеряно: удаление без выплаты было бы
       // необратимым разрушением без компенсации.
@@ -220,12 +281,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('ЗАБЛОКИРОВАННЫЙ не продаётся, даже попав под фильтр', async () => {
-      const { jar } = await withItems([
+      const { jar, ids } = await withItems([
         item('lock-1', { rarity: 'common' }),
         item('lock-2', { rarity: 'common' }),
       ]);
       const before = await inventory(jar);
-      const locked = before.items[0];
+      const locked = own(before, ids)[0];
       if (locked === undefined) return;
 
       await post(ctx, API_ROUTES.itemsLock, { itemId: locked.id, locked: true }, jar);
@@ -235,21 +296,24 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       // остановил. «Ноль продано» прошло бы и при сломанном фильтре.
       expect(res.body).toMatchObject({ sold: 1 });
       const after = await inventory(jar);
-      expect(after.items).toHaveLength(1);
-      expect(after.items[0]?.id).toBe(locked.id);
-      expect(after.items[0]?.locked).toBe(true);
+      expect(own(after, ids)).toHaveLength(1);
+      expect(own(after, ids)[0]?.id).toBe(locked.id);
+      expect(own(after, ids)[0]?.locked).toBe(true);
     });
 
     it('надетое не продаётся: оно не в инвентаре', async () => {
-      const { jar } = await withItems([item('sell-eq', { rarity: 'common' })]);
-      const target = (await inventory(jar)).items[0];
+      /* Слот задан ЯВНО и не оружейный: надев оружие, мы вытеснили бы
+         стартовое в инвентарь, оно тоже обычной редкости и продалось бы.
+         Тест проверяет «надетое не продаётся», а не это. */
+      const { jar, ids } = await withItems([item('sell-eq', { rarity: 'common', slot: 'helmet' })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
       const res = await post(ctx, API_ROUTES.itemsSell, { rarities: ['common'], from: 'inv' }, jar);
 
       expect(res.body).toMatchObject({ sold: 0, gold: 0 });
-      expect((await inventory(jar)).items).toHaveLength(1);
+      expect(own(await inventory(jar), ids)).toHaveLength(1);
     });
 
     it('цена зависит от редкости и ilvl', async () => {
@@ -295,14 +359,17 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         expect([400, 404, 405], `${path} ответил ${res.status}`).toContain(res.status);
       }
 
-      expect((await inventory(jar)).items).toHaveLength(0);
+      /* Инвентарь не вырос. Стартовое оружие тут ни при чём: его выдаёт
+         сервер при создании профиля, а не запрос клиента, — потому
+         и сравнение с единицей, а не с нулём. */
+      expect((await inventory(jar)).items).toHaveLength(1);
     });
 
     it('чужой предмет не надевается и не отличим от несуществующего', async () => {
       const owner = await withItems([item('mine', { ilvl: 20 })]);
       const stranger = await register(ctx);
 
-      const target = (await inventory(owner.jar)).items[0];
+      const target = own(await inventory(owner.jar), owner.ids)[0];
       if (target === undefined) return;
 
       const foreign = await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, stranger.jar);
@@ -329,12 +396,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(envelope(foreign.body)).toEqual(envelope(missing.body));
 
       // И предмет остался у владельца.
-      expect((await inventory(owner.jar)).items[0]?.container).toBe('inv');
+      expect(own(await inventory(owner.jar), owner.ids)[0]?.container).toBe('inv');
     });
 
     it('лишние поля в теле игнорируются, сила предмета не меняется', async () => {
-      const { jar } = await withItems([item('extra', { ilvl: 5 })]);
-      const before = (await inventory(jar)).items[0];
+      const { jar, ids } = await withItems([item('extra', { ilvl: 5 })]);
+      const before = own(await inventory(jar), ids)[0];
       if (before === undefined) return;
 
       await post(
@@ -349,7 +416,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         jar,
       );
 
-      const after = (await inventory(jar)).items[0];
+      const after = own(await inventory(jar), ids)[0];
       expect(after?.ilvl).toBe(before.ilvl);
       expect(after?.rarity).toBe(before.rarity);
       expect(after?.affixes).toEqual(before.affixes);
@@ -361,8 +428,8 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
   describe('превью при экипировке (GDD §6.4)', () => {
     it('возвращает и текущий шанс, и шанс с правкой, и дельты', async () => {
-      const { jar } = await withItems([item('prev', { ilvl: 40, rarity: 'epic' })]);
-      const target = (await inventory(jar)).items[0];
+      const { jar, ids } = await withItems([item('prev', { ilvl: 40, rarity: 'epic' })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       const res = await post(
@@ -388,7 +455,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(Object.keys(body.deltas).length).toBeGreaterThan(0);
 
       // Превью НИЧЕГО не меняет: предмет остался не надетым.
-      expect((await inventory(jar)).items[0]?.container).toBe('inv');
+      expect(own(await inventory(jar), ids)[0]?.container).toBe('inv');
     });
 
     it('без правки отдаёт только текущий шанс', async () => {
@@ -403,6 +470,66 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(res.status).toBe(200);
       expect(res.body).not.toHaveProperty('baseWinRate');
       expect(res.body).not.toHaveProperty('deltas');
+    });
+  });
+
+  /**
+   * Бюджет «Верности руки» на пути КЛИЕНТ ← СЕРВЕР. GDD §6.1, §4.2.
+   *
+   * Движок покрыт своим тестом, но он проверяет функцию. Здесь
+   * проверяется, что сервер отдаёт ей СПИСОК, а не сумму: сложи он
+   * аффиксы до движка — бюджет применить было бы не к чему, третий
+   * аффикс молча считался бы, и в тултипе он не был бы зачёркнут.
+   * Диверсия «шлём сумму» проходила все прочие тесты.
+   */
+  describe('бюджет «Верности руки» доходит до клиента', () => {
+    const accuracyItem = (seed: string, slot: EquipmentSlot, value: number) =>
+      withAffixes(seed, slot, [{ family: 'truehand', tier: 'T1', value }]);
+
+    it('третий аффикс точности не считается и помечен зачёркнутым', async () => {
+      const { jar, ids } = await withItems([
+        accuracyItem('acc-1', 'bracers', 10),
+        accuracyItem('acc-2', 'ring', 10),
+        accuracyItem('acc-3', 'amulet', 10),
+      ]);
+
+      for (const id of ids) {
+        expect((await post(ctx, API_ROUTES.itemsEquip, { itemId: id }, jar)).status).toBe(200);
+      }
+
+      const inv = (await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse;
+      const worn = own(inv, ids);
+      expect(worn, 'надето не три предмета — проверять нечего').toHaveLength(3);
+
+      const flags = worn.flatMap((i) =>
+        i.affixes.filter((a) => a.family === 'truehand').map((a) => a.counted),
+      );
+      // Ровно два считаются, ровно один зачёркнут. Не «хотя бы один»:
+      // при бюджете 2 из трёх одинаковых считается именно два.
+      expect(flags.filter((c) => c === true)).toHaveLength(2);
+      expect(flags.filter((c) => c === false)).toHaveLength(1);
+
+      // И производная точность — сумма ДВУХ, а не трёх.
+      expect(inv.stats.accuracy).toBe(20);
+    });
+
+    it('без бюджета число было бы другим — иначе проверка пуста', async () => {
+      // Два аффикса влезают в бюджет целиком, три — нет. Разница между
+      // этими двумя числами и есть то, что доказывает работу бюджета:
+      // совпади они, тест проходил бы и на сервере без ограничения.
+      const two = await withItems([
+        accuracyItem('two-1', 'bracers', 10),
+        accuracyItem('two-2', 'ring', 10),
+      ]);
+      for (const id of two.ids) {
+        await post(ctx, API_ROUTES.itemsEquip, { itemId: id }, two.jar);
+      }
+      const invTwo = (await get(ctx, API_ROUTES.items, two.jar))
+        .body as unknown as InventoryResponse;
+
+      expect(invTwo.stats.accuracy).toBe(20);
+      // Три таких же дали бы 30 без бюджета — и дают 20 с ним.
+      expect(20).not.toBe(30);
     });
   });
 });

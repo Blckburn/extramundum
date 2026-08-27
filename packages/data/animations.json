@@ -15,7 +15,6 @@
   ],
   "$source": "GDD §3.2, §10",
   "speeds": [1, 2, 4, 0],
-
   "$stage": "Якоря и величины сцены. В коде рендера литералов быть не должно — то же правило, что у ригов и balance.json.",
   "stage": {
     "numberAnchor": "head",
@@ -27,23 +26,32 @@
   },
   "events": {
     "$note": "Ключ совпадает с BattleEvent['t']. Отсутствие ключа — событие без визуального выражения, и тест на это ругается.",
-
     "turn_start": {
       "holdMs": 90,
       "steps": []
     },
-
     "attack": {
       "holdMs": 260,
       "steps": [
-        { "primitive": "lunge", "on": "actor", "delayMs": 0, "durationMs": 280, "amount": 0.55 }
+        {
+          "primitive": "lunge",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 280,
+          "amount": 0.55
+        }
       ]
     },
-
     "dodge": {
       "holdMs": 240,
       "steps": [
-        { "primitive": "shake", "on": "actor", "delayMs": 60, "durationMs": 220, "amount": 0.22 },
+        {
+          "primitive": "shake",
+          "on": "actor",
+          "delayMs": 60,
+          "durationMs": 220,
+          "amount": 0.22
+        },
         {
           "primitive": "number",
           "on": "actor",
@@ -53,7 +61,6 @@
         }
       ]
     },
-
     "block": {
       "holdMs": 200,
       "steps": [
@@ -75,7 +82,6 @@
         }
       ]
     },
-
     "damage": {
       "holdMs": 300,
       "steps": [
@@ -87,7 +93,13 @@
           "color": "blood",
           "amount": 2.4
         },
-        { "primitive": "shake", "on": "target", "delayMs": 0, "durationMs": 260, "amount": 0.16 },
+        {
+          "primitive": "shake",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 260,
+          "amount": 0.16
+        },
         {
           "primitive": "burst",
           "on": "target",
@@ -96,10 +108,15 @@
           "color": "blood",
           "count": 14
         },
-        { "primitive": "number", "on": "target", "delayMs": 0, "durationMs": 900, "color": "bone" }
+        {
+          "primitive": "number",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 900,
+          "color": "bone"
+        }
       ]
     },
-
     "status_apply": {
       "holdMs": 180,
       "steps": [
@@ -121,11 +138,16 @@
         }
       ]
     },
-
     "status_tick": {
       "holdMs": 140,
       "steps": [
-        { "primitive": "number", "on": "target", "delayMs": 0, "durationMs": 760, "color": "bile" },
+        {
+          "primitive": "number",
+          "on": "target",
+          "delayMs": 0,
+          "durationMs": 760,
+          "color": "bile"
+        },
         {
           "primitive": "burst",
           "on": "target",
@@ -136,12 +158,10 @@
         }
       ]
     },
-
     "status_expire": {
       "holdMs": 90,
       "steps": []
     },
-
     "trait_fire": {
       "holdMs": 200,
       "steps": [
@@ -163,7 +183,6 @@
         }
       ]
     },
-
     "death": {
       "holdMs": 900,
       "steps": [
@@ -183,8 +202,41 @@
           "color": "blood",
           "count": 26
         },
-        { "primitive": "shake", "on": "actor", "delayMs": 0, "durationMs": 600, "amount": 0.3 },
-        { "primitive": "topple", "on": "actor", "delayMs": 120, "durationMs": 700, "amount": 1.5 }
+        {
+          "primitive": "shake",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 600,
+          "amount": 0.3
+        },
+        {
+          "primitive": "topple",
+          "on": "actor",
+          "delayMs": 120,
+          "durationMs": 700,
+          "amount": 1.5
+        }
+      ]
+    },
+    "telegraph": {
+      "$note": "Замах босса. Вспышка на САМОМ бойце и без всплеска частиц: это предупреждение, а не урон, и спутать их нельзя. Держится дольше прочих — строку журнала обязаны успеть прочитать.",
+      "holdMs": 420,
+      "steps": [
+        {
+          "primitive": "flash",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 380,
+          "color": "flame",
+          "amount": 2.2
+        },
+        {
+          "primitive": "lunge",
+          "on": "actor",
+          "delayMs": 0,
+          "durationMs": 400,
+          "amount": -0.18
+        }
       ]
     }
   }

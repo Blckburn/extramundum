@@ -16,7 +16,7 @@ import { requireSession } from '../auth/session.ts';
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { parseBody, type AppEnv } from '../http/middleware.ts';
-import { loadoutStats, toView } from '../items/loadout.ts';
+import { countedQuotas, loadoutStats, toView } from '../items/loadout.ts';
 import {
   equipItem,
   equippedMap,
@@ -71,11 +71,16 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
       loadoutOf(db, profile.id),
     ]);
 
+    const quotas = countedQuotas(loadout);
+
     const body: InventoryResponse = {
       // Пометка «аффикс учитывается» ставится только надетым: для
       // лежащего в стеше вопрос не имеет смысла, пока он не надет
       // вместе с остальными.
-      items: all.map((item) => toView(item, item.container === 'equipped' ? loadout : null)),
+      // Квота считается ОДИН раз на набор и расходуется по мере показа:
+      // посчитанная внутри каждого предмета, она никогда не кончалась бы,
+      // и сверхбюджетный аффикс не был бы зачёркнут ни у кого.
+      items: all.map((item) => toView(item, item.container === 'equipped' ? quotas : null)),
       equipped: Object.fromEntries(equipped),
       stats: loadoutStats(profile, loadout),
       gold: profile.gold,
@@ -132,10 +137,9 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
       rarities: input.rarities,
       sold,
       gold,
-      provisional: true,
     });
 
-    const body: SellResponse = { sold, gold, provisional: true };
+    const body: SellResponse = { sold, gold };
     return c.json(body);
   });
 

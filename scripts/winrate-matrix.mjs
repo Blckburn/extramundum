@@ -54,22 +54,33 @@ const ARCHETYPES = Object.keys(balance.archetypes).filter(
  * стартовые статы и трейты, а не лут. Как только предметы появятся
  * в M3, сюда придёт вторая матрица — «в тир-снаряжении», пункт 4.
  */
-function build(archetype, extraTraits = []) {
+function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
   const a = balance.archetypes[archetype];
+  /* Статы растут по той же прибавке за уровень, что у спарринг-манекена,
+     а броня и оружие — по масштабу ilvl из §6.1. Точной формулы роста
+     статов игрока в GDD нет (это M3c), поэтому берётся уже назначенная
+     в balance.sparring, а не выдумывается вторая. */
+  const scale = 1 + ((level - 1) * balance.sparring.statPerLevel) / 12;
+  const gear = 1 + ilvl * balance.items.ilvlScale;
+  const stat = (v) => (level === 1 ? v : Math.round(v * scale));
+
   return {
-    level: 1,
-    atk: a.atk,
-    def: a.def,
-    agi: a.agi,
-    spd: a.spd,
+    level,
+    atk: stat(a.atk),
+    def: stat(a.def),
+    agi: stat(a.agi),
+    spd: stat(a.spd),
     pathBonusHp: 0,
+    gearBonusHp: 0,
     accuracy: a.accuracy,
-    armor: a.armor,
+    armor: level === 1 ? a.armor : Math.round(a.armor * gear),
     armorClass: 'medium',
     critBonus: 0,
-    weapon: { dmgMin: 8, dmgMax: 14, ilvl: 1, class: 'balanced' },
+    startHp: null,
+    weapon: { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
     offhand: null,
-    damageAffixes: [],
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
     statuses: [],
     traits: [a.trait, ...extraTraits],
   };
@@ -164,13 +175,23 @@ const combos = COMBOS.map(([label, archetype, traits]) => ({
  */
 const { TRAITS } = await import(fileURLToPath(new URL('packages/sim/dist/traits.js', root)));
 
-/** Выбираемые трейты по школам — из реестра движка, а не из копии здесь. */
+/**
+ * Выбираемые трейты по школам — из реестра движка, а не из копии здесь.
+ *
+ * Исключены врождённые (приходят с прошлым персонажа, выбрать нельзя)
+ * и трейты со школой `monster`: механики босса из §7.5 принадлежат
+ * противнику, и мерить их разбросом внутри школы игрока бессмысленно.
+ * Исключение идёт ПО ШКОЛЕ, а не по списку имён: список пришлось бы
+ * пополнять с каждым новым монстровым трейтом, и однажды его забыли бы.
+ */
+const HOST = { agi: 'advocacy', str: 'theft', def: 'brawl', mag: 'forbidden' };
+
 const SCHOOL_PROBE = {};
 for (const [id, def] of TRAITS) {
   if (id.startsWith('innate')) continue;
+  if (HOST[def.school] === undefined) continue;
   (SCHOOL_PROBE[def.school] ??= []).push(id);
 }
-const HOST = { agi: 'advocacy', str: 'theft', def: 'brawl', mag: 'forbidden' };
 
 const soloRuns = Math.max(200, Math.round(RUNS / 5));
 const solo = {};
@@ -182,28 +203,57 @@ for (const [school, ids] of Object.entries(SCHOOL_PROBE)) {
   }));
 }
 
-/* ─────────────── бюджет семейства «Мощь» (§4.6, пункт 4) ────────────── */
+/* ─────────── бюджеты процентных семейств (§4.6, пункт 4) ───────────── */
 
 /**
- * ПРОВЕРКА ЧИСЛА «ДВА» ЗАМЕРОМ. GDD §6.1 назначил бюджет расчётом:
+ * ПРОВЕРКА БЮДЖЕТОВ ЗАМЕРОМ. GDD §6.1 назначил бюджет «Мощи» расчётом:
  * «четыре аффикса T1 против четырёх T5 дают ×1.5 урона, то есть тир
  * снаряжения решал бы бой в одиночку; при двух — ×1.23, около 82%».
  * Расчёт — не замер, и до M3a проверить его было нечем: аффиксов
  * не существовало.
  *
+ * В M3b тем же способом проверяются «Оплот» и «Проворство»: они тоже
+ * процентные и тоже перемножаются, то есть способны сложиться так же.
+ * Одна процедура на все три, а не три похожих: скопированный замер
+ * разошёлся бы с первой правкой одного из них.
+ *
  * Считается ровно то, что обещано: носитель четырёх T1 против носителя
  * четырёх T5, и то же самое при двух. Плюс контрольный прогон
  * с ОТКЛЮЧЁННЫМ бюджетом — иначе «при двух мягче» не с чем сравнить.
  */
-const ladder = balance.items.affixFamilies.might;
-const midOf = (tier) => (ladder[tier][0] + ladder[tier][1]) / 2;
+const PERCENT_FAMILIES = ['might', 'bastion', 'swiftness'];
 
-function withMight(count, tier) {
-  return { ...build('theft'), damageAffixes: Array.from({ length: count }, () => midOf(tier)) };
+const midOf = (family, tier) => {
+  const ladder = balance.items.affixFamilies[family];
+  return (ladder[tier][0] + ladder[tier][1]) / 2;
+};
+
+/**
+ * УРОВЕНЬ ЗАМЕРА — 34-й, а не первый, и это исправление, а не настройка.
+ *
+ * T1 выпадает только с ilvl 34 (§6.1). Сравнение «четыре T1 против
+ * четырёх T5» на первом уровне описывает матчап, которого не бывает,
+ * — и для семейств, чья сила зависит от уровня, оно врёт. Поймано
+ * на «Оплоте»: на первом уровне четыре T1 давали 100% побед и с бюджетом,
+ * и без, то есть замер переставал различать, держит ограничение
+ * или нет. У «Мощи» этого не видно, потому что процент УРОНА от уровня
+ * не зависит; её число при первом уровне записано в balance.json
+ * ($mightBudget) и совпадает с расчётом GDD.
+ */
+const BUDGET_LEVEL = 34;
+
+function withFamily(family, count, tier) {
+  const empty = { might: [], bastion: [], swiftness: [] };
+  return {
+    ...build('theft', [], BUDGET_LEVEL, BUDGET_LEVEL),
+    percentAffixes: {
+      ...empty,
+      [family]: Array.from({ length: count }, () => midOf(family, tier)),
+    },
+  };
 }
 
-const mightRuns = Math.max(400, Math.round(RUNS / 4));
-const budget = balance.items.mightBudget;
+const budgetRuns = Math.max(400, Math.round(RUNS / 4));
 
 /**
  * КОНТРОЛЬНЫЙ ПРОГОН БЕЗ БЮДЖЕТА.
@@ -216,35 +266,476 @@ const budget = balance.items.mightBudget;
  * Бюджет отключается подменой коэффициента, а не правкой движка:
  * матрица не имеет права трогать то, что меряет.
  */
-const noBudget = { ...balance, items: { ...balance.items, mightBudget: 99 } };
+const withoutBudget = (family) => ({
+  ...balance,
+  items: {
+    ...balance.items,
+    familyBudget: { ...balance.items.familyBudget, [family]: 99 },
+  },
+});
 
-/** Множитель урона от N аффиксов тира при заданном бюджете. */
-const multiplier = (count, tier, cap) =>
-  Array.from({ length: count }, () => midOf(tier))
+/** Множитель от N аффиксов тира при заданном бюджете. */
+const multiplier = (family, count, tier, cap) =>
+  Array.from({ length: count }, () => midOf(family, tier))
     .slice(0, cap)
     .reduce((acc, v) => acc * (1 + v), 1);
 
-const mightBudgetProbe = [];
-for (const count of [4, 2]) {
-  for (const [mode, rules, cap] of [
-    ['с бюджетом', balance, budget],
-    ['без бюджета', noBudget, 99],
-  ]) {
-    mightBudgetProbe.push({
-      count,
-      mode,
-      ratio: multiplier(count, 'T1', cap) / multiplier(count, 'T5', cap),
-      /* Метка сида ОДНА на все четыре прогона, и это не мелочь.
-         Аффиксы «Мощи» не тратят бросков (на это есть тест), поэтому
-         при одном сиде три строки с множителем ×1.226 обязаны совпасть
-         ПОБИТОВО, а отличаться должна ровно одна — та, где бюджет снят.
-         С разными метками строки расходились на 3.8 п.п., и это была
-         разница ВЫБОРОК, а не баланса: ровно то, за что матрица ругает
-         условные броски. */
-      ...duel(withMight(count, 'T1'), withMight(count, 'T5'), 'might', mightRuns, rules),
-    });
+const budgetProbe = [];
+for (const family of PERCENT_FAMILIES) {
+  const budget = balance.items.familyBudget[family];
+  for (const count of [4, 2]) {
+    for (const [mode, rules, cap] of [
+      ['с бюджетом', balance, budget],
+      ['без бюджета', withoutBudget(family), 99],
+    ]) {
+      budgetProbe.push({
+        family,
+        budget,
+        count,
+        mode,
+        ratio: multiplier(family, count, 'T1', cap) / multiplier(family, count, 'T5', cap),
+        /* Метка сида ОДНА на все прогоны семейства, и это не мелочь.
+           Процентные аффиксы не тратят бросков (на это есть тест), поэтому
+           при одном сиде строки с одинаковым множителем обязаны совпасть
+           ПОБИТОВО, а отличаться должна ровно та, где бюджет снят.
+           С разными метками строки расходились на 3.8 п.п., и это была
+           разница ВЫБОРОК, а не баланса: ровно то, за что матрица ругает
+           условные броски. */
+        ...duel(
+          withFamily(family, count, 'T1'),
+          withFamily(family, count, 'T5'),
+          family,
+          budgetRuns,
+          rules,
+        ),
+      });
+    }
   }
 }
+
+/* ──────────────────── кривая зон (§4.6, пункт 4) ─────────────────────── */
+
+/**
+ * КРИВАЯ ЗОН. «Ожидаемый винрейт игрока в тир-снаряжении по зонам:
+ * 85% / 75% / 65% / 55% / 45%.»
+ *
+ * До M3b этот пункт был не реализован и честно печатался как
+ * не проверяемый: зон не существовало, и подставить вместо них манекенов
+ * значило бы проверять выдуманные числа о выдуманных зонах.
+ *
+ * ЧТО ЗДЕСЬ СЧИТАЕТСЯ. Игрок берётся на ВЕРХНЕМ уровне зоны и в полном
+ * эпическом комплекте того же ilvl — это и есть «тир-снаряжение».
+ * Противники — обычные монстры зоны (босс отдельной строкой: он пятый
+ * бой, а не типичный враг, и смешивать их значило бы занижать оценку
+ * первых четырёх). Сложность нормальная.
+ *
+ * Рычаг калибровки — `power` в zones.json, множитель силы врагов зоны.
+ * Уровень один кривой не даёт: игрок приходит в зону уровнем по ней,
+ * и без множителя пятая зона была бы ровно так же трудна, как первая.
+ */
+const zones = JSON.parse(readFileSync(new URL('packages/data/zones.json', root), 'utf8')).zones;
+const monsterSpecs = Object.fromEntries(
+  JSON.parse(readFileSync(new URL('packages/data/monsters.json', root), 'utf8')).monsters.map(
+    (m) => [m.key, m],
+  ),
+);
+/* Базы читаются из json НАПРЯМУЮ, поэтому умолчания схемы надо
+   подставить руками: `minIlvl` в файле указан не у всех, а генератор
+   сравнивает его с уровнем и на `undefined` отбрасывает базу молча.
+   Ловится это не ошибкой, а пустым пулом слота — то есть «у игрока
+   почему-то нет амулета». */
+const itemBases = Object.fromEntries(
+  JSON.parse(readFileSync(new URL('packages/data/items/bases.json', root), 'utf8')).bases.map(
+    (b) => [b.key, { minIlvl: 1, ...b }],
+  ),
+);
+
+/** Цель §4.6 по зонам, в порядке их следования. */
+const ZONE_TARGETS = [0.85, 0.75, 0.65, 0.55, 0.45];
+/** Допуск. Кривая — ориентир дизайна, а не физическая константа. */
+const ZONE_TOLERANCE = 0.07;
+
+const { generateItem } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
+
+/** Монстр как боец. Повторяет server/src/battle/monsters.ts по данным. */
+function monsterFighter(spec, level, power) {
+  const curve = balance.monsters;
+  const stat = curve.baseStat + (level - 1) * curve.statPerLevel;
+  const armor = curve.armorBase + level * curve.armorPerLevel;
+  const sc = (m) => Math.round(stat * m * power);
+
+  return {
+    level,
+    atk: sc(spec.stats.atk),
+    def: sc(spec.stats.def),
+    agi: sc(spec.stats.agi),
+    spd: sc(spec.stats.spd),
+    pathBonusHp: 0,
+    gearBonusHp: 0,
+    accuracy: 0,
+    armor: Math.round(armor * spec.armor * power),
+    armorClass: spec.armorClass,
+    critBonus: 0,
+    startHp: null,
+    weapon: {
+      dmgMin: curve.weapon.dmgMin * spec.weapon.dmgMin,
+      dmgMax: curve.weapon.dmgMax * spec.weapon.dmgMax,
+      ilvl: level,
+      class: spec.weaponClass,
+    },
+    offhand: null,
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
+    statuses: [],
+    traits: spec.traits,
+  };
+}
+
+/**
+ * Игрок «в тир-снаряжении»: полный эпический комплект под уровень зоны.
+ *
+ * Сборка повторяет server/src/items/loadout.ts. Это дубль, и он назван:
+ * импортировать серверную сборку сюда нельзя — она тянет доступ к базе,
+ * а матрица обязана считаться без неё. Что дубль не разошёлся, видно
+ * по самой кривой: разойдись он — числа поехали бы разом во всех зонах.
+ */
+function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
+  const a = balance.archetypes[archetype];
+  const statScale = 1 + ((level - 1) * balance.sparring.statPerLevel) / 12;
+  const gear = 1 + ilvl * balance.items.ilvlScale;
+  const slots = ['weapon', 'offhand', 'helmet', 'chest', 'bracers', 'boots', 'amulet', 'ring'];
+
+  let armor = 0;
+  let atk = 0;
+  let hp = 0;
+  const accuracyAffixes = [];
+  let weapon = null;
+  let offhand = null;
+  let armorClass = 'medium';
+  const percentAffixes = { might: [], bastion: [], swiftness: [] };
+
+  for (const slot of slots) {
+    const item = generateItem(
+      `${seedTag}-${slot}-${ilvl}`,
+      { ilvl, slot, rarity: 'epic' },
+      balance.items,
+      Object.values(itemBases),
+    );
+    const base = itemBases[item.baseKey];
+
+    if (base.armor !== undefined) armor += base.armor * gear;
+    if (base.slot === 'chest' && base.armorClass !== undefined) armorClass = base.armorClass;
+    if (base.slot === 'weapon') {
+      /* Класс оружия задаётся СНАРУЖИ, а не достаётся броском.
+         Кривая зон меряется усреднением по трём классам: игрок оружие
+         ВЫБИРАЕТ под зону (§4.3, ради этого таблица матчапов и написана),
+         и мерить зону одним случайно выпавшим классом значит мерить,
+         повезло ли сегодня. Первый замер так и вышел: в Пустошах эталону
+         достался лёгкий клинок против средней брони босса, и босс
+         показал 0% — не потому что непроходим, а потому что комплект
+         был худшим из возможных. */
+      const chosen =
+        forceWeaponClass === undefined
+          ? base
+          : (Object.values(itemBases).find(
+              (b) => b.slot === 'weapon' && b.weaponClass === forceWeaponClass && b.minIlvl <= ilvl,
+            ) ?? base);
+      weapon = {
+        dmgMin: chosen.dmgMin * gear,
+        dmgMax: chosen.dmgMax * gear,
+        ilvl,
+        class: chosen.weaponClass,
+      };
+    }
+    if (base.slot === 'offhand' && base.offhandKind === 'shield') {
+      offhand = {
+        kind: 'shield',
+        blockChance: base.blockChance,
+        blockReduction: base.blockReduction,
+      };
+    }
+
+    for (const affix of item.affixes) {
+      if (affix.family === 'strength') atk += affix.value;
+      else if (affix.family === 'fortitude') armor += affix.value;
+      else if (affix.family === 'vitality') hp += affix.value;
+      // СПИСКОМ, а не суммой: у семейства бюджет, и сильнейшие
+      // из суммы обратно не выделить.
+      else if (affix.family === 'truehand') accuracyAffixes.push(affix.value);
+      else percentAffixes[affix.family].push(affix.value);
+    }
+  }
+
+  return {
+    level,
+    atk: Math.round(a.atk * statScale) + atk,
+    def: Math.round(a.def * statScale),
+    agi: Math.round(a.agi * statScale),
+    spd: Math.round(a.spd * statScale),
+    pathBonusHp: 0,
+    gearBonusHp: hp,
+    accuracy: a.accuracy,
+    armor: Math.round(armor),
+    armorClass,
+    critBonus: 0,
+    startHp: null,
+    weapon: weapon ?? { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
+    offhand,
+    percentAffixes,
+    accuracyAffixes,
+    statuses: [],
+    traits: [a.trait],
+  };
+}
+
+const zoneRuns = Math.max(200, Math.round(RUNS / 5));
+
+/**
+ * Режим подбора: печатает, какой `power` дал бы целевой винрейт.
+ *
+ * Живёт ЗДЕСЬ, а не отдельным скриптом, и это существенно: подбор
+ * обязан идти тем же кодом, что и проверка. Отдельный скрипт разошёлся
+ * бы с матрицей на первой же правке эталонного бойца — и подобранные
+ * им числа не прошли бы её собственную проверку.
+ *
+ *   node scripts/winrate-matrix.mjs --calibrate
+ */
+const CALIBRATE = argv.includes('--calibrate');
+
+const zoneCurve = zones.map((zone, index) => {
+  const playerLevel = zone.levels[1];
+  // Нормальная сложность: уровень игрока −1, зажатый диапазоном зоны.
+  const enemyLevel = Math.min(
+    zone.levels[1],
+    Math.max(zone.levels[0], playerLevel + balance.raid.difficulty.normal.enemyLevelOffset),
+  );
+
+  /* Носитель ОДИН на все зоны и сложности — `forbidden`, самый ровный
+     из четырёх. Разный носитель по зонам смешал бы трудность зоны
+     с силой архетипа, а меряется здесь первое.
+
+     ТРИ КОМПЛЕКТА, по одному на класс оружия, и результат усредняется:
+     игрок оружие выбирает под зону, а не получает броском. */
+  const kits = ['light', 'balanced', 'heavy'].map((weaponClass) =>
+    tierGearedPlayer('forbidden', playerLevel, playerLevel, `tier-${zone.id}`, weaponClass),
+  );
+
+  const across = (spec, tag) => {
+    const rates = kits.map(
+      (player, i) =>
+        duel(player, monsterFighter(spec, enemyLevel, zone.power), `${tag}-${i}`, zoneRuns).rate,
+    );
+    return rates.reduce((a, b) => a + b, 0) / rates.length;
+  };
+
+  const perMonster = zone.monsters.map((key) => ({
+    key,
+    rate: across(monsterSpecs[key], `zone-${zone.id}-${key}`),
+  }));
+
+  const bossRate = across(monsterSpecs[zone.boss], `zone-${zone.id}-boss`);
+
+  const rate = perMonster.reduce((sum, m) => sum + m.rate, 0) / perMonster.length;
+  const target = ZONE_TARGETS[index] ?? 0;
+
+  /* Подбор: двоичный поиск по множителю зоны. Печатается предложение,
+     файл не трогается — числа баланса правит человек, увидев их. */
+  let suggested = null;
+  if (CALIBRATE) {
+    let lo = 0.15;
+    let hi = 4;
+    for (let step = 0; step < 11; step++) {
+      const mid = (lo + hi) / 2;
+      const probe =
+        zone.monsters
+          .map((key) => {
+            const rates = kits.map(
+              (player, i) =>
+                duel(
+                  player,
+                  monsterFighter(monsterSpecs[key], enemyLevel, mid),
+                  `cal-${zone.id}-${key}-${mid.toFixed(3)}-${i}`,
+                  zoneRuns,
+                ).rate,
+            );
+            return rates.reduce((a, b) => a + b, 0) / rates.length;
+          })
+          .reduce((a, b) => a + b, 0) / zone.monsters.length;
+      if (probe > target) lo = mid;
+      else hi = mid;
+    }
+    suggested = Math.round(((lo + hi) / 2) * 100) / 100;
+  }
+
+  return {
+    id: zone.id,
+    power: zone.power,
+    playerLevel,
+    enemyLevel,
+    rate,
+    target,
+    within: Math.abs(rate - target) <= ZONE_TOLERANCE,
+    perMonster,
+    boss: bossRate,
+    suggested,
+  };
+});
+
+const zoneBreaches = zoneCurve.filter((z) => !z.within);
+
+/* ─────────────────── ДОХОДИМОСТЬ ЗАБЕГА · GDD §7.2 ───────────────────
+ *
+ * Кривая зон меряет ОДИН бой при равном снаряжении. Забег — другая
+ * величина, и одна из первой не выводится: HP переносится между боями,
+ * поэтому пять боёв по 85% дают вовсе не 0.85⁵, а заметно меньше —
+ * победа с четвертью запаса делает следующий бой не 85-процентным.
+ *
+ * Меряется то, ради чего рейд написан: доходит ли новый игрок
+ * до РЕШЕНИЯ. Решений три (после боёв 2, 3 и 4, §7.2); не увидев
+ * ни одного, игрок не увидел центральной механики игры.
+ *
+ * Боец — НАСТОЯЩИЙ СВЕЖИЙ ИЗГНАННИК: статы архетипа первого уровня,
+ * из снаряжения один обычный меч первого уровня, ровно то, что выдаёт
+ * `grantStartingWeapon`. Не «эталон в тир-комплекте»: комплекта у него
+ * нет и взяться ему неоткуда, а мерить первую сессию на снаряжённом
+ * бойце значит мерить не первую сессию.
+ */
+const { maxHp: maxHpOf } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
+
+const STARTING_WEAPON = 'weapon.sword';
+
+function freshExile(archetype) {
+  const a = balance.archetypes[archetype];
+  const base = itemBases[STARTING_WEAPON];
+  const gear = 1 + 1 * balance.items.ilvlScale;
+
+  return {
+    level: 1,
+    atk: a.atk,
+    def: a.def,
+    agi: a.agi,
+    spd: a.spd,
+    pathBonusHp: 0,
+    gearBonusHp: 0,
+    accuracy: a.accuracy,
+    armor: 0,
+    armorClass: 'medium',
+    critBonus: 0,
+    startHp: null,
+    // Обычная редкость — ноль аффиксов (§6.2). Первый лут обязан
+    // быть шагом вперёд, а не догоняющим.
+    weapon: {
+      dmgMin: base.dmgMin * gear,
+      dmgMax: base.dmgMax * gear,
+      ilvl: 1,
+      class: base.weaponClass,
+    },
+    offhand: null,
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
+    statuses: [],
+    traits: [a.trait],
+  };
+}
+
+/** Доля максимума, возвращаемая между боями. Зона может её переопределить. */
+function restoreFractionOf(zone) {
+  return zone.hpRestoreBetweenFights ?? balance.raid.hpRestoreBetweenFights;
+}
+
+/**
+ * Один забег до конца или до смерти. Повторяет server/src/runs/service.ts.
+ *
+ * `withPotions` — не «читерский режим», а вторая честная величина:
+ * без зелий меряется САМА настройка, с зельями — то, что увидит игрок,
+ * который ими пользуется. Числа расходятся, и показывать одно значило бы
+ * выбрать за человека, какой вопрос он задал.
+ */
+function simulateRun(player, zone, seedTag, withPotions) {
+  const maxHp = maxHpOf(player, balance);
+  const restore = restoreFractionOf(zone);
+  const enemyLevel = Math.min(
+    zone.levels[1],
+    Math.max(zone.levels[0], player.level + balance.raid.difficulty.normal.enemyLevelOffset),
+  );
+
+  let hp = maxHp;
+  let potions = withPotions ? balance.raid.potionChargesPerRun : 0;
+  let cleared = 0;
+
+  for (let fight = 0; fight < balance.raid.fightsPerRun; fight++) {
+    /* Зелье пьётся МЕЖДУ боями, и политика здесь простейшая: ниже
+       половины запаса — пить. Сложная политика мерила бы мастерство
+       игрока, а не настройку. */
+    if (potions > 0 && hp < maxHp * (1 - balance.raid.potionHealFraction)) {
+      hp = Math.min(maxHp, Math.round(hp + maxHp * balance.raid.potionHealFraction));
+      potions--;
+    }
+
+    const last = fight === balance.raid.fightsPerRun - 1;
+    const spec = last
+      ? monsterSpecs[zone.boss]
+      : monsterSpecs[zone.monsters[fight % zone.monsters.length]];
+
+    const { outcome } = resolveBattle(
+      [{ ...player, startHp: hp }, monsterFighter(spec, enemyLevel, zone.power)],
+      balance,
+      `${seedTag}-f${fight}`,
+    );
+
+    if (outcome.winner !== 0) return cleared;
+    cleared++;
+    hp = Math.min(maxHp, Math.max(1, Math.round(outcome.hpRemaining[0] + maxHp * restore)));
+  }
+
+  return cleared;
+}
+
+/** Доходимость меряется на ПЕРВОЙ зоне: первая сессия идёт туда. */
+const REACH_ZONE = zones[0];
+
+/**
+ * ЦЕЛЬ дизайна и ПОРОГ проверки — разные числа, и их нельзя путать.
+ *
+ * Цель: до первого решения доходит больше половины забегов. Она
+ * НЕ ДОСТИГНУТА и рычагом восстановления недостижима — замерено:
+ * даже при полном исцелении между боями (доля 1.0, потолок рычага)
+ * выходит 35%, потому что связывает не перенос HP, а винрейт свежего
+ * изгнанного в ОДНОМ бою при полном запасе: у него ноль брони, вся
+ * броня в игре приходит с предметов.
+ *
+ * Порог: то, что достигнуто сейчас, минус запас на шум. Он сторожит
+ * РЕГРЕССИЮ, а не подтверждает цель. Ставить порогом цель значило бы
+ * держать сборку красной на известном и вынесенном человеку вопросе;
+ * молча опустить цель до порога — выдать недостигнутое за достигнутое.
+ * Поэтому печатаются оба.
+ */
+const REACH_TARGET = 0.5;
+const REACH_FLOOR = 0.08;
+const reachRuns = Math.max(200, Math.round(RUNS / 10));
+
+const reach = ARCHETYPES.map((archetype) => {
+  const player = freshExile(archetype);
+  const tally = (withPotions) => {
+    const counts = [0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < reachRuns; i++) {
+      counts[simulateRun(player, REACH_ZONE, `reach-${archetype}-${i}`, withPotions)]++;
+    }
+    // Доля забегов, в которых пройдено НЕ МЕНЬШЕ n боёв.
+    const atLeast = (n) => counts.slice(n).reduce((a, b) => a + b, 0) / reachRuns;
+    return { first: atLeast(2), second: atLeast(3), third: atLeast(4), full: atLeast(5) };
+  };
+  return { archetype, dry: tally(false), potions: tally(true) };
+});
+
+const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) / reach.length;
+
+/* Порог стоит на ПЕРВОМ решении и на замере БЕЗ зелий. Первое решение —
+   потому что не увидев ни одного, игрок не увидел механики вовсе.
+   Без зелий — потому что зелья это выбор игрока, а порог обязан мерить
+   настройку, а не то, догадался ли он пить. */
+const reachBreached = reachAvg('first', 'dry') < REACH_FLOOR;
+const reachShort = reachAvg('first', 'dry') < REACH_TARGET;
 
 /* ─────────────────────────────── вывод ──────────────────────────────── */
 
@@ -257,7 +748,18 @@ const breaches = pairs.filter((p) => p.rate < LOW || p.rate > HIGH);
 if (AS_JSON) {
   console.log(
     JSON.stringify(
-      { runs: RUNS, corridor: [LOW, HIGH], pairs, combos, solo, mightBudgetProbe, breaches },
+      {
+        runs: RUNS,
+        corridor: [LOW, HIGH],
+        pairs,
+        combos,
+        solo,
+        budgetProbe,
+        zoneCurve,
+        reach,
+        breaches,
+        zoneBreaches,
+      },
       null,
       2,
     ),
@@ -355,33 +857,130 @@ if (AS_JSON) {
     console.log('  Работает без условия, в отличие от соседей, — поэтому проверяется отдельно.');
   }
 
-  console.log(`\nБЮДЖЕТ СЕМЕЙСТВА «МОЩЬ» · §6.1, проверка расчёта замером`);
+  console.log(`\nБЮДЖЕТЫ ПРОЦЕНТНЫХ СЕМЕЙСТВ · §6.1, проверка расчёта замером`);
   console.log(`Носитель N аффиксов T1 против носителя N аффиксов T5.`);
-  console.log(`Текущий бюджет: ${budget}. Прогонов на пару: ${mightRuns}.\n`);
+  console.log(`Уровень и ilvl носителей: ${BUDGET_LEVEL} — там, где T1 выпадает.`);
+  console.log(`Прогонов на пару: ${budgetRuns}.\n`);
   console.log(
-    `${pad('аффиксов', 10)}${pad('режим', 14)}${padL('множитель', 11)}${padL('винрейт', 9)}`,
+    `${pad('семейство', 12)}${pad('аффиксов', 10)}${pad('режим', 14)}${padL('множитель', 11)}${padL('винрейт', 9)}`,
   );
-  console.log('─'.repeat(56));
-  for (const probe of mightBudgetProbe) {
+  console.log('─'.repeat(68));
+  let lastFamily = null;
+  for (const probe of budgetProbe) {
+    if (lastFamily !== null && probe.family !== lastFamily) console.log('');
+    lastFamily = probe.family;
     console.log(
-      pad(probe.count, 10) +
+      pad(probe.family, 12) +
+        pad(probe.count, 10) +
         pad(probe.mode, 14) +
         padL(`×${probe.ratio.toFixed(3)}`, 11) +
         padL(pct(probe.rate), 9),
     );
   }
   console.log('');
-  console.log('GDD §6.1 назначил бюджет РАСЧЁТОМ: «четыре T1 против четырёх T5');
-  console.log('дают ×1.5 урона», «при двух — ×1.23, около 82%». Строки');
+  console.log('GDD §6.1 назначил бюджет «Мощи» РАСЧЁТОМ: «четыре T1 против четырёх');
+  console.log('T5 дают ×1.5 урона», «при двух — ×1.23, около 82%». Строки');
   console.log('«без бюджета» проверяют первое утверждение, строки «с бюджетом» —');
   console.log('что ограничение действительно держит: при четырёх аффиксах оно');
-  console.log('обязано давать то же, что при двух.');
+  console.log('обязано давать то же, что при двух. Для «Оплота» и «Проворства»');
+  console.log('числа бюджета назначены по аналогии и проверяются здесь же.');
 
-  console.log(`\nКРИВАЯ ЗОН (§4.6, пункт 4) — НЕ ПРОВЕРЯЕТСЯ.`);
-  console.log('Отложено до M3b: зон и их противников ещё нет. Подставить');
-  console.log('манекенов означало бы проверять выдуманные числа о выдуманных');
-  console.log('зонах — такая проверка хуже отсутствующей, потому что');
-  console.log('выглядит как гарантия.\n');
+  console.log(`\nКРИВАЯ ЗОН · §4.6, пункт 4`);
+  console.log('Игрок в полном эпическом комплекте на верхнем уровне зоны,');
+  console.log(`нормальная сложность, ${zoneRuns} боёв на монстра.`);
+  console.log(`Допуск ±${(ZONE_TOLERANCE * 100).toFixed(0)} п.п.\n`);
+  console.log(
+    `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('винрейт', 9)}${padL('цель', 7)}${padL('босс', 8)}   по монстрам`,
+  );
+  console.log('─'.repeat(86));
+  for (const z of zoneCurve) {
+    console.log(
+      pad(z.id, 12) +
+        padL(`${z.playerLevel}/${z.enemyLevel}`, 5) +
+        padL(z.power.toFixed(2), 8) +
+        padL(pct(z.rate), 9) +
+        padL(pct(z.target), 7) +
+        padL(pct(z.boss), 8) +
+        '   ' +
+        z.perMonster.map((m) => `${m.key.split('.')[1]} ${pct(m.rate)}`).join(' · '),
+    );
+  }
+  console.log('');
+  console.log('');
+  console.log('ДОХОДИМОСТЬ ЗАБЕГА · §7.2, первая зона, нормальная сложность');
+  console.log('Свежий изгнанный: статы архетипа, один обычный меч, больше ничего.');
+  console.log(
+    `Восстановление между боями: ${(restoreFractionOf(REACH_ZONE) * 100).toFixed(0)}% максимума.`,
+  );
+  console.log('');
+  console.log(
+    pad('архетип', 12) +
+      padL('решение 1', 11) +
+      padL('решение 2', 11) +
+      padL('решение 3', 11) +
+      padL('весь забег', 12) +
+      '   (без зелий / с зельями)',
+  );
+  console.log('─'.repeat(86));
+  for (const r of reach) {
+    console.log(
+      pad(r.archetype, 12) +
+        padL(`${pct(r.dry.first)}/${pct(r.potions.first)}`, 11) +
+        padL(`${pct(r.dry.second)}/${pct(r.potions.second)}`, 11) +
+        padL(`${pct(r.dry.third)}/${pct(r.potions.third)}`, 11) +
+        padL(`${pct(r.dry.full)}/${pct(r.potions.full)}`, 12),
+    );
+  }
+  console.log('─'.repeat(86));
+  console.log(
+    pad('в среднем', 12) +
+      padL(`${pct(reachAvg('first', 'dry'))}/${pct(reachAvg('first', 'potions'))}`, 11) +
+      padL(`${pct(reachAvg('second', 'dry'))}/${pct(reachAvg('second', 'potions'))}`, 11) +
+      padL(`${pct(reachAvg('third', 'dry'))}/${pct(reachAvg('third', 'potions'))}`, 11) +
+      padL(`${pct(reachAvg('full', 'dry'))}/${pct(reachAvg('full', 'potions'))}`, 12),
+  );
+  console.log('');
+  console.log(`ЦЕЛЬ ${pct(REACH_TARGET)} до первого решения · ПОРОГ ПРОВЕРКИ ${pct(REACH_FLOOR)}`);
+  console.log('Оба берутся без зелий: зелья — выбор игрока, а число обязано');
+  console.log('мерить настройку, а не догадливость.');
+  if (reachShort && !reachBreached) {
+    console.log('');
+    console.log(
+      `ЦЕЛЬ НЕ ДОСТИГНУТА: ${pct(reachAvg('first', 'dry'))} против ${pct(REACH_TARGET)}.`,
+    );
+    console.log('Рычагом восстановления она и недостижима: при доле 1.0 — потолке');
+    console.log('рычага — выходит 35%. Связывает не перенос HP, а винрейт свежего');
+    console.log('изгнанного в ОДНОМ бою: у него ноль брони, вся броня в игре');
+    console.log('приходит с предметов. Вопрос вынесен человеку, сборка не красная:');
+    console.log('порог сторожит регрессию, а цель напечатана, чтобы её не забыли.');
+  }
+  if (reachBreached) {
+    console.log('');
+    console.log(
+      `ДОХОДИМОСТЬ УПАЛА НИЖЕ ПОРОГА: ${pct(reachAvg('first', 'dry'))} против ${pct(REACH_FLOOR)}.`,
+    );
+    console.log('Это РЕГРЕССИЯ: было выше. Смотреть надо, что изменилось');
+    console.log('в первой зоне или в стартовом оружии.');
+  }
+  console.log('');
+  console.log('Босс считается ОТДЕЛЬНО и в кривую не входит: он пятый бой,');
+  console.log('а не типичный противник зоны. Смешать их значило бы занижать');
+  console.log('оценку первых четырёх боёв.');
+
+  if (CALIBRATE) {
+    console.log('ПОДБОР МНОЖИТЕЛЕЙ (файл не тронут — числа правит человек):');
+    for (const z of zoneCurve) console.log(`  ${pad(z.id, 12)} power ${z.suggested}`);
+    console.log('');
+  }
+
+  if (zoneBreaches.length > 0) {
+    console.log(`\nКРИВАЯ ЗОН НАРУШЕНА в ${zoneBreaches.length} зон(ах):`);
+    for (const z of zoneBreaches) {
+      console.log(`  ${z.id}: ${pct(z.rate)} против цели ${pct(z.target)}`);
+    }
+    console.log('Править надо power в zones.json, а не цель в §4.6.');
+  }
+  console.log('');
 
   if (breaches.length > 0) {
     console.log(`КОРИДОР НАРУШЕН в ${breaches.length} пар(ах):`);
@@ -394,4 +993,8 @@ if (AS_JSON) {
   }
 }
 
-process.exit(breaches.length > 0 ? 1 : 0);
+/* Красным считается и нарушение коридора архетипов, и выход кривой зон
+   за допуск. Второе добавлено в M3b: пункт 4 §4.6 перестал быть
+   «не проверяется», а проверка, которая печатает число и не роняет
+   сборку, — это комментарий, а не проверка. */
+process.exit(breaches.length > 0 || zoneBreaches.length > 0 || reachBreached ? 1 : 0);

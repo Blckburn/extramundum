@@ -1,0 +1,525 @@
+{
+  "$comment": [
+    "Монстры. GDD §7.4 (зоны и классы), §7.5 (боссы).",
+    "",
+    "МОНСТРЫ — ДАННЫЕ, НЕ КОД. В коде нет ни одного имени монстра",
+    "и ни одного его числа: новый монстр это запись здесь плюс ссылка",
+    "на силуэт в rigs/.",
+    "",
+    "Статы — МНОЖИТЕЛИ к кривой из balance.monsters, а не абсолютные",
+    "числа. Кривая одна на всех, и правка прогрессии не требует обхода",
+    "двадцати записей.",
+    "",
+    "СИЛУЭТОВ ЧЕТЫРЕ НА ДВАДЦАТЬ МОНСТРОВ. Различать врага надо формой",
+    "с одного взгляда, а двадцать похожих человекоподобных фигур",
+    "не различались бы вовсе. Кто есть кто внутри формы, говорит",
+    "перекраска (`recolor`) — подмена ключей палитры, не хексов.",
+    "",
+    "Класс брони монстра работает через таблицу матчапов §4.3 и есть",
+    "главная причина переодеваться перед зоной. Класс оружия — то же",
+    "самое с другой стороны.",
+    "",
+    "МНОЖИТЕЛИ БОССОВ ВЫВЕРЕНЫ ЗАМЕРОМ (M3b, pnpm balance:matrix) под 40%",
+    "побед у игрока в тир-снаряжении: труднее рядового боя, но проходимо.",
+    "Вышло 36–42% по пяти зонам.",
+    "",
+    "ПОЧЕМУ ЧАСТЬ МНОЖИТЕЛЕЙ НИЖЕ ЕДИНИЦЫ, хотя это боссы. Силу боссу дают",
+    "МЕХАНИКИ, а не статы: ярость ниже 30% HP и тяжёлый удар каждый третий",
+    "ход (§7.5) плюс класс брони и оружия, работающий через матчапы §4.3.",
+    "С исходными множителями 1.20–1.45 замер показывал 0–33% побед — то есть",
+    "пятый бой был не трудным, а закрытым. Уменьшать пришлось именно статы:",
+    "механики §7.5 заданы документом и трогать их нельзя.",
+    "",
+    "Отсюда практическое следствие: править числа босса на глаз нельзя.",
+    "Прибавка к atk у него стоит куда меньше, чем кажется, а смена класса",
+    "брони — куда больше."
+  ],
+  "$source": "GDD §7.4, §7.5",
+  "monsters": [
+    {
+      "key": "wastes.scavenger",
+      "zone": "wastes",
+      "rig": "gaunt",
+      "recolor": {
+        "charcoal": "earth",
+        "parchment": "bone"
+      },
+      "armorClass": "light",
+      "weaponClass": "light",
+      "boss": false,
+      "stats": {
+        "atk": 0.95,
+        "def": 0.85,
+        "agi": 1.15,
+        "spd": 1.1
+      },
+      "armor": 0.8,
+      "weapon": {
+        "dmgMin": 0.9,
+        "dmgMax": 1
+      },
+      "traits": ["bleedout"]
+    },
+    {
+      "key": "wastes.strayDog",
+      "zone": "wastes",
+      "rig": "beast",
+      "recolor": {
+        "earth": "soot",
+        "charcoal": "earth"
+      },
+      "armorClass": "light",
+      "weaponClass": "light",
+      "boss": false,
+      "stats": {
+        "atk": 0.9,
+        "def": 0.8,
+        "agi": 1.25,
+        "spd": 1.3
+      },
+      "armor": 0.7,
+      "weapon": {
+        "dmgMin": 0.8,
+        "dmgMax": 0.95
+      },
+      "traits": ["quickstep"]
+    },
+    {
+      "key": "wastes.footpad",
+      "zone": "wastes",
+      "rig": "gaunt",
+      "recolor": {
+        "charcoal": "soot",
+        "parchment": "ash"
+      },
+      "armorClass": "light",
+      "weaponClass": "balanced",
+      "boss": false,
+      "stats": {
+        "atk": 1.05,
+        "def": 0.95,
+        "agi": 1.05,
+        "spd": 1
+      },
+      "armor": 0.9,
+      "weapon": {
+        "dmgMin": 0.95,
+        "dmgMax": 1.05
+      },
+      "traits": ["slippery"]
+    },
+    {
+      "key": "wastes.tollman",
+      "zone": "wastes",
+      "rig": "brute",
+      "recolor": {
+        "ochre": "blood",
+        "parchment": "ochre"
+      },
+      "armorClass": "medium",
+      "weaponClass": "heavy",
+      "boss": true,
+      "stats": {
+        "atk": 0.98,
+        "def": 0.96,
+        "agi": 1.02,
+        "spd": 1.01
+      },
+      "armor": 0.97,
+      "weapon": {
+        "dmgMin": 0.98,
+        "dmgMax": 0.97
+      },
+      "traits": ["ironGrip", "bossEnrage", "bossHeavyStrike"]
+    },
+    {
+      "key": "warcamp.picket",
+      "zone": "warcamp",
+      "rig": "husk",
+      "recolor": {
+        "tin": "ash",
+        "ash": "charcoal"
+      },
+      "armorClass": "medium",
+      "weaponClass": "balanced",
+      "boss": false,
+      "stats": {
+        "atk": 0.95,
+        "def": 1.15,
+        "agi": 0.95,
+        "spd": 0.95
+      },
+      "armor": 1.15,
+      "weapon": {
+        "dmgMin": 0.9,
+        "dmgMax": 1
+      },
+      "traits": ["bulwark"]
+    },
+    {
+      "key": "warcamp.mercenary",
+      "zone": "warcamp",
+      "rig": "brute",
+      "recolor": {
+        "ochre": "earth"
+      },
+      "armorClass": "medium",
+      "weaponClass": "heavy",
+      "boss": false,
+      "stats": {
+        "atk": 1.15,
+        "def": 1,
+        "agi": 0.9,
+        "spd": 0.95
+      },
+      "armor": 1,
+      "weapon": {
+        "dmgMin": 1.1,
+        "dmgMax": 1.2
+      },
+      "traits": ["overpower"]
+    },
+    {
+      "key": "warcamp.shieldman",
+      "zone": "warcamp",
+      "rig": "husk",
+      "recolor": {
+        "tin": "tin",
+        "charcoal": "ash"
+      },
+      "armorClass": "heavy",
+      "weaponClass": "balanced",
+      "boss": false,
+      "stats": {
+        "atk": 0.9,
+        "def": 1.25,
+        "agi": 0.85,
+        "spd": 0.85
+      },
+      "armor": 1.3,
+      "weapon": {
+        "dmgMin": 0.85,
+        "dmgMax": 0.95
+      },
+      "traits": ["fortress"]
+    },
+    {
+      "key": "warcamp.serjeant",
+      "zone": "warcamp",
+      "rig": "husk",
+      "recolor": {
+        "tin": "ochre",
+        "ash": "earth"
+      },
+      "armorClass": "heavy",
+      "weaponClass": "heavy",
+      "boss": true,
+      "stats": {
+        "atk": 1.17,
+        "def": 1.26,
+        "agi": 0.91,
+        "spd": 0.96
+      },
+      "armor": 1.3,
+      "weapon": {
+        "dmgMin": 1.13,
+        "dmgMax": 1.22
+      },
+      "traits": ["hardened", "bossEnrage", "bossHeavyStrike"]
+    },
+    {
+      "key": "catacombs.plaguebearer",
+      "zone": "catacombs",
+      "rig": "gaunt",
+      "recolor": {
+        "charcoal": "bile",
+        "parchment": "bile",
+        "bone": "parchment"
+      },
+      "armorClass": "cloth",
+      "weaponClass": "light",
+      "boss": false,
+      "stats": {
+        "atk": 0.95,
+        "def": 0.85,
+        "agi": 1.05,
+        "spd": 1.05
+      },
+      "armor": 0.55,
+      "weapon": {
+        "dmgMin": 0.85,
+        "dmgMax": 0.95
+      },
+      "traits": ["plaguebearer"]
+    },
+    {
+      "key": "catacombs.corpsehandler",
+      "zone": "catacombs",
+      "rig": "brute",
+      "recolor": {
+        "ochre": "charcoal",
+        "parchment": "earth"
+      },
+      "armorClass": "cloth",
+      "weaponClass": "balanced",
+      "boss": false,
+      "stats": {
+        "atk": 1.1,
+        "def": 1,
+        "agi": 0.9,
+        "spd": 0.9
+      },
+      "armor": 0.65,
+      "weapon": {
+        "dmgMin": 1.05,
+        "dmgMax": 1.15
+      },
+      "traits": ["butcher"]
+    },
+    {
+      "key": "catacombs.emberkeeper",
+      "zone": "catacombs",
+      "rig": "gaunt",
+      "recolor": {
+        "charcoal": "blood",
+        "parchment": "flame"
+      },
+      "armorClass": "cloth",
+      "weaponClass": "light",
+      "boss": false,
+      "stats": {
+        "atk": 1,
+        "def": 0.85,
+        "agi": 1.1,
+        "spd": 1.05
+      },
+      "armor": 0.55,
+      "weapon": {
+        "dmgMin": 0.9,
+        "dmgMax": 1
+      },
+      "traits": ["pyromancer"]
+    },
+    {
+      "key": "catacombs.quarantineWarden",
+      "zone": "catacombs",
+      "rig": "husk",
+      "recolor": {
+        "tin": "bone",
+        "ash": "parchment",
+        "charcoal": "bile"
+      },
+      "armorClass": "cloth",
+      "weaponClass": "balanced",
+      "boss": true,
+      "stats": {
+        "atk": 0.85,
+        "def": 0.8,
+        "agi": 1,
+        "spd": 1
+      },
+      "armor": 1.25,
+      "weapon": {
+        "dmgMin": 0.9,
+        "dmgMax": 0.8
+      },
+      "traits": ["amplifier", "bossEnrage", "bossHeavyStrike"]
+    },
+    {
+      "key": "forge.hammerhand",
+      "zone": "forge",
+      "rig": "brute",
+      "recolor": {
+        "ochre": "flame",
+        "parchment": "ash"
+      },
+      "armorClass": "heavy",
+      "weaponClass": "heavy",
+      "boss": false,
+      "stats": {
+        "atk": 1.2,
+        "def": 1.05,
+        "agi": 0.85,
+        "spd": 0.9
+      },
+      "armor": 1.3,
+      "weapon": {
+        "dmgMin": 1.15,
+        "dmgMax": 1.3
+      },
+      "traits": ["berserker"]
+    },
+    {
+      "key": "forge.slagWalker",
+      "zone": "forge",
+      "rig": "husk",
+      "recolor": {
+        "tin": "charcoal",
+        "ash": "soot"
+      },
+      "armorClass": "heavy",
+      "weaponClass": "balanced",
+      "boss": false,
+      "stats": {
+        "atk": 0.95,
+        "def": 1.3,
+        "agi": 0.8,
+        "spd": 0.85
+      },
+      "armor": 1.45,
+      "weapon": {
+        "dmgMin": 0.9,
+        "dmgMax": 1
+      },
+      "traits": ["stoneskin"]
+    },
+    {
+      "key": "forge.bellowsHound",
+      "zone": "forge",
+      "rig": "beast",
+      "recolor": {
+        "earth": "flame",
+        "charcoal": "soot"
+      },
+      "armorClass": "medium",
+      "weaponClass": "light",
+      "boss": false,
+      "stats": {
+        "atk": 1.05,
+        "def": 0.85,
+        "agi": 1.2,
+        "spd": 1.25
+      },
+      "armor": 0.9,
+      "weapon": {
+        "dmgMin": 0.85,
+        "dmgMax": 1
+      },
+      "traits": ["bloodlust"]
+    },
+    {
+      "key": "forge.masterSmith",
+      "zone": "forge",
+      "rig": "husk",
+      "recolor": {
+        "tin": "flame",
+        "ash": "ochre",
+        "charcoal": "blood"
+      },
+      "armorClass": "heavy",
+      "weaponClass": "heavy",
+      "boss": true,
+      "stats": {
+        "atk": 1.06,
+        "def": 1.07,
+        "agi": 0.98,
+        "spd": 0.99
+      },
+      "armor": 1.1,
+      "weapon": {
+        "dmgMin": 1.05,
+        "dmgMax": 1.07
+      },
+      "traits": ["thorns", "bossEnrage", "bossHeavyStrike"]
+    },
+    {
+      "key": "abyss.pitCrawler",
+      "zone": "abyss",
+      "rig": "beast",
+      "recolor": {
+        "earth": "bile",
+        "charcoal": "soot",
+        "bone": "parchment"
+      },
+      "armorClass": "light",
+      "weaponClass": "light",
+      "boss": false,
+      "stats": {
+        "atk": 1.05,
+        "def": 0.9,
+        "agi": 1.25,
+        "spd": 1.2
+      },
+      "armor": 0.85,
+      "weapon": {
+        "dmgMin": 0.95,
+        "dmgMax": 1.05
+      },
+      "traits": ["phantom"]
+    },
+    {
+      "key": "abyss.boneStacker",
+      "zone": "abyss",
+      "rig": "gaunt",
+      "recolor": {
+        "charcoal": "bone",
+        "parchment": "bone",
+        "earth": "ash"
+      },
+      "armorClass": "cloth",
+      "weaponClass": "balanced",
+      "boss": false,
+      "stats": {
+        "atk": 1.1,
+        "def": 0.95,
+        "agi": 1.05,
+        "spd": 1
+      },
+      "armor": 0.7,
+      "weapon": {
+        "dmgMin": 1,
+        "dmgMax": 1.1
+      },
+      "traits": ["hexblade"]
+    },
+    {
+      "key": "abyss.lastCarter",
+      "zone": "abyss",
+      "rig": "brute",
+      "recolor": {
+        "ochre": "earth",
+        "parchment": "soot"
+      },
+      "armorClass": "medium",
+      "weaponClass": "heavy",
+      "boss": false,
+      "stats": {
+        "atk": 1.25,
+        "def": 1.05,
+        "agi": 0.9,
+        "spd": 0.95
+      },
+      "armor": 1.05,
+      "weapon": {
+        "dmgMin": 1.2,
+        "dmgMax": 1.3
+      },
+      "traits": ["executioner"]
+    },
+    {
+      "key": "abyss.firstExile",
+      "zone": "abyss",
+      "rig": "husk",
+      "recolor": {
+        "tin": "bone",
+        "ash": "charcoal",
+        "charcoal": "blood"
+      },
+      "armorClass": "heavy",
+      "weaponClass": "heavy",
+      "boss": true,
+      "stats": {
+        "atk": 0.91,
+        "def": 0.9,
+        "agi": 1,
+        "spd": 1
+      },
+      "armor": 0.9,
+      "weapon": {
+        "dmgMin": 0.93,
+        "dmgMax": 0.9
+      },
+      "traits": ["warlord", "bossEnrage", "bossHeavyStrike"]
+    }
+  ]
+}

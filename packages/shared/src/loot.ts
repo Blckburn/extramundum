@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { affixFamilySchema, affixTierSchema, raritySchema } from './items.js';
+import { affixFamilySchema, affixTierSchema, equipmentSlotSchema, raritySchema } from './items.js';
 
 /**
  * Коэффициенты генерации лута. GDD §6.1, §6.2.
@@ -19,6 +19,24 @@ const ladderSchema = z.object({
   T3: tierRange,
   T4: tierRange,
   T5: tierRange,
+  /**
+   * Умножается ли скатанное значение на `1 + ilvl × 0.04` при генерации.
+   *
+   * ОБЯЗАТЕЛЬНОЕ поле, а не флаг с умолчанием: забытое умолчание здесь
+   * молча обнуляет семейство к высоким уровням (см. `$scalesWithIlvl`
+   * в balance.json), а выглядит это как «аффикс просто слабоват».
+   */
+  scalesWithIlvl: z.boolean(),
+  /**
+   * Процентное семейство (множитель) или плоское (слагаемое).
+   *
+   * В данных, а не выведено по имени семейства в коде: ветка
+   * `family === 'strength'` в генераторе — это коэффициент, захардкоженный
+   * в логике, то есть баг по инварианту 5. Что список здесь совпадает
+   * с `PERCENT_AFFIX_FAMILIES`, проверяет тест: два источника правды
+   * расходятся молча.
+   */
+  percent: z.boolean(),
 });
 
 const byTier = z.object({
@@ -44,16 +62,43 @@ export const lootBalanceSchema = z.object({
   affixFamilies: z.object({
     might: ladderSchema,
     strength: ladderSchema,
+    fortitude: ladderSchema,
+    bastion: ladderSchema,
+    vitality: ladderSchema,
+    swiftness: ladderSchema,
+    truehand: ladderSchema,
   }),
-  mightBudget: z.int().min(1),
+  familyBudget: z.object({
+    might: z.int().min(1),
+    bastion: z.int().min(1),
+    swiftness: z.int().min(1),
+  }),
   capacity: z.object({ inv: z.int().min(1), stash: z.int().min(1) }),
   sell: z.object({
     base: z.number().min(0),
     rarityMultiplier: z.record(raritySchema, z.number().min(0)),
+    /**
+     * Прибавка к цене за аффикс, по тиру. GDD §6.3.
+     *
+     * Без неё два эпика — один с четырьмя T1, другой с четырьмя T5 —
+     * стоили бы одинаково, и читать аффиксы перед массовой продажей
+     * было бы незачем. А фильтр и замок существуют ровно затем,
+     * чтобы игрок читал.
+     */
+    affixTierBonus: byTier,
   }),
   drop: z.object({
     rarityWeights: z.record(raritySchema, z.number().min(0)),
     familyWeights: z.record(affixFamilySchema, z.number().min(0)),
+    /**
+     * Какие семейства вообще могут выпасть на слоте. GDD §5.3.
+     *
+     * Это и есть роль слота: пока списка не было, кольцо, амулет
+     * и наручи отличались друг от друга только наличием брони.
+     * Слот без записи — ошибка данных, а не «любое семейство»:
+     * молча разрешить всё значило бы стереть роли обратно.
+     */
+    slotFamilies: z.record(equipmentSlotSchema, z.array(affixFamilySchema).min(1)),
     tierWeights: byTier,
   }),
 });

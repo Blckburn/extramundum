@@ -2,12 +2,12 @@ import { paletteColor } from '@extramundum/data';
 import { WebGLRenderer } from 'three';
 
 import { measureScene, type SceneBudget } from './budget.js';
-import { createBattleScene, frameCamera, type BattleScene } from './scene.js';
+import { createBattleScene, frameCamera, type BattleScene, type EnemyLook } from './scene.js';
 
 export { measureScene, budgetViolations, DRAW_CALLS_UPPER_BOUND_HOLDS } from './budget.js';
 export type { SceneBudget } from './budget.js';
 export { createBattleScene, frameCamera } from './scene.js';
-export type { BattleScene } from './scene.js';
+export type { BattleScene, EnemyLook } from './scene.js';
 export { MaterialCache } from './materials.js';
 export { buildRig, GeometryCache } from './rig.js';
 export type { BuiltRig } from './rig.js';
@@ -42,8 +42,8 @@ export type RenderHandle = {
  * контекстов WebGL у браузера конечное число, и утечка одного из них
  * при переходе между экранами через несколько переходов роняет вкладку.
  */
-export function mountBattleScene(canvas: HTMLCanvasElement): RenderHandle {
-  const built = createBattleScene(canvas.clientWidth / Math.max(1, canvas.clientHeight));
+export function mountBattleScene(canvas: HTMLCanvasElement, enemy?: EnemyLook): RenderHandle {
+  const built = createBattleScene(canvas.clientWidth / Math.max(1, canvas.clientHeight), enemy);
 
   const renderer = new WebGLRenderer({
     canvas,

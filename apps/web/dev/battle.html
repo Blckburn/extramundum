@@ -57,12 +57,9 @@
        * ниоткуда: формула в браузер не попадает (инвариант 3).
        */
       const battle = {
-        battleId: 'dev-fixture',
         log: fixture.log,
         outcome: fixture.outcome,
         maxHp: fixture.maxHp,
-        rewards: {},
-        provisional: true,
       };
 
       const mounted = await mountBattle(surface, battle);

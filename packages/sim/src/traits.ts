@@ -110,12 +110,26 @@ export type TraitHooks = {
   onHit?(ctx: TraitContext): readonly BattleEvent[];
   onTakeDamage?(ctx: TraitContext): readonly BattleEvent[];
   onTurnStart?(ctx: TraitContext): readonly BattleEvent[];
+  /**
+   * Конец собственного хода, после разрешения действия.
+   *
+   * Существует ради предупреждений о БУДУЩЕМ: сказанное в начале хода
+   * встаёт в журнале над ударом этого же хода и читается как подпись
+   * к нему, а не как предсказание.
+   */
+  onTurnEnd?(ctx: TraitContext): readonly BattleEvent[];
   onKill?(ctx: TraitContext): readonly BattleEvent[];
 };
 
 export type Trait = {
   readonly id: TraitId;
-  readonly school: TraitSchool;
+  /**
+   * Школа §4.5 — или `monster`, если трейт принадлежит противнику
+   * и в пул выбора игрока не входит (§7.5). Значение, а не отдельный
+   * флаг: тогда любой перебор «трейты школы X» исключает их сам,
+   * без списка исключений, который однажды забудут пополнить.
+   */
+  readonly school: TraitSchool | 'monster';
   /** Якорный — меняет способ игры, а не добавляет процент (GDD §4.5). */
   readonly anchor?: boolean;
   modify?(ctx: TraitModifierContext): TraitModifiers;
@@ -723,9 +737,77 @@ const INNATE: readonly Trait[] = [
   },
 ];
 
+/* ───────── трейты монстров: механики босса, GDD §7.5 ─────────── */
+
+/**
+ * Две механики, ломающие стандартный расчёт. Трейтами, а не ветками
+ * в `resolve.ts`: там не упомянут по имени ни один трейт и ни один
+ * статус, и `if (isBoss)` сломал бы ровно это свойство.
+ *
+ * В пул выбора игрока не входят: школа у них `monster`, и любой перебор
+ * «трейты школы X» исключает их сам, без списка исключений, который
+ * однажды забудут пополнить.
+ */
+const MONSTER: readonly Trait[] = [
+  {
+    id: 'bossEnrage',
+    school: 'monster',
+    anchor: true,
+    // «Ниже 30% HP входит в enrage: +50% урона, −20% защиты».
+    // Сам эффект — СУЩЕСТВУЮЩИЙ статус: заводить второй с теми же
+    // числами значило бы держать одну правду в двух местах.
+    hooks: {
+      onTurnStart: (ctx) => {
+        if (ctx.state.fired > 0) return [];
+        if (hpFraction(ctx.self) > num(ctx.balance, 'bossEnrage', 'hpThreshold')) return [];
+
+        ctx.state.fired += 1;
+        return [fired(ctx, 'bossEnrage'), ...inflict(ctx, 'self', 'enrage', 1)];
+      },
+    },
+  },
+  {
+    id: 'bossHeavyStrike',
+    school: 'monster',
+    anchor: true,
+    /* Множитель встаёт в тот ход, который телеграф пообещал ходом раньше.
+       Считается от ЧИСЛА СВОИХ ХОДОВ, а не от тиков: боец действует раз
+       в ~8 тиков, и «раз в 8 тиков» из §7.5 означало бы «почти каждым
+       ходом» — телеграф висел бы непрерывно и перестал бы что-либо
+       сообщать. Документ исправлен, число здесь. */
+    modify: ({ state, balance }) =>
+      state.turns > 0 && state.turns % num(balance, 'bossHeavyStrike', 'everyNTurns') === 0
+        ? { outgoingDamageMultiplier: num(balance, 'bossHeavyStrike', 'damageMultiplier') }
+        : {},
+    hooks: {
+      onTurnStart: (ctx) => {
+        ctx.state.turns += 1;
+        return [];
+      },
+
+      /* ПРЕДУПРЕЖДЕНИЕ ИДЁТ ЗА ХОД ДО УДАРА, и выпускается оно В КОНЦЕ
+         хода. Проверяется СЛЕДУЮЩИЙ ход, а не текущий: событие в том же
+         ходу ничего бы не предсказывало.
+
+         Конец, а не начало — потому что в начале хода строка вставала
+         в журнале ВПЛОТНУЮ НАД обычным ударом того же хода, и читалась
+         как подпись к нему: игрок видел «замахивается», следом −25 и
+         решал, что тяжёлый удар уже случился. Механика была верна,
+         показ — нет, а другого способа увидеть бой у игрока нет. */
+      onTurnEnd: (ctx) => {
+        const every = num(ctx.balance, 'bossHeavyStrike', 'everyNTurns');
+        if ((ctx.state.turns + 1) % every === 0) {
+          return [{ t: 'telegraph', actor: ctx.selfIndex, inTurns: 1 }];
+        }
+        return [];
+      },
+    },
+  },
+];
+
 /* ─────────────────────────────── реестр ──────────────────────────────── */
 
-const DEFINITIONS: readonly Trait[] = [...STR, ...DEF, ...AGI, ...MAG, ...INNATE];
+const DEFINITIONS: readonly Trait[] = [...STR, ...DEF, ...AGI, ...MAG, ...INNATE, ...MONSTER];
 
 export const TRAITS: ReadonlyMap<TraitId, Trait> = new Map(DEFINITIONS.map((t) => [t.id, t]));
 

@@ -14,8 +14,21 @@ export const API_ROUTES = {
   auth: '/auth',
   /** Собственная регистрация поверх Better Auth. */
   register: '/auth/register',
-  battleStart: '/battle/start',
   simulatePreview: '/simulate/preview',
+
+  /**
+   * Забег с эвакуацией. GDD §7.2.
+   *
+   * У боя, зелья и эвакуации нет тела запроса: чей забег — из сессии,
+   * какой бой следующий — из состояния в базе. Принимать номер боя
+   * от клиента значило бы дать ему переиграть смерть.
+   */
+  zones: '/zones',
+  run: '/run',
+  runStart: '/run/start',
+  runFight: '/run/fight',
+  runPotion: '/run/potion',
+  runExtract: '/run/extract',
 
   /** Инвентарь и экипировка. GDD §5.3, §6.3. */
   items: '/items',

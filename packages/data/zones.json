@@ -1,0 +1,59 @@
+{
+  "$comment": [
+    "Зоны. GDD §7.4, диапазоны и классы врагов перенесены из документа.",
+    "",
+    "ЧЕГО ЗДЕСЬ НЕТ: Разлома. Бесконечная процедурная зона — эндгейм,",
+    "и §11 относит её к M4. Ключ `rift` в перечислениях остаётся,",
+    "записи о зоне нет: зона без монстров хуже отсутствующей, потому что",
+    "выглядит как реализованная.",
+    "",
+    "`power` — множитель силы врагов зоны, ОТДЕЛЬНО от уровня. Уровень",
+    "один кривой 85/75/65/55/45% из §4.6 не даёт: игрок приходит в зону",
+    "уровнем по ней. Числа выставлены замером — см. $calibration."
+  ],
+  "$source": "GDD §7.4",
+  "$calibration": "ВЫВЕРЕНО ЗАМЕРОМ (M3b, pnpm balance:matrix, секция «КРИВАЯ ЗОН»). Игрок в полном эпическом комплекте на верхнем уровне зоны, нормальная сложность, 600 боёв на монстра:\n\n  wastes 84.9% (цель 85)   warcamp 73.6% (75)   catacombs 62.3% (65)\n  forge 52.9% (55)         abyss 48.1% (45)\n\nЧТО ПОКАЗАЛА КАЛИБРОВКА, помимо самих множителей. Первая попытка дала power 1.85–3.62 — и при таких числах свежий изгнанный выигрывал в Пустошах 0% боёв вместо 57%. Две точки одной зоны (новичок внизу диапазона и одетый наверху) одним множителем не сводятся: дело было не в зоне, а в наклоне кривой монстров, который переехал от спарринг-манекена и отставал от роста снаряжения. Наклон исправлен (balance.monsters.$slope), после чего множители легли около единицы.\n\nОСТАЁТСЯ ЖЁСТКИМ НАЧАЛО. Свежий изгнанный со стартовым мечом и без брони выигрывает в Пустошах 68/71/45% у обычных монстров и 1% у босса. То есть первый забег — это два-три боя и эвакуация, а босс закрыт, пока не оденешься. Петля от этого работает, но первая сессия сурова; смягчать её — вопрос экономики и поселения (M3c).",
+  "zones": [
+    {
+      "id": "wastes",
+      "levels": [1, 8],
+      "armorClass": "light",
+      "power": 1.01,
+      "monsters": ["wastes.scavenger", "wastes.strayDog", "wastes.footpad"],
+      "boss": "wastes.tollman",
+      "hpRestoreBetweenFights": 0.5
+    },
+    {
+      "id": "warcamp",
+      "levels": [8, 16],
+      "armorClass": "medium",
+      "power": 0.79,
+      "monsters": ["warcamp.picket", "warcamp.mercenary", "warcamp.shieldman"],
+      "boss": "warcamp.serjeant"
+    },
+    {
+      "id": "catacombs",
+      "levels": [16, 24],
+      "armorClass": "cloth",
+      "power": 0.87,
+      "monsters": ["catacombs.plaguebearer", "catacombs.corpsehandler", "catacombs.emberkeeper"],
+      "boss": "catacombs.quarantineWarden"
+    },
+    {
+      "id": "forge",
+      "levels": [24, 32],
+      "armorClass": "heavy",
+      "power": 0.81,
+      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.bellowsHound"],
+      "boss": "forge.masterSmith"
+    },
+    {
+      "id": "abyss",
+      "levels": [32, 40],
+      "armorClass": "mixed",
+      "power": 1.23,
+      "monsters": ["abyss.pitCrawler", "abyss.boneStacker", "abyss.lastCarter"],
+      "boss": "abyss.firstExile"
+    }
+  ]
+}

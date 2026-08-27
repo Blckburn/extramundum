@@ -14,10 +14,12 @@
       "agi": 12,
       "spd": 11,
       "pathBonusHp": 0,
+      "gearBonusHp": 0,
       "accuracy": 0,
       "armor": 6,
       "armorClass": "medium",
       "critBonus": 0,
+      "startHp": null,
       "weapon": {
         "dmgMin": 8,
         "dmgMax": 14,
@@ -25,7 +27,12 @@
         "class": "balanced"
       },
       "offhand": null,
-      "damageAffixes": [],
+      "percentAffixes": {
+        "might": [],
+        "bastion": [],
+        "swiftness": []
+      },
+      "accuracyAffixes": [],
       "statuses": [],
       "traits": ["plaguebearer", "hexblade", "innateScholar"]
     },
@@ -36,10 +43,12 @@
       "agi": 9,
       "spd": 10,
       "pathBonusHp": 0,
+      "gearBonusHp": 0,
       "accuracy": 0,
       "armor": 9,
       "armorClass": "heavy",
       "critBonus": 0,
+      "startHp": null,
       "weapon": {
         "dmgMin": 7,
         "dmgMax": 12,
@@ -51,16 +60,21 @@
         "blockChance": 0.35,
         "blockReduction": 0.7
       },
-      "damageAffixes": [],
+      "percentAffixes": {
+        "might": [],
+        "bastion": [],
+        "swiftness": []
+      },
+      "accuracyAffixes": [],
       "statuses": [],
-      "traits": ["thorns", "pyromancer", "innateGuard"]
+      "traits": ["thorns", "pyromancer", "innateGuard", "bossEnrage", "bossHeavyStrike"]
     }
   ],
   "maxHp": [176, 194],
   "outcome": {
     "winner": 1,
-    "ticks": 139,
-    "hpRemaining": [0, 35]
+    "ticks": 119,
+    "hpRemaining": [0, 57]
   },
   "log": {
     "version": 2,
@@ -231,6 +245,11 @@
         "duration": 60
       },
       {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
+      },
+      {
         "t": "status_tick",
         "target": 0,
         "instance": 2,
@@ -296,21 +315,21 @@
         "roll": {
           "weaponRoll": 11.55330468992041,
           "ilvlScale": 1.16,
-          "atkMultiplier": 1.1666666666666667,
+          "atkMultiplier": 1.75,
           "mightMultiplier": 1,
           "matchupMultiplier": 1.05,
           "mitigation": 0.06382978723404255,
           "critMultiplier": 1,
           "blockReduction": 0,
-          "final": 15
+          "final": 23
         }
       },
       {
         "t": "damage",
         "target": 0,
-        "amount": 15,
+        "amount": 23,
         "crit": false,
-        "hpAfter": 117
+        "hpAfter": 109
       },
       {
         "t": "turn_start",
@@ -364,7 +383,7 @@
         "target": 0,
         "amount": 1,
         "crit": false,
-        "hpAfter": 116
+        "hpAfter": 108
       },
       {
         "t": "status_tick",
@@ -428,6 +447,11 @@
         "mitigated": 0
       },
       {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
+      },
+      {
         "t": "turn_start",
         "actor": 0,
         "tick": 54
@@ -466,7 +490,7 @@
         "target": 0,
         "amount": 1,
         "crit": false,
-        "hpAfter": 112
+        "hpAfter": 104
       },
       {
         "t": "status_tick",
@@ -496,21 +520,21 @@
         "roll": {
           "weaponRoll": 7.255059602247765,
           "ilvlScale": 1.16,
-          "atkMultiplier": 1.2,
+          "atkMultiplier": 1.7999999999999998,
           "mightMultiplier": 1,
           "matchupMultiplier": 1.05,
           "mitigation": 0.06382978723404255,
           "critMultiplier": 1,
           "blockReduction": 0,
-          "final": 10
+          "final": 15
         }
       },
       {
         "t": "damage",
         "target": 0,
-        "amount": 10,
+        "amount": 15,
         "crit": false,
-        "hpAfter": 102
+        "hpAfter": 89
       },
       {
         "t": "status_tick",
@@ -592,7 +616,7 @@
         "target": 0,
         "amount": 11,
         "crit": false,
-        "hpAfter": 88
+        "hpAfter": 75
       },
       {
         "t": "turn_start",
@@ -683,7 +707,12 @@
         "target": 0,
         "amount": 12,
         "crit": false,
-        "hpAfter": 76
+        "hpAfter": 63
+      },
+      {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
       },
       {
         "t": "turn_start",
@@ -724,7 +753,7 @@
         "target": 0,
         "amount": 1,
         "crit": false,
-        "hpAfter": 75
+        "hpAfter": 62
       },
       {
         "t": "status_expire",
@@ -745,21 +774,21 @@
         "roll": {
           "weaponRoll": 8.329938187005054,
           "ilvlScale": 1.16,
-          "atkMultiplier": 1.2,
+          "atkMultiplier": 1.7999999999999998,
           "mightMultiplier": 1,
           "matchupMultiplier": 1.05,
           "mitigation": 0.06382978723404255,
           "critMultiplier": 1,
           "blockReduction": 0,
-          "final": 11
+          "final": 17
         }
       },
       {
         "t": "damage",
         "target": 0,
-        "amount": 11,
+        "amount": 17,
         "crit": false,
-        "hpAfter": 64
+        "hpAfter": 45
       },
       {
         "t": "turn_start",
@@ -800,7 +829,7 @@
         "target": 0,
         "amount": 1,
         "crit": false,
-        "hpAfter": 63
+        "hpAfter": 44
       },
       {
         "t": "status_tick",
@@ -843,7 +872,7 @@
         "target": 0,
         "amount": 12,
         "crit": false,
-        "hpAfter": 51
+        "hpAfter": 32
       },
       {
         "t": "turn_start",
@@ -897,7 +926,7 @@
         "target": 0,
         "amount": 1,
         "crit": false,
-        "hpAfter": 50
+        "hpAfter": 31
       },
       {
         "t": "status_tick",
@@ -946,7 +975,7 @@
         "target": 0,
         "amount": 1,
         "crit": false,
-        "hpAfter": 49
+        "hpAfter": 30
       },
       {
         "t": "turn_start",
@@ -954,9 +983,27 @@
         "tick": 109
       },
       {
+        "t": "trait_fire",
+        "actor": 1,
+        "trait": "bossEnrage"
+      },
+      {
+        "t": "status_apply",
+        "target": 1,
+        "instance": 7,
+        "status": "enrage",
+        "stacks": 1,
+        "duration": -1
+      },
+      {
         "t": "dodge",
         "actor": 0,
         "mitigated": 0
+      },
+      {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
       },
       {
         "t": "turn_start",
@@ -980,193 +1027,26 @@
         "roll": {
           "weaponRoll": 11.981802725279342,
           "ilvlScale": 1.16,
-          "atkMultiplier": 1.2,
+          "atkMultiplier": 2.6999999999999997,
           "mightMultiplier": 1,
           "matchupMultiplier": 1.05,
           "mitigation": 0.06382978723404255,
           "critMultiplier": 1.8,
           "blockReduction": 0,
-          "final": 30
+          "final": 66
         }
       },
       {
         "t": "damage",
         "target": 0,
-        "amount": 30,
+        "amount": 66,
         "crit": true,
-        "hpAfter": 19
+        "hpAfter": 0
       },
       {
         "t": "trait_fire",
         "actor": 1,
         "trait": "pyromancer"
-      },
-      {
-        "t": "status_apply",
-        "target": 0,
-        "instance": 7,
-        "status": "burn",
-        "stacks": 1,
-        "duration": 60
-      },
-      {
-        "t": "status_tick",
-        "target": 0,
-        "instance": 7,
-        "status": "burn",
-        "stacks": 1,
-        "amount": 3
-      },
-      {
-        "t": "status_tick",
-        "target": 1,
-        "instance": 6,
-        "status": "poison",
-        "stacks": 1,
-        "amount": 2
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 127
-      },
-      {
-        "t": "attack",
-        "actor": 0,
-        "move": "basic",
-        "roll": {
-          "weaponRoll": 12.070231456572959,
-          "ilvlScale": 1.16,
-          "atkMultiplier": 1.2333333333333334,
-          "mightMultiplier": 1,
-          "matchupMultiplier": 1,
-          "mitigation": 0.09278350515463918,
-          "critMultiplier": 1,
-          "blockReduction": 0,
-          "final": 16
-        }
-      },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 16,
-        "crit": false,
-        "hpAfter": 39
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 15
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 129
-      },
-      {
-        "t": "attack",
-        "actor": 1,
-        "move": "basic",
-        "roll": {
-          "weaponRoll": 10.053499286503397,
-          "ilvlScale": 1.16,
-          "atkMultiplier": 1.2,
-          "mightMultiplier": 1,
-          "matchupMultiplier": 1.05,
-          "mitigation": 0.06382978723404255,
-          "critMultiplier": 1,
-          "blockReduction": 0,
-          "final": 14
-        }
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 14,
-        "crit": false,
-        "hpAfter": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 136
-      },
-      {
-        "t": "attack",
-        "actor": 0,
-        "move": "basic",
-        "roll": {
-          "weaponRoll": 10.00037079668005,
-          "ilvlScale": 1.16,
-          "atkMultiplier": 1.2333333333333334,
-          "mightMultiplier": 1,
-          "matchupMultiplier": 1,
-          "mitigation": 0.09278350515463918,
-          "critMultiplier": 1,
-          "blockReduction": 0.7,
-          "final": 4
-        }
-      },
-      {
-        "t": "block",
-        "actor": 1,
-        "mitigated": 9
-      },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 4,
-        "crit": false,
-        "hpAfter": 35
-      },
-      {
-        "t": "trait_fire",
-        "actor": 0,
-        "trait": "hexblade"
-      },
-      {
-        "t": "status_apply",
-        "target": 1,
-        "instance": 8,
-        "status": "hex",
-        "stacks": 1,
-        "duration": 21
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 139
-      },
-      {
-        "t": "attack",
-        "actor": 1,
-        "move": "basic",
-        "roll": {
-          "weaponRoll": 9.329242176429574,
-          "ilvlScale": 1.16,
-          "atkMultiplier": 1.1666666666666667,
-          "mightMultiplier": 1,
-          "matchupMultiplier": 1.05,
-          "mitigation": 0.06382978723404255,
-          "critMultiplier": 1,
-          "blockReduction": 0,
-          "final": 12
-        }
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 12,
-        "crit": false,
-        "hpAfter": 0
       },
       {
         "t": "death",

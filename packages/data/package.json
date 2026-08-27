@@ -19,6 +19,10 @@
       "types": "./dist/render.d.ts",
       "default": "./dist/render.js"
     },
+    "./zones": {
+      "types": "./dist/zones.d.ts",
+      "default": "./dist/zones.js"
+    },
     "./animations.json": "./animations.json"
   },
   "main": "./dist/index.js",

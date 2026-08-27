@@ -1,3 +1,4 @@
+import { balance as balanceData } from '@extramundum/data';
 import { API_ROUTES } from '@extramundum/shared';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -197,13 +198,16 @@ describe.skipIf(!HAS_DB)('API', () => {
       const before = await ctx.db.select().from(players).where(eq(players.username, username));
       const numberBefore = before[0]!.exileNumber;
 
+      // Берётся ПИШУЩИЙ эндпоинт: у превью записи нет вовсе, и лишние
+      // поля в нём ничего не доказали бы. `/run/start` создаёт забег
+      // и трогает профиль — если бы тело запроса куда-то дотекало,
+      // дотекло бы здесь.
       await post(
         ctx,
-        API_ROUTES.battleStart,
+        API_ROUTES.runStart,
         {
           zone: 'wastes',
           difficulty: 'normal',
-          loadoutHash: LOADOUT,
           // Ровно то, чем правили состояние в v1.0.
           gold: 999_999,
           level: 40,
@@ -242,7 +246,12 @@ describe.skipIf(!HAS_DB)('API', () => {
 
       expect(row.gold).toBe(0);
       expect(row.level).toBe(1);
-      expect(row.statAtk).toBe(5);
+      /* Статы — из balance.archetypes, а не из тела запроса. Сравнение
+         именно с данными, а не с числом в тесте: числа архетипов
+         калибруются матрицей, и тест не должен падать от правки баланса.
+         Проверяется то, что заявлено, — что 999 в тело не проходит. */
+      expect(row.statAtk).toBe(balanceData.archetypes.forbidden.atk);
+      expect(row.statAtk).not.toBe(999);
     });
 
     it('профиль читается по сессии, а не по идентификатору из запроса', async () => {
@@ -325,54 +334,6 @@ describe.skipIf(!HAS_DB)('API', () => {
     });
   });
 
-  describe('battle/start', () => {
-    const body = { zone: 'wastes', difficulty: 'normal', loadoutHash: LOADOUT } as const;
-
-    it('без сессии — 401', async () => {
-      expect((await post(ctx, API_ROUTES.battleStart, body)).status).toBe(401);
-    });
-
-    it('с сессией — проводит бой и возвращает лог', async () => {
-      // До M2b здесь стоял 501. Тест не обновили вместе с эндпоинтом,
-      // и это осталось незамеченным ровно потому, что интеграционные
-      // тесты без DATABASE_URL пропускаются: локально «всё зелено»,
-      // а в CI с базой — красно. Тот самый случай, ради которого
-      // в CI стоит CI=true.
-      const { jar } = await register(ctx);
-      const res = await post(ctx, API_ROUTES.battleStart, body, jar);
-
-      expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({
-        provisional: true,
-        rewards: {},
-        outcome: { winner: expect.anything() },
-      });
-
-      const parsed = res.body as {
-        log: { events: unknown[]; seed: string };
-        maxHp: [number, number];
-      };
-      expect(parsed.log.events.length).toBeGreaterThan(0);
-      expect(parsed.log.seed).toEqual(expect.any(String));
-      // Максимум HP присылает СЕРВЕР: вывести его из лога нельзя.
-      expect(parsed.maxHp[0]).toBeGreaterThan(0);
-      expect(parsed.maxHp[1]).toBeGreaterThan(0);
-    });
-
-    it('валидирует тело до того, как проводить бой', async () => {
-      const { jar } = await register(ctx);
-      const res = await post(
-        ctx,
-        API_ROUTES.battleStart,
-        { zone: 'нет такой зоны', difficulty: 'normal' },
-        jar,
-      );
-
-      expect(res.status).toBe(400);
-      expect(res.body).toMatchObject({ error: { code: 'validation_failed' } });
-    });
-  });
-
   /**
    * Вертикальный срез M1a: от HTTP до формул движка.
    *
@@ -393,13 +354,25 @@ describe.skipIf(!HAS_DB)('API', () => {
       const res = await post(ctx, API_ROUTES.simulatePreview, { ...body, runs: 100 }, jar);
 
       expect(res.status).toBe(200);
-      const payload = res.body as { winRate: number; runs: number; basis: string };
+      const payload = res.body as {
+        winRate: number;
+        runs: number;
+        basis: string;
+        against?: string[];
+        enemyLevel?: number;
+      };
 
       expect(payload.runs).toBe(100);
       expect(payload.winRate).toBeGreaterThanOrEqual(0);
       expect(payload.winRate).toBeLessThanOrEqual(1);
-      // Соперник помечен честно: зонных врагов ещё нет (M3).
-      expect(payload.basis).toBe('sparring-dummy');
+
+      /* Противники берутся ИЗ ЗОНЫ (M3b). До этого здесь стоял манекен,
+         и превью упиралось в потолок на снаряжённом персонаже. Ответ
+         обязан сказать, против кого считали: без этого «62%» игроку
+         не проверить. */
+      expect(payload.basis).toBe('zone-enemy');
+      expect(payload.against?.length ?? 0).toBeGreaterThan(0);
+      expect(payload.enemyLevel).toBeGreaterThanOrEqual(1);
     });
 
     it('одинаковый запрос даёт одинаковый ответ', async () => {
@@ -429,13 +402,18 @@ describe.skipIf(!HAS_DB)('API', () => {
         jar,
       );
 
-      const easy = (normal.body as { winRate: number }).winRate;
-      const hard = (nightmare.body as { winRate: number }).winRate;
+      const read = (res: typeof normal) => res.body as { winRate: number; enemyLevel?: number };
 
-      // Кошмар даёт противнику +5 уровней (balance.raid.difficulty).
-      // Если сложность не влияет — числа совпадут, и превью бесполезно.
-      expect(hard).toBeLessThanOrEqual(easy);
-      expect(easy - hard).toBeGreaterThan(0);
+      const easy = read(normal);
+      const hard = read(nightmare);
+
+      /* Кошмар даёт противнику +5 уровней, но уровень ещё и КЛАМПИТСЯ
+         диапазоном зоны (§7.3 + §7.4). Проверяется поэтому сам уровень,
+         а не только винрейт: у свежего персонажа обе оценки могут
+         упереться в одно и то же число, и тогда сравнение винрейтов
+         не докажет ничего — ни что сложность работает, ни что нет. */
+      expect(hard.enemyLevel).toBeGreaterThan(easy.enemyLevel ?? 0);
+      expect(hard.winRate).toBeLessThanOrEqual(easy.winRate);
     });
 
     it('инвариант 1: статы бойца в теле запроса игнорируются', async () => {

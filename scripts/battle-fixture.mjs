@@ -52,13 +52,16 @@ const SETUP = [
     agi: 12,
     spd: 11,
     pathBonusHp: 0,
+    gearBonusHp: 0,
     accuracy: 0,
     armor: 6,
     armorClass: 'medium',
     critBonus: 0,
+    startHp: null,
     weapon: { dmgMin: 8, dmgMax: 14, ilvl: 4, class: 'balanced' },
     offhand: null,
-    damageAffixes: [],
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
     statuses: [],
     traits: ['plaguebearer', 'hexblade', 'innateScholar'],
   },
@@ -69,15 +72,22 @@ const SETUP = [
     agi: 9,
     spd: 10,
     pathBonusHp: 0,
+    gearBonusHp: 0,
     accuracy: 0,
     armor: 9,
     armorClass: 'heavy',
     critBonus: 0,
+    startHp: null,
     weapon: { dmgMin: 7, dmgMax: 12, ilvl: 4, class: 'heavy' },
     offhand: { kind: 'shield', blockChance: 0.35, blockReduction: 0.7 },
-    damageAffixes: [],
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
+    accuracyAffixes: [],
     statuses: [],
-    traits: ['thorns', 'pyromancer', 'innateGuard'],
+    // Механики босса (§7.5): вход в ярость ниже порога HP и замах
+    // с телеграфом. Без них в эталоне не было бы события `telegraph`,
+    // и «показ не падает ни на одном событии» снова проверялось бы
+    // на неполной выборке.
+    traits: ['thorns', 'pyromancer', 'innateGuard', 'bossEnrage', 'bossHeavyStrike'],
   },
 ];
 
@@ -91,6 +101,7 @@ const REQUIRED = [
   'status_tick',
   'status_expire',
   'trait_fire',
+  'telegraph',
   'death',
 ];
 

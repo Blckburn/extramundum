@@ -1,4 +1,4 @@
-import type { BattleEvent, BattleStartResponse } from '@extramundum/shared';
+import type { BattleEvent, BattleLog, BattleOutcome } from '@extramundum/shared';
 
 import { el } from '../dom.ts';
 import { t } from '../i18n.ts';
@@ -38,9 +38,33 @@ export type MountedBattle = {
   stop(): void;
 };
 
+/**
+ * Что показу нужно от боя: лог, исход и максимум HP обеих сторон.
+ *
+ * Тип СВОЙ, а не ответ конкретного эндпоинта. Показ обслуживает и бой
+ * забега, и записанный эталонный лог с dev-страницы; привязка к форме
+ * одного ответа заставила бы второго притворяться первым.
+ */
+export type BattleToShow = {
+  readonly log: BattleLog;
+  readonly outcome: BattleOutcome;
+  readonly maxHp: readonly [number, number];
+  /**
+   * Как выглядит противник: ключ силуэта и подмена цветов.
+   *
+   * Приходит от сервера, а не выводится здесь: `monsters.json`
+   * в браузер не попадает. Без него бой идёт с человекоподобным —
+   * силуэт важен, но не настолько, чтобы из-за него не показать бой.
+   */
+  readonly enemyLook?: {
+    readonly rig: string;
+    readonly recolor?: Readonly<Record<string, string>>;
+  };
+};
+
 export async function mountBattle(
   surface: BattleSurface,
-  battle: BattleStartResponse,
+  battle: BattleToShow,
 ): Promise<MountedBattle | null> {
   const { canvas, overlay, controls, journalHost, readout } = surface;
 
@@ -58,7 +82,7 @@ export async function mountBattle(
   // в отсоединённый canvas значит оставить висеть контекст WebGL.
   if (!canvas.isConnected) return null;
 
-  const mounted = mountBattleScene(canvas);
+  const mounted = mountBattleScene(canvas, battle.enemyLook);
   const player = new BattlePlayer({
     scene: mounted.scene,
     log: battle.log,
@@ -67,7 +91,7 @@ export async function mountBattle(
 
   overlay.append(player.numbers.element);
 
-  const hud = renderHud(battle.maxHp);
+  const hud = renderHud([battle.maxHp[0], battle.maxHp[1]]);
   overlay.append(hud.element);
 
   /* ── итог показывается ТОЛЬКО когда бой досмотрен.
@@ -151,7 +175,7 @@ export async function mountBattle(
      HUD и журнал меняются несколько раз в секунду; трогать их
      шестьдесят раз в секунду значило бы делать работу впустую. */
   const refresh = (): void => {
-    hud.update(stateAt(battle.log, player.shownCount, battle.maxHp));
+    hud.update(stateAt(battle.log, player.shownCount, [battle.maxHp[0], battle.maxHp[1]]));
     // Прокрутка журнала — только пока бой идёт. На паузе игрок читает,
     // и дёргать под ним список значит мешать ровно тому, ради чего
     // журнал существует.
@@ -179,9 +203,6 @@ export async function mountBattle(
               ? t('battle.outcome.win')
               : t('battle.outcome.loss'),
         ),
-        ...(battle.provisional
-          ? [el('span', { class: 'arena__note' }, [t('battle.provisional')])]
-          : []),
       );
     }
   };

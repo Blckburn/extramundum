@@ -1,9 +1,11 @@
 import {
   EQUIPMENT_SLOTS,
+  isPercentFamily,
   RARITIES,
   type EquipmentSlot,
   type InventoryResponse,
   type ItemAffixView,
+  type LoadoutStats,
   type ItemView,
   type Rarity,
 } from '@extramundum/shared';
@@ -282,6 +284,10 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     clear(detail);
     const item = selected();
     if (item === null || data === null) return;
+    // Снимок набора В ЛОКАЛЬНУЮ константу: `data` — изменяемая переменная,
+    // и внутри колбэка её сужение теряется. Заодно строка аффикса
+    // и остальной разбор смотрят на ОДИН и тот же ответ сервера.
+    const stats = data.stats;
 
     detail.append(
       el('h2', { class: `inv__name inv__name--${item.rarity}` }, [t(`item.${item.baseKey}`)]),
@@ -321,12 +327,11 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     }
 
     if (item.affixes.length > 0) {
-      const budget = data.stats.mightBudget;
       detail.append(
         el(
           'ul',
           { class: 'inv__affixes' },
-          item.affixes.map((affix) => affixRow(affix, budget)),
+          item.affixes.map((affix) => affixRow(affix, stats)),
         ),
       );
     }
@@ -336,19 +341,32 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     void loadPreview(item);
   }
 
-  function affixRow(affix: ItemAffixView, budget: number): HTMLElement {
-    const text =
-      affix.family === 'might'
-        ? t('affix.might', { percent: Math.round(affix.value * 1000) / 10 })
-        : t('affix.strength', { value: affix.value });
+  /**
+   * Строка аффикса.
+   *
+   * Текст берётся по КЛЮЧУ СЕМЕЙСТВА (`affix.<family>`), а не ветвлением
+   * по каждому из семи: забытая ветка молча превратилась бы в строку
+   * другого семейства, и игрок прочитал бы «+12% урона» там, где надет
+   * «+12% брони». Отсутствующий ключ ловит тест локалей.
+   */
+  function affixRow(affix: ItemAffixView, stats: LoadoutStats): HTMLElement {
+    const family = affix.family;
+    const text = t(`affix.${family}`, {
+      // Проценты показываются процентами, плоские — единицами. Одно
+      // и то же число в двух видах — это пункт 4 аудита v1.0.
+      value: isPercentFamily(family) ? Math.round(affix.value * 1000) / 10 : affix.value,
+    });
 
     const children: (string | Node)[] = [
       el('span', { class: 'inv__affix-text' }, [text]),
       el('span', { class: 'inv__affix-tier' }, [affix.tier]),
     ];
 
-    // Пометку ставит СЕРВЕР: он один знает весь надетый набор.
-    if (affix.counted === false) {
+    // Пометку ставит СЕРВЕР: он один знает весь надетый набор. Бюджет
+    // есть только у процентных семейств — у плоских его нет вовсе,
+    // и пометка на них не приходит.
+    if (affix.counted === false && isPercentFamily(family)) {
+      const budget = stats.percentAffixes[family].budget;
       children.push(el('span', { class: 'inv__affix-cut' }, [t('affix.notCounted', { budget })]));
     }
 
@@ -468,7 +486,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       notice.textContent =
         result.sold === 0
           ? t('inventory.sell.none')
-          : `${t('inventory.sell.done', { sold: result.sold, gold: result.gold })} · ${t('inventory.sell.provisional')}`;
+          : t('inventory.sell.done', { sold: result.sold, gold: result.gold });
       selectedId = null;
       await refresh();
     } catch (err) {

@@ -1,0 +1,104 @@
+{
+  "id": "beast",
+  "$comment": "Зверь. Одичавшие собаки и то, что ходит за ними. Корпус вытянут по Z и низко посажен: на арене это единственный силуэт, который не стоит вертикально, и потому узнаётся мгновенно. `torso` здесь не несущий узел, а привязка для всплесков — несёт `spine`.",
+  "nodes": [
+    {
+      "name": "root",
+      "parent": null,
+      "offset": [0, 0, 0],
+      "size": [0, 0, 0],
+      "color": "ink"
+    },
+    {
+      "name": "spine",
+      "parent": "root",
+      "offset": [0, 0.62, 0],
+      "size": [0.3, 0.26, 0.72],
+      "color": "earth"
+    },
+    {
+      "name": "torso",
+      "parent": "spine",
+      "offset": [0, 0.02, -0.1],
+      "size": [0.34, 0.3, 0.4],
+      "color": "earth"
+    },
+    {
+      "name": "head",
+      "parent": "spine",
+      "offset": [0, 0.12, 0.44],
+      "size": [0.24, 0.22, 0.28],
+      "color": "charcoal"
+    },
+    {
+      "name": "snout",
+      "parent": "head",
+      "offset": [0, -0.06, 0.18],
+      "size": [0.16, 0.12, 0.18],
+      "color": "bone"
+    },
+    {
+      "name": "tail",
+      "parent": "spine",
+      "offset": [0, 0.06, -0.42],
+      "size": [0.08, 0.08, 0.3],
+      "color": "earth"
+    },
+    {
+      "name": "legFrontL",
+      "parent": "spine",
+      "offset": [-0.13, -0.22, 0.24],
+      "size": [0.1, 0.3, 0.1],
+      "color": "charcoal"
+    },
+    {
+      "name": "pawFrontL",
+      "parent": "legFrontL",
+      "offset": [0, -0.18, 0.03],
+      "size": [0.12, 0.08, 0.16],
+      "color": "soot"
+    },
+    {
+      "name": "legBackL",
+      "parent": "spine",
+      "offset": [-0.13, -0.22, -0.26],
+      "size": [0.11, 0.3, 0.11],
+      "color": "charcoal"
+    },
+    {
+      "name": "pawBackL",
+      "parent": "legBackL",
+      "offset": [0, -0.18, 0.03],
+      "size": [0.13, 0.08, 0.16],
+      "color": "soot"
+    },
+    {
+      "name": "legFrontR",
+      "parent": "spine",
+      "offset": [0.13, -0.22, 0.24],
+      "size": [0.1, 0.3, 0.1],
+      "color": "charcoal"
+    },
+    {
+      "name": "pawFrontR",
+      "parent": "legFrontR",
+      "offset": [0, -0.18, 0.03],
+      "size": [0.12, 0.08, 0.16],
+      "color": "soot"
+    },
+    {
+      "name": "legBackR",
+      "parent": "spine",
+      "offset": [0.13, -0.22, -0.26],
+      "size": [0.11, 0.3, 0.11],
+      "color": "charcoal"
+    },
+    {
+      "name": "pawBackR",
+      "parent": "legBackR",
+      "offset": [0, -0.18, 0.03],
+      "size": [0.13, 0.08, 0.16],
+      "color": "soot"
+    }
+  ]
+}

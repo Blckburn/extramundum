@@ -1,3 +1,4 @@
+import { balance as balanceData } from '@extramundum/data';
 import type { PlayerProfile } from '@extramundum/shared';
 import { eq, sql } from 'drizzle-orm';
 
@@ -23,9 +24,33 @@ export async function ensurePlayer(
   db: Database,
   input: { userId: string; username: string },
 ): Promise<{ created: boolean; player: PlayerProfile | null }> {
+  /* СТАРТОВЫЕ СТАТЫ БЕРУТСЯ ИЗ balance.archetypes, а не из умолчаний
+     схемы. Умолчания 5/5/5/5 — заглушка эпохи M0, когда архетипов ещё
+     не было; монстры зон выверены против статов архетипов (9–16),
+     и с пятёрками игрок проигрывает первый же бой Пустошей. Замерено
+     в M3b, а не предположено.
+
+     ВЫБОРА причины изгнания здесь нет: §5.1 требует выбирать её при
+     создании персонажа, но экрана создания не существует — это отдельная
+     работа. Поэтому берётся `forbidden`: самый ровный набор из четырёх,
+     он никого не ставит в матчапе §4.3 в выигрышное положение заранее. */
+  const start = balanceData.archetypes.forbidden;
+
   const inserted = await db
     .insert(players)
-    .values({ userId: input.userId, username: input.username })
+    .values({
+      userId: input.userId,
+      username: input.username,
+      statAtk: start.atk,
+      statDef: start.def,
+      statAgi: start.agi,
+      statSpd: start.spd,
+      // Максимум HP считает движок по §4.2; здесь та же формула была бы
+      // вторым её местом. Профиль создаётся с запасом, который движок
+      // всё равно зажмёт максимумом при входе в бой.
+      hpCurrent:
+        balanceData.maxHp.base + start.def * balanceData.maxHp.perDef + balanceData.maxHp.perLevel,
+    })
     .onConflictDoNothing({ target: players.userId })
     .returning();
 
@@ -58,7 +83,7 @@ export async function isUsernameTaken(db: Database, username: string): Promise<b
   return rows.length > 0;
 }
 
-function toProfile(row: typeof players.$inferSelect): PlayerProfile {
+export function toProfile(row: typeof players.$inferSelect): PlayerProfile {
   return {
     id: row.id,
     username: row.username,

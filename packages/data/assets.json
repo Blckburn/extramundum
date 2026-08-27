@@ -96,6 +96,8 @@
     "amulet.cord": null,
     "amulet.reliquary": null,
     "ring.band": null,
-    "ring.signet": null
+    "ring.signet": null,
+    "trait.bossEnrage": null,
+    "trait.bossHeavyStrike": null
   }
 }

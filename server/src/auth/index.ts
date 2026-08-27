@@ -7,6 +7,7 @@ import type { Database } from '../db/client.ts';
 import { schema } from '../db/client.ts';
 import { grantItems } from '../items/repository.ts';
 import { startingKit } from '../items/starting-kit.ts';
+import { grantStartingWeapon } from '../items/starting-weapon.ts';
 import { ensurePlayer } from '../players/repository.ts';
 import type { Logger } from '../logger.ts';
 
@@ -73,11 +74,19 @@ export function createAuth(db: Database, config: Config, log: Logger) {
             });
             log.info('игровой профиль создан', { userId: createdUser.id });
 
+            /* Стартовое оружие. GDD §5.1, и это не поблажка: замерено,
+               что с голыми кулаками игрок первого уровня выигрывает
+               в Пустошах 0% боёв, то есть петля рейда не начинается
+               вовсе. Подробности и напряжение с LORE §2 — в шапке
+               starting-weapon.ts. */
+            if (created && player !== null) {
+              await grantStartingWeapon(db, player.id);
+            }
+
             /* Набор предметов для проверки интерфейса — ТОЛЬКО за флагом.
-               По умолчанию новый аккаунт не получает ничего: изгнанного
-               вывели за стену ни с чем (LORE §2), а источник лута —
-               рейды из M3b. Без предметов, однако, нечем проверить
-               ни фильтры, ни сортировку, ни массовую продажу. */
+               Кроме стартового оружия, новый аккаунт не получает ничего:
+               источник лута — рейды. Без предметов, однако, нечем
+               проверить ни фильтры, ни сортировку, ни массовую продажу. */
             if (config.DEV_STARTING_KIT && created && player !== null) {
               await grantItems(db, player.id, startingKit(player.exileNumber));
               log.warn('выдан набор разработки', {
