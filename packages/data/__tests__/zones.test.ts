@@ -2,7 +2,8 @@ import { ALL_TRAIT_IDS, ARMOR_CLASSES, WEAPON_CLASSES, ZONE_IDS } from '@extramu
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { balance, MONSTERS, palette, RIGS, ZONES, monsterSpec, zoneSpec } from '../index.ts';
+import { balance, palette, RIGS } from '../index.ts';
+import { MONSTERS, ZONES, monsterSpec, zoneSpec } from '../zones.ts';
 
 /**
  * Зоны и монстры. GDD §7.4, §7.5.

@@ -15,7 +15,7 @@ export function renderVillage(
   root: HTMLElement,
   player: PlayerProfile,
   onSignedOut: () => void,
-  onArena?: () => void,
+  onRaid?: () => void,
   onInventory?: () => void,
 ): void {
   clear(root);
@@ -72,12 +72,12 @@ export function renderVillage(
         EQUIPMENT_SLOTS.map((slot) => renderIcon(`slot.${slot}`, 128, t(`slot.${slot}`))),
       ),
 
-      // Вход на арену. В M2a там статичная сцена: воспроизведение боя —
-      // это M2b, и заводить кнопку «в бой» раньше него значило бы обещать
-      // игроку то, чего нет.
+      // Вход в рейд. Кнопка ведёт к выбору зоны, а не сразу в бой:
+      // решение «куда идти» — часть игры, и снимать его с игрока
+      // значило бы вернуть арену из M2b, где зона была зашита.
       el('div', { class: 'village__nav' }, [
         ...(onInventory === undefined ? [] : [navButton('inventory.open', onInventory)]),
-        ...(onArena === undefined ? [] : [navButton('arena.enter', onArena)]),
+        ...(onRaid === undefined ? [] : [navButton('raid.enter', onRaid)]),
       ]),
 
       el('p', { class: 'village__stub' }, [t('village.stub')]),

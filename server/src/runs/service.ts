@@ -1,4 +1,5 @@
-import { balance as balanceData, ITEM_BASES, monsterSpec } from '@extramundum/data';
+import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
+import { monsterSpec } from '@extramundum/data/zones';
 import {
   lootBalanceSchema,
   type Difficulty,
@@ -206,6 +207,7 @@ export type FightResult = {
   readonly outcome: ReturnType<typeof resolveBattle>['outcome'];
   readonly maxHp: readonly [number, number];
   readonly enemy: string;
+  readonly enemyLook: { readonly rig: string; readonly recolor?: Readonly<Record<string, string>> };
   readonly rewards: FightRewards;
   readonly run: RunView;
 };
@@ -284,6 +286,9 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     outcome,
     maxHp: [maxHp, maxHpOf(enemy, combatBalance)],
     enemy: spec.key,
+    // Силуэт и перекраска — из записи монстра. Клиенту она целиком
+    // не отдаётся: ему нужна форма, а не статы.
+    enemyLook: { rig: spec.rig, ...(spec.recolor === undefined ? {} : { recolor: spec.recolor }) },
     // Показ считает СЕРВЕР, как и для инвентаря: числа предмета уже
     // с учётом ilvl, и клиент их не выводит (§6.1).
     rewards: { ...rewards, loot: applied.granted.map((item) => toView(item, null)) },

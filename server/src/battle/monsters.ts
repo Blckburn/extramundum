@@ -1,4 +1,5 @@
-import { balance as balanceData, monsterSpec, zoneSpec } from '@extramundum/data';
+import { balance as balanceData } from '@extramundum/data';
+import { monsterSpec, zoneSpec } from '@extramundum/data/zones';
 import {
   enemyLevel,
   fighterConfigSchema,

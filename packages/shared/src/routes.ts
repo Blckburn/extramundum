@@ -14,7 +14,6 @@ export const API_ROUTES = {
   auth: '/auth',
   /** Собственная регистрация поверх Better Auth. */
   register: '/auth/register',
-  battleStart: '/battle/start',
   simulatePreview: '/simulate/preview',
 
   /**

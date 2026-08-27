@@ -1,4 +1,4 @@
-import { monsterSpec, zoneSpec } from '@extramundum/data';
+import { monsterSpec, zoneSpec } from '@extramundum/data/zones';
 import type { BattleSetup, Difficulty, PlayerProfile, ZoneId } from '@extramundum/shared';
 import { resolveBattle } from '@extramundum/sim';
 

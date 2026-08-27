@@ -20,13 +20,6 @@ export type Difficulty = z.infer<typeof difficultySchema>;
  */
 export const loadoutHashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 
-export const battleStartInputSchema = z.object({
-  zone: zoneIdSchema,
-  difficulty: difficultySchema,
-  loadoutHash: loadoutHashSchema,
-});
-export type BattleStartInput = z.infer<typeof battleStartInputSchema>;
-
 /**
  * Гипотетическая правка экипировки для превью. GDD §6.4.
  *
@@ -54,51 +47,6 @@ export const simulatePreviewInputSchema = z.object({
   runs: z.int().min(50).max(300).default(300),
 });
 export type SimulatePreviewInput = z.infer<typeof simulatePreviewInputSchema>;
-
-/**
- * Формат боевого лога раскрыт в ./combat.ts вместе с движком (M1a).
- * Здесь остаются только оболочки ответов HTTP.
- */
-import type { BattleLog } from './combat.js';
-
-import type { BattleOutcome } from './combat.js';
-
-export type BattleStartResponse = {
-  readonly battleId: string;
-  readonly log: BattleLog;
-  /** Кто победил и с чем остался. Уже вычислено сервером. */
-  readonly outcome: BattleOutcome;
-  /**
-   * Максимум HP каждого бойца.
-   *
-   * Клиент не может вывести его из лога: `hpAfter` в событии урона — это
-   * уже уменьшенное значение, и наибольшее увиденное меньше настоящего
-   * максимума ровно на первый удар. Полоса здоровья, построенная
-   * на такой догадке, врала бы весь бой.
-   *
-   * Считать его самостоятельно клиент тем более не вправе: формула
-   * `60 + DEF × 6 + уровень × 14 + бонусы` живёт в движке, а движок
-   * в браузер не попадает (инвариант 3).
-   */
-  readonly maxHp: readonly [number, number];
-  /**
-   * Награды. В M2b ПУСТЫ, и это не забывчивость.
-   *
-   * GDD §3.2 шаг 5 требует применять HP, XP, золото и лут в одной
-   * транзакции — но это прогрессия, то есть M3. Выдать сейчас
-   * заглушечные числа значило бы, что через месяц кто-то примет их
-   * за настоящие; пустой объект такого не позволяет.
-   */
-  readonly rewards: Readonly<Record<string, never>>;
-  /**
-   * Бой проведён до появления прогрессии: наград нет, состояние игрока
-   * не менялось. Тем же флагом помечена строка в `battles`.
-   *
-   * Нужен затем, чтобы в M3 не пришлось выяснять, почему часть боёв
-   * без наград — баг это или наследие M2b.
-   */
-  readonly provisional: boolean;
-};
 
 export type SimulatePreviewResponse = {
   /** Оценка шанса победы, 0..1. При `change` — уже С УЧЁТОМ правки. */

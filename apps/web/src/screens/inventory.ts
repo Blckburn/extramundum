@@ -486,7 +486,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       notice.textContent =
         result.sold === 0
           ? t('inventory.sell.none')
-          : `${t('inventory.sell.done', { sold: result.sold, gold: result.gold })} · ${t('inventory.sell.provisional')}`;
+          : t('inventory.sell.done', { sold: result.sold, gold: result.gold });
       selectedId = null;
       await refresh();
     } catch (err) {

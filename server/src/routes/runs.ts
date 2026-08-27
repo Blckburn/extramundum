@@ -1,4 +1,5 @@
-import { balance as balanceData, ZONES } from '@extramundum/data';
+import { balance as balanceData } from '@extramundum/data';
+import { ZONES } from '@extramundum/data/zones';
 import {
   API_ROUTES,
   DIFFICULTIES,
@@ -141,6 +142,7 @@ export function runRoutes(db: Database): Hono<AppEnv> {
       runId: result.run.runId,
       fightIndex: result.run.fightIndex,
       enemy: result.enemy,
+      enemyLook: result.enemyLook,
       state: result.run.state,
       xp: result.rewards.xp,
       gold: result.rewards.gold,
@@ -153,6 +155,7 @@ export function runRoutes(db: Database): Hono<AppEnv> {
       outcome: result.outcome,
       maxHp: result.maxHp,
       enemy: result.enemy,
+      enemyLook: result.enemyLook,
       rewards: result.rewards,
       run: result.run,
     };

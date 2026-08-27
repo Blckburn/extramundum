@@ -106,6 +106,17 @@ export type RunFightResponse = {
   readonly maxHp: readonly [number, number];
   /** Против кого дрались. Ключ монстра, имя берёт локаль. */
   readonly enemy: string;
+  /**
+   * Как противник выглядит: ключ силуэта и подмена цветов палитры.
+   *
+   * Отдаётся ГОТОВЫМ, потому что `monsters.json` в браузер не попадает:
+   * клиенту незачем знать статы, броню и таблицу дропа двадцати
+   * монстров ради одной формы на экране.
+   */
+  readonly enemyLook: {
+    readonly rig: string;
+    readonly recolor?: Readonly<Record<string, string>>;
+  };
   readonly rewards: FightRewards;
   /**
    * Состояние ПОСЛЕ боя. Смерть видна здесь: `state: 'wiped'`, сумка

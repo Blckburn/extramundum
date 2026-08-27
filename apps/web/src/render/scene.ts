@@ -56,7 +56,21 @@ export type BattleScene = {
   dispose(): void;
 };
 
-export function createBattleScene(aspect = 16 / 9): BattleScene {
+/**
+ * Как выглядит противник. GDD §7.5, ART-BIBLE §3.
+ *
+ * Ключ рига и подмена цветов ПРИХОДЯТ ГОТОВЫМИ от сервера, потому что
+ * лежат они в `monsters.json`, а тот в браузер не попадает: клиенту
+ * незачем знать статы, броню и таблицу дропа двадцати монстров ради
+ * одного силуэта. Неизвестный ключ — не ошибка на экране боя, а повод
+ * показать человекоподобного: бой важнее силуэта.
+ */
+export type EnemyLook = {
+  readonly rig: string;
+  readonly recolor?: Readonly<Record<string, string>>;
+};
+
+export function createBattleScene(aspect = 16 / 9, enemy?: EnemyLook): BattleScene {
   const materials = new MaterialCache();
   const geometries = new GeometryCache();
   const loop = new FrameLoop();
@@ -102,7 +116,10 @@ export function createBattleScene(aspect = 16 / 9): BattleScene {
   left.root.rotation.y = Math.PI / 2;
   scene.add(left.root);
 
-  const right = buildRig(RIGS.humanoid, materials, geometries);
+  /* Форм четыре на два десятка монстров, а кто есть кто внутри формы,
+     говорит перекраска. Обе величины — из данных монстра. */
+  const enemyRig = (enemy === undefined ? undefined : RIGS[enemy.rig as keyof typeof RIGS]) ?? RIGS.humanoid;
+  const right = buildRig(enemyRig, materials, geometries, enemy?.recolor);
   right.root.position.set(FIGHTER_X, 0, FIGHTER_Z);
   right.root.rotation.y = -Math.PI / 2;
   scene.add(right.root);

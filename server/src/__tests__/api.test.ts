@@ -198,13 +198,16 @@ describe.skipIf(!HAS_DB)('API', () => {
       const before = await ctx.db.select().from(players).where(eq(players.username, username));
       const numberBefore = before[0]!.exileNumber;
 
+      // Берётся ПИШУЩИЙ эндпоинт: у превью записи нет вовсе, и лишние
+      // поля в нём ничего не доказали бы. `/run/start` создаёт забег
+      // и трогает профиль — если бы тело запроса куда-то дотекало,
+      // дотекло бы здесь.
       await post(
         ctx,
-        API_ROUTES.battleStart,
+        API_ROUTES.runStart,
         {
           zone: 'wastes',
           difficulty: 'normal',
-          loadoutHash: LOADOUT,
           // Ровно то, чем правили состояние в v1.0.
           gold: 999_999,
           level: 40,
@@ -328,54 +331,6 @@ describe.skipIf(!HAS_DB)('API', () => {
       const { body } = await get(ctx, API_ROUTES.me, jar);
       const player = (body as { player: { exileNumber: number } }).player;
       expect(player.exileNumber).toBeGreaterThan(0);
-    });
-  });
-
-  describe('battle/start', () => {
-    const body = { zone: 'wastes', difficulty: 'normal', loadoutHash: LOADOUT } as const;
-
-    it('без сессии — 401', async () => {
-      expect((await post(ctx, API_ROUTES.battleStart, body)).status).toBe(401);
-    });
-
-    it('с сессией — проводит бой и возвращает лог', async () => {
-      // До M2b здесь стоял 501. Тест не обновили вместе с эндпоинтом,
-      // и это осталось незамеченным ровно потому, что интеграционные
-      // тесты без DATABASE_URL пропускаются: локально «всё зелено»,
-      // а в CI с базой — красно. Тот самый случай, ради которого
-      // в CI стоит CI=true.
-      const { jar } = await register(ctx);
-      const res = await post(ctx, API_ROUTES.battleStart, body, jar);
-
-      expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({
-        provisional: true,
-        rewards: {},
-        outcome: { winner: expect.anything() },
-      });
-
-      const parsed = res.body as {
-        log: { events: unknown[]; seed: string };
-        maxHp: [number, number];
-      };
-      expect(parsed.log.events.length).toBeGreaterThan(0);
-      expect(parsed.log.seed).toEqual(expect.any(String));
-      // Максимум HP присылает СЕРВЕР: вывести его из лога нельзя.
-      expect(parsed.maxHp[0]).toBeGreaterThan(0);
-      expect(parsed.maxHp[1]).toBeGreaterThan(0);
-    });
-
-    it('валидирует тело до того, как проводить бой', async () => {
-      const { jar } = await register(ctx);
-      const res = await post(
-        ctx,
-        API_ROUTES.battleStart,
-        { zone: 'нет такой зоны', difficulty: 'normal' },
-        jar,
-      );
-
-      expect(res.status).toBe(400);
-      expect(res.body).toMatchObject({ error: { code: 'validation_failed' } });
     });
   });
 

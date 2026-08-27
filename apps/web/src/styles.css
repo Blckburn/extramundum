@@ -895,31 +895,36 @@ body {
    а рамка читается и на плейсхолдере, и на будущем ассете. */
 .inv__cell--common,
 .inv__slot--common,
-.inv__rarity--common {
+.inv__rarity--common,
+.raid__bagItem--common {
   border-color: var(--border);
   color: var(--muted);
 }
 .inv__cell--magic,
 .inv__slot--magic,
-.inv__rarity--magic {
+.inv__rarity--magic,
+.raid__bagItem--magic {
   border-color: #4a6ea8;
   color: #7fa3dd;
 }
 .inv__cell--rare,
 .inv__slot--rare,
-.inv__rarity--rare {
+.inv__rarity--rare,
+.raid__bagItem--rare {
   border-color: #b08f2c;
   color: #d8b04a;
 }
 .inv__cell--epic,
 .inv__slot--epic,
-.inv__rarity--epic {
+.inv__rarity--epic,
+.raid__bagItem--epic {
   border-color: #7b4fa8;
   color: #b184dd;
 }
 .inv__cell--legendary,
 .inv__slot--legendary,
-.inv__rarity--legendary {
+.inv__rarity--legendary,
+.raid__bagItem--legendary {
   border-color: #a85f28;
   color: #e08a3c;
 }
@@ -1094,4 +1099,256 @@ body {
   width: 6rem;
   height: 9rem;
   display: block;
+}
+
+/* ─────────────────────────────── рейд ─────────────────────────────────
+   Выбор зоны, панель забега и решение об эвакуации. GDD §7.2, §7.4.
+
+   Экран боя переиспользует раскладку `.screen--arena`: класс на том же
+   элементе меняется на время боя и возвращается обратно. Второй сетки
+   для боя здесь нет намеренно — она разошлась бы с первой. */
+
+.zones {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0;
+  margin: 1rem 0 0;
+  list-style: none;
+}
+
+/* Порог по ШИРИНЕ, а не по устройству — как у арены. */
+@media (min-width: 700px) {
+  .zones {
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  }
+}
+
+.zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.zone__head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.zone__head .icon {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+}
+
+.zone__name {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.zone__sub,
+.raid__enemySub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* Матчап — плашка с ГОТОВЫМ числом от сервера (§4.3: «ничего
+   не спрятано»). Цвет говорит направление, число — величину: одного
+   цвета мало, потому что «хуже» и «намного хуже» выглядели бы
+   одинаково. */
+.zone__matchup {
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid currentcolor;
+  border-radius: calc(var(--radius) / 2);
+  background: color-mix(in srgb, currentcolor 10%, transparent);
+}
+
+.zone__matchup--good {
+  color: #7fa3dd;
+}
+.zone__matchup--even,
+.zone__matchup--mixed {
+  color: var(--muted);
+}
+.zone__matchup--bad {
+  color: var(--warn);
+}
+
+.zone__monsters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.zone__monster {
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+}
+
+.zone__monster--boss {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.zone__boss {
+  margin-left: 0.3rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--warn);
+}
+
+.zone__difficulties {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.button--small {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+/* ── панель забега ── */
+
+.raid__lead {
+  margin: 0.25rem 0 0.75rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.raid__run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.raid__hp {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.raid__hpbar {
+  flex: 1 1 auto;
+  height: 0.75rem;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+}
+
+.raid__hpfill {
+  display: block;
+  height: 100%;
+  background: var(--danger);
+}
+
+.raid__hptext {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.raid__subtitle {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.raid__next,
+.raid__bag {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.raid__bag--empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.raid__enemy {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.raid__bagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.raid__bagItem {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.75rem;
+  border: 1px solid currentcolor;
+  border-radius: calc(var(--radius) / 2);
+}
+
+.raid__bagItem .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.raid__bagIlvl {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.raid__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Итог боя стоит в панели арены рядом с кнопкой «дальше»: числа ИЗ
+   ОТВЕТА сервера, клиент их не складывает. */
+.raid__rewards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.raid__rewards--lost {
+  color: var(--danger);
+}
+
+.raid__wiped {
+  color: var(--danger);
+}
+
+.raid__extracted {
+  color: var(--accent);
+}
+
+.raid__error {
+  color: var(--danger);
 }

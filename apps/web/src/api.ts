@@ -3,17 +3,20 @@ import {
   apiErrorSchema,
   meResponseSchema,
   type ApiError,
-  type BattleStartInput,
-  type BattleStartResponse,
   type EquipInput,
   type InventoryResponse,
   type LockInput,
   type MoveInput,
+  type RunExtractResponse,
+  type RunFightResponse,
+  type RunResponse,
+  type RunStartInput,
   type SellInput,
   type SellResponse,
   type SimulatePreviewInput,
   type SimulatePreviewResponse,
   type UnequipInput,
+  type ZonesResponse,
   type MeResponse,
   type SignInInput,
   type SignUpInput,
@@ -106,13 +109,14 @@ export const api = {
   },
 
   /**
-   * Провести бой. GDD §3.2.
+   * Забег с эвакуацией. GDD §7.2, §7.3.
    *
-   * В теле нет ни одного числа о бойце, и схема таких полей не содержит:
-   * состав читается сервером из БД по проверенной сессии. Клиент
-   * получает готовый лог и не может ни на что в нём повлиять.
+   * У боя, зелья и эвакуации ТЕЛА НЕТ. Чей забег — сервер знает
+   * из сессии, какой бой следующий — из своей же базы. Прислать номер
+   * боя значило бы дать клиенту выбрать, какой бой провести, то есть
+   * переиграть смерть.
    *
-   * ПОЧЕМУ ОТВЕТ НЕ РАЗБИРАЕТСЯ СХЕМОЙ ЦЕЛИКОМ. Формат лога описан
+   * ПОЧЕМУ ОТВЕТЫ НЕ РАЗБИРАЮТСЯ СХЕМОЙ ЦЕЛИКОМ. Формат лога описан
    * типами в `packages/shared/src/combat.ts` — типами, а не zod-схемой.
    * Написать здесь вторую, проверяющую, значило бы завести ВТОРОЙ
    * источник правды о формате: он разошёлся бы с первым на ближайшем
@@ -120,12 +124,37 @@ export const api = {
    * `schedule()` внятной ошибкой, а лог приходит от нашего же сервера,
    * который собрал его движком.
    */
-  async startBattle(input: BattleStartInput): Promise<BattleStartResponse> {
-    const body = await request(API_ROUTES.battleStart, {
+  async zones(): Promise<ZonesResponse> {
+    return (await request(API_ROUTES.zones)) as ZonesResponse;
+  },
+
+  async run(): Promise<RunResponse> {
+    return (await request(API_ROUTES.run)) as RunResponse;
+  },
+
+  async startRun(input: RunStartInput): Promise<RunResponse> {
+    return (await request(API_ROUTES.runStart, {
       method: 'POST',
       body: JSON.stringify(input),
-    });
-    return body as BattleStartResponse;
+    })) as RunResponse;
+  },
+
+  async runFight(): Promise<RunFightResponse> {
+    return (await request(API_ROUTES.runFight, {
+      method: 'POST',
+      body: '{}',
+    })) as RunFightResponse;
+  },
+
+  async runPotion(): Promise<RunResponse> {
+    return (await request(API_ROUTES.runPotion, { method: 'POST', body: '{}' })) as RunResponse;
+  },
+
+  async runExtract(): Promise<RunExtractResponse> {
+    return (await request(API_ROUTES.runExtract, {
+      method: 'POST',
+      body: '{}',
+    })) as RunExtractResponse;
   },
 
   /**
