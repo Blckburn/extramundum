@@ -1485,6 +1485,50 @@ describe('босс', () => {
     for (const turn of telegraphTurns) {
       expect((turn + 1) % every, `замах на ходу ${turn}, а тяжёлый удар не на следующем`).toBe(0);
     }
+
+    /* И ГЛАВНОЕ: между замахом и обещанным ударом не должно стоять
+       ДРУГОГО удара босса.
+
+       Раньше событие выпускалось в начале хода — то есть перед обычным
+       ударом ТОГО ЖЕ хода. Порядок ходов при этом был верен, и проверка
+       выше проходила, но в журнале строка вставала вплотную над обычным
+       ударом и читалась как подпись к нему: «замахивается», следом −25,
+       и игрок заключал, что тяжёлый уже случился. Поймано глазами
+       на скриншоте, а не тестом, — поэтому проверка теперь есть. */
+    const mult = T('bossHeavyStrike', 'damageMultiplier');
+    let checked = 0;
+
+    for (let i = 0; i < log.events.length; i += 1) {
+      if (log.events[i]!.t !== 'telegraph') continue;
+
+      const after = log.events
+        .slice(i + 1)
+        .filter((e) => e.t === 'attack' && e.actor === 0) as Extract<
+        (typeof log.events)[number],
+        { t: 'attack' }
+      >[];
+      const next = after[0];
+      if (next === undefined) continue;
+
+      // Ничего, кроме этого трейта, множитель атаки у бойца не трогает,
+      // поэтому обещанный удар отличается от обычного ровно в `mult` раз.
+      const plain = (
+        log.events.filter(
+          (e) => e.t === 'attack' && e.actor === 0,
+        ) as (typeof after)[number][]
+      ).map((e) => e.roll.atkMultiplier);
+      const base = Math.min(...plain);
+
+      expect(
+        next.roll.atkMultiplier / base,
+        'сразу за замахом идёт ОБЫЧНЫЙ удар босса — на экране замах читается как подпись к нему',
+      ).toBeCloseTo(mult, 5);
+      checked += 1;
+    }
+
+    // Проверка «за замахом идёт тяжёлый» бессмысленна, если ни одного
+    // замаха с последующим ударом в выборке не случилось.
+    expect(checked, 'ни один замах не дошёл до своего удара').toBeGreaterThan(0);
   });
 
   it('обещанный удар действительно тяжелее обычного', () => {

@@ -110,6 +110,14 @@ export type TraitHooks = {
   onHit?(ctx: TraitContext): readonly BattleEvent[];
   onTakeDamage?(ctx: TraitContext): readonly BattleEvent[];
   onTurnStart?(ctx: TraitContext): readonly BattleEvent[];
+  /**
+   * Конец собственного хода, после разрешения действия.
+   *
+   * Существует ради предупреждений о БУДУЩЕМ: сказанное в начале хода
+   * встаёт в журнале над ударом этого же хода и читается как подпись
+   * к нему, а не как предсказание.
+   */
+  onTurnEnd?(ctx: TraitContext): readonly BattleEvent[];
   onKill?(ctx: TraitContext): readonly BattleEvent[];
 };
 
@@ -774,11 +782,20 @@ const MONSTER: readonly Trait[] = [
     hooks: {
       onTurnStart: (ctx) => {
         ctx.state.turns += 1;
-        const every = num(ctx.balance, 'bossHeavyStrike', 'everyNTurns');
+        return [];
+      },
 
-        /* ПРЕДУПРЕЖДЕНИЕ ИДЁТ ЗА ХОД ДО УДАРА. Проверяется СЛЕДУЮЩИЙ ход,
-           а не текущий: событие, выпущенное в тот же ход, стояло бы
-           в журнале рядом с уроном и ничего бы не предсказывало. */
+      /* ПРЕДУПРЕЖДЕНИЕ ИДЁТ ЗА ХОД ДО УДАРА, и выпускается оно В КОНЦЕ
+         хода. Проверяется СЛЕДУЮЩИЙ ход, а не текущий: событие в том же
+         ходу ничего бы не предсказывало.
+
+         Конец, а не начало — потому что в начале хода строка вставала
+         в журнале ВПЛОТНУЮ НАД обычным ударом того же хода, и читалась
+         как подпись к нему: игрок видел «замахивается», следом −25 и
+         решал, что тяжёлый удар уже случился. Механика была верна,
+         показ — нет, а другого способа увидеть бой у игрока нет. */
+      onTurnEnd: (ctx) => {
+        const every = num(ctx.balance, 'bossHeavyStrike', 'everyNTurns');
         if ((ctx.state.turns + 1) % every === 0) {
           return [{ t: 'telegraph', actor: ctx.selfIndex, inTurns: 1 }];
         }

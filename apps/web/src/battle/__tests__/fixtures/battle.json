@@ -19,6 +19,7 @@
       "armor": 6,
       "armorClass": "medium",
       "critBonus": 0,
+      "startHp": null,
       "weapon": {
         "dmgMin": 8,
         "dmgMax": 14,
@@ -32,7 +33,11 @@
         "swiftness": []
       },
       "statuses": [],
-      "traits": ["plaguebearer", "hexblade", "innateScholar"]
+      "traits": [
+        "plaguebearer",
+        "hexblade",
+        "innateScholar"
+      ]
     },
     {
       "level": 4,
@@ -46,6 +51,7 @@
       "armor": 9,
       "armorClass": "heavy",
       "critBonus": 0,
+      "startHp": null,
       "weapon": {
         "dmgMin": 7,
         "dmgMax": 12,
@@ -63,14 +69,26 @@
         "swiftness": []
       },
       "statuses": [],
-      "traits": ["thorns", "pyromancer", "innateGuard", "bossEnrage", "bossHeavyStrike"]
+      "traits": [
+        "thorns",
+        "pyromancer",
+        "innateGuard",
+        "bossEnrage",
+        "bossHeavyStrike"
+      ]
     }
   ],
-  "maxHp": [176, 194],
+  "maxHp": [
+    176,
+    194
+  ],
   "outcome": {
     "winner": 1,
     "ticks": 119,
-    "hpRemaining": [0, 57]
+    "hpRemaining": [
+      0,
+      57
+    ]
   },
   "log": {
     "version": 2,
@@ -205,11 +223,6 @@
         "tick": 19
       },
       {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
         "t": "attack",
         "actor": 1,
         "move": "basic",
@@ -244,6 +257,11 @@
         "status": "burn",
         "stacks": 1,
         "duration": 60
+      },
+      {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
       },
       {
         "t": "status_tick",
@@ -438,14 +456,14 @@
         "tick": 49
       },
       {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
         "t": "dodge",
         "actor": 0,
         "mitigated": 0
+      },
+      {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
       },
       {
         "t": "turn_start",
@@ -683,11 +701,6 @@
         "tick": 79
       },
       {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
         "t": "attack",
         "actor": 1,
         "move": "basic",
@@ -709,6 +722,11 @@
         "amount": 12,
         "crit": false,
         "hpAfter": 63
+      },
+      {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
       },
       {
         "t": "turn_start",
@@ -992,14 +1010,14 @@
         "duration": -1
       },
       {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
         "t": "dodge",
         "actor": 0,
         "mitigated": 0
+      },
+      {
+        "t": "telegraph",
+        "actor": 1,
+        "inTurns": 1
       },
       {
         "t": "turn_start",
