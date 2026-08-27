@@ -19,7 +19,7 @@
       "levels": [1, 8],
       "armorClass": "light",
       "power": 1.12,
-      "monsters": ["wastes.scavenger", "wastes.strayDog", "wastes.footpad"],
+      "monsters": ["wastes.scavenger", "wastes.carrionCrows", "wastes.footpad"],
       "boss": "wastes.tollman"
     },
     {
@@ -43,7 +43,7 @@
       "levels": [24, 32],
       "armorClass": "heavy",
       "power": 0.9,
-      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.bellowsHound"],
+      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.cinderCrawler"],
       "boss": "forge.masterSmith"
     },
     {

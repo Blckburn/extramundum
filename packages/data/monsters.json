@@ -61,7 +61,7 @@
       "traits": ["bleedout"]
     },
     {
-      "key": "wastes.strayDog",
+      "key": "wastes.carrionCrows",
       "zone": "wastes",
       "rig": "beast",
       "recolor": {
@@ -374,7 +374,7 @@
       "traits": ["stoneskin"]
     },
     {
-      "key": "forge.bellowsHound",
+      "key": "forge.cinderCrawler",
       "zone": "forge",
       "rig": "beast",
       "recolor": {

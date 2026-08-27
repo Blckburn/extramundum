@@ -593,4 +593,51 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(after.stats.armor).toBeGreaterThan(start.armor);
     });
   });
+
+  /**
+   * ДОБИВКА ПРОФИЛЕЙ ЭПОХИ M0. Миграция 0007.
+   *
+   * Найдено по жалобе игрока, а не тестом: «за весь бой я бью один раз,
+   * вся инициатива за врагом». Формулы боя оказались верны — виноват
+   * профиль, созданный до M3b и не получивший ни статов архетипа,
+   * ни базовой брони, ни клинка у ворот. При статах 5/5/5/5 против
+   * монстров с SPD 10–13 враг действует вдвое-втрое чаще: замерено
+   * 3–5 ходов игрока против 7–12 у врага.
+   *
+   * Тест держит СВОЙСТВО, а не текст миграции: после неё у игрока
+   * не может быть профиля, который не начинается в бою.
+   */
+  describe('профиль эпохи M0 добит миграцией', () => {
+    it('ни у одного игрока не осталось статов-умолчаний 5/5/5/5', async () => {
+      await withItems([]);
+      const rows = await ctx.db.select().from(players);
+      expect(rows.length, 'игроков нет — проверять нечего').toBeGreaterThan(0);
+
+      for (const row of rows) {
+        const legacy =
+          row.statAtk === 5 && row.statDef === 5 && row.statAgi === 5 && row.statSpd === 5;
+        expect(legacy, `профиль ${row.username} остался на умолчаниях M0`).toBe(false);
+      }
+    });
+
+    it('ни один игрок не остался без единого предмета', async () => {
+      /* Клинок у ворот §5.1: без оружия изгнанный берёт 0% побед
+         в первой же зоне, то есть игра начинается с гарантированной
+         смерти. Это ровно то, во что упёрся живой игрок. */
+      await withItems([]);
+      const rows = await ctx.db.select().from(players);
+
+      for (const row of rows) {
+        const owned = await ctx.db.select().from(items).where(eq(items.ownerId, row.id));
+        expect(owned.length, `у игрока ${row.username} нет ни одного предмета`).toBeGreaterThan(0);
+      }
+    });
+
+    it('и ни один не остался с нулевой базовой бронёй', async () => {
+      const rows = await ctx.db.select().from(players);
+      for (const row of rows) {
+        expect(row.baseArmor, `у игрока ${row.username} нулевая база брони`).toBeGreaterThan(0);
+      }
+    });
+  });
 });

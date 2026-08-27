@@ -1,6 +1,7 @@
 import { EQUIPMENT_SLOTS, type PlayerProfile } from '@extramundum/shared';
 
 import { api } from '../api.ts';
+import { buildTag } from '../build-info.ts';
 import { clear, el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { renderIcon } from '../ui/icon.ts';
@@ -92,6 +93,10 @@ export function renderVillage(
         : []),
 
       el('p', { class: 'village__stub' }, [t('village.stub')]),
+
+      /* Метка сборки. Отвечает на один вопрос, который иначе нечем
+         закрыть: «правка доехала или я смотрю на старое?» */
+      el('p', { class: 'village__build', title: t('village.build') }, [buildTag()]),
     ]),
   );
 }

@@ -27,9 +27,33 @@ function forbidSimImport() {
   };
 }
 
+/**
+ * Метка сборки, которую видно в деревне.
+ *
+ * НУЖНА НЕ ДЛЯ КРАСОТЫ. Без неё нельзя отличить «правку не сделали»
+ * от «правка не доехала до браузера»: игрок смотрит на экран и не может
+ * сказать, какая версия перед ним, а мы не можем спросить. Ровно на этом
+ * ушёл час на разбор жалобы, где половина симптомов объяснялась старым
+ * профилем, а другая — незадеплоенным клиентом.
+ *
+ * Берётся из окружения сборки: Render кладёт хеш коммита
+ * в `RENDER_GIT_COMMIT`, локально подставляется `dev`. Дата — время
+ * сборки, а не запуска: она отвечает на вопрос «когда это собрали».
+ */
+const buildTag = (): string => {
+  const commit = process.env['RENDER_GIT_COMMIT'] ?? process.env['GIT_COMMIT'] ?? '';
+  const short = commit === '' ? 'dev' : commit.slice(0, 7);
+  return `${short} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
+};
+
 export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [forbidSimImport()],
+  define: {
+    // Строкой, а не объектом: значение подставляется в исходник как есть,
+    // поэтому его надо сериализовать.
+    __BUILD_TAG__: JSON.stringify(buildTag()),
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
