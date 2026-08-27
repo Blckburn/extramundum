@@ -405,7 +405,7 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
   const gear = 1 + ilvl * balance.items.ilvlScale;
   const slots = ['weapon', 'offhand', 'helmet', 'chest', 'bracers', 'boots', 'amulet', 'ring'];
 
-  let armor = 0;
+  let armor = a.armor;
   let atk = 0;
   let hp = 0;
   const accuracyAffixes = [];
@@ -617,8 +617,13 @@ function freshExile(archetype) {
     spd: a.spd,
     pathBonusHp: 0,
     gearBonusHp: 0,
+    /* БАЗА АРХЕТИПА, а не ноль. До починки эти два числа не применялись
+       к игроку нигде — их читала только матрица, собирая бойцов
+       для коридора. То есть коридор был выверен на конфигурации,
+       которой игра не производила, а свежий изгнанный входил в зону
+       голым. Здесь он теперь такой же, как в игре. */
     accuracy: a.accuracy,
-    armor: 0,
+    armor: a.armor,
     armorClass: 'medium',
     critBonus: 0,
     startHp: null,
@@ -943,24 +948,21 @@ if (AS_JSON) {
   console.log(`ЦЕЛЬ ${pct(REACH_TARGET)} до первого решения · ПОРОГ ПРОВЕРКИ ${pct(REACH_FLOOR)}`);
   console.log('Оба берутся без зелий: зелья — выбор игрока, а число обязано');
   console.log('мерить настройку, а не догадливость.');
-  if (reachShort && !reachBreached) {
+  if (reachShort) {
     console.log('');
     console.log(
       `ЦЕЛЬ НЕ ДОСТИГНУТА: ${pct(reachAvg('first', 'dry'))} против ${pct(REACH_TARGET)}.`,
     );
-    console.log('Рычагом восстановления она и недостижима: при доле 1.0 — потолке');
-    console.log('рычага — выходит 35%. Связывает не перенос HP, а винрейт свежего');
-    console.log('изгнанного в ОДНОМ бою: у него ноль брони, вся броня в игре');
-    console.log('приходит с предметов. Вопрос вынесен человеку, сборка не красная:');
-    console.log('порог сторожит регрессию, а цель напечатана, чтобы её не забыли.');
   }
   if (reachBreached) {
     console.log('');
     console.log(
       `ДОХОДИМОСТЬ УПАЛА НИЖЕ ПОРОГА: ${pct(reachAvg('first', 'dry'))} против ${pct(REACH_FLOOR)}.`,
     );
-    console.log('Это РЕГРЕССИЯ: было выше. Смотреть надо, что изменилось');
-    console.log('в первой зоне или в стартовом оружии.');
+    console.log('Это РЕГРЕССИЯ. Смотреть надо в таком порядке:');
+    console.log('  1. применяется ли игроку базовая броня архетипа (players.base_armor);');
+    console.log('  2. наклон кривой монстров — monsters.baseStat и armorBase;');
+    console.log('  3. множитель силы первой зоны.');
   }
   console.log('');
   console.log('Босс считается ОТДЕЛЬНО и в кривую не входит: он пятый бой,');

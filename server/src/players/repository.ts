@@ -45,6 +45,12 @@ export async function ensurePlayer(
       statDef: start.def,
       statAgi: start.agi,
       statSpd: start.spd,
+      /* БРОНЯ И ТОЧНОСТЬ АРХЕТИПА — оттуда же, откуда четыре стата.
+         До этой правки они не применялись нигде: их читала только
+         матрица винрейтов, а живой игрок выходил за стену с нулевой
+         бронёй. Оба следствия замерены (см. схему `players`). */
+      baseArmor: start.armor,
+      baseAccuracy: start.accuracy,
       // Максимум HP считает движок по §4.2; здесь та же формула была бы
       // вторым её местом. Профиль создаётся с запасом, который движок
       // всё равно зажмёт максимумом при входе в бой.
@@ -96,6 +102,8 @@ export function toProfile(row: typeof players.$inferSelect): PlayerProfile {
     statDef: row.statDef,
     statAgi: row.statAgi,
     statSpd: row.statSpd,
+    baseArmor: row.baseArmor,
+    baseAccuracy: row.baseAccuracy,
     hpCurrent: row.hpCurrent,
     elo: row.elo,
     seasonId: row.seasonId,

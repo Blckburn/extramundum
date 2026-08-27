@@ -24,6 +24,16 @@ export const playerProfileSchema = z.object({
   statAgi: z.int().min(0),
   statSpd: z.int().min(0),
 
+  /**
+   * Базовые броня и точность причины изгнания. GDD §5.1.
+   *
+   * Отдаются клиенту наравне со статами: игрок видит, с чем он вышел
+   * за стену. Снаряжение складывается сверху, но НЕ здесь — эти числа
+   * остаются базой и от надетого не меняются.
+   */
+  baseArmor: z.int().min(0),
+  baseAccuracy: z.int().min(0),
+
   hpCurrent: z.int().min(0),
   elo: z.int().min(0),
   seasonId: z.int().min(0).nullable(),

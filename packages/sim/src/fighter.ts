@@ -295,8 +295,25 @@ export function matchupMultiplier(
 }
 
 /**
- * Шанс уклонения: `clamp(base + (AGI_защ − ACC_атак) × k, min, max)`.
- * GDD §4.2. ACC — производная из экипировки, без аффиксов ноль.
+ * Шанс уклонения. GDD §4.2 в редакции после M3b:
+ *
+ *   уклонение = clamp(base + AGI_защ × k, min, max) − ACC_атак × k
+ *
+ * ПОТОЛОК ПРИМЕНЯЕТСЯ К УКЛОНЕНИЮ ЗАЩИТНИКА, а точность вычитается
+ * ПОСЛЕ него. Порядок здесь — вся механика точности, а не деталь.
+ *
+ * Прежняя формула клампила разность целиком, и точность из-за этого
+ * работала СТУПЕНЬКОЙ. Замерено на 34-м уровне против равного бойца:
+ * при AGI 70 разность упиралась в потолок 0.30, пока точность
+ * не съедала 30 единиц, — то есть эффективная точность +4…+30
+ * не делала ровно ничего (49–54%, шум вокруг половины), а +45 давала
+ * 70%. Четыре нижних тира «Верности руки» были мертвы, и бюджет
+ * этого не лечил: «четыре T1 против четырёх T5» упиралось не в число
+ * аффиксов, а в то, что T5 лежит в мёртвой зоне.
+ *
+ * После правки каждая единица точности снимает `k` уклонения всегда,
+ * от какого бы AGI ни начинали. Нижняя граница остаётся: уклонение
+ * не уходит ниже нуля, иначе точность превращалась бы в бонус к урону.
  */
 export function dodgeChance(
   defenderAgi: number,
@@ -304,8 +321,8 @@ export function dodgeChance(
   balance: CombatBalance,
 ): number {
   const { base, perAgiOverAccuracy, min, max } = balance.dodge;
-  const raw = base + (defenderAgi - attackerAccuracy) * perAgiOverAccuracy;
-  return Math.min(max, Math.max(min, raw));
+  const evasion = Math.min(max, Math.max(min, base + defenderAgi * perAgiOverAccuracy));
+  return Math.max(0, evasion - attackerAccuracy * perAgiOverAccuracy);
 }
 
 /** Шанс крита: `base + AGI × k + бонусы`, с капом. GDD §4.2. */
