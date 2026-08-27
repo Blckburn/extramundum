@@ -323,5 +323,10 @@
   "trait.bossHeavyStrike.name": "Wind-Up",
   "trait.bossHeavyStrike.desc": "Every third turn a heavy strike ×1.5. Shown in the journal a turn before it lands.",
   "battle.telegraph": "Winding up — the next blow is heavy",
-  "battle.telegraph.short": "wind-up"
+  "battle.telegraph.short": "wind-up",
+  "error.run.alreadyActive": "A run is already underway",
+  "error.run.notActive": "No active run",
+  "error.run.finished": "All fights of this run are done",
+  "error.run.noPotions": "No potions left",
+  "error.run.cannotExtract": "Cannot evacuate right now"
 }

@@ -76,6 +76,7 @@ function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
     armor: level === 1 ? a.armor : Math.round(a.armor * gear),
     armorClass: 'medium',
     critBonus: 0,
+    startHp: null,
     weapon: { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },

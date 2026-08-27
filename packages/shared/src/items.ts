@@ -249,13 +249,6 @@ export type SellInput = z.infer<typeof sellInputSchema>;
 export type SellResponse = {
   readonly sold: number;
   readonly gold: number;
-  /**
-   * Цена посчитана ПРОВИЗОРНОЙ формулой: экономика (настоящие цены,
-   * кузнец, лавка) — это M3c. Золото пока инертно, тратить его негде,
-   * поэтому неверные числа ничего не ломают, а удаление без выплаты
-   * было бы необратимым разрушением без компенсации.
-   */
-  readonly provisional: true;
 };
 
 /**

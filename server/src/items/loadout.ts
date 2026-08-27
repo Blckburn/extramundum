@@ -184,6 +184,10 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
     armorClass:
       chestItem === undefined ? 'medium' : (itemBase(chestItem.baseKey).armorClass ?? 'medium'),
     critBonus: 0,
+    // HP входа — по умолчанию максимум. Перенос между боями забега
+    // ставит сюда «сколько осталось» (§7.2), и делает это рейд,
+    // а не сборка бойца: сборка не знает, идёт ли забег.
+    startHp: null,
     weapon,
     offhand: offhandConfig(loadout.get('offhand')),
     percentAffixes: percentAffixesOf(loadout),

@@ -58,13 +58,26 @@ export function maxHp(config: FighterConfig, balance: CombatBalance): number {
 }
 
 export function createFighterState(config: FighterConfig, balance: CombatBalance): FighterState {
-  const hp = maxHp(config, balance);
+  const max = maxHp(config, balance);
+  /* Входное HP зажимается максимумом ЗДЕСЬ: формула максимума живёт
+     в движке, и сервер не обязан её знать, чтобы передать «сколько
+     оставалось после прошлого боя». Ноль и отрицательное невозможны
+     по схеме — боец, входящий в бой мёртвым, это не бой.
+
+     ОТСУТСТВУЮЩЕЕ ПОЛЕ РАВНОСИЛЬНО null, и проверка на это не лишняя.
+     Конфигурации собираются не только схемой: их строят руками тесты
+     и скрипт матрицы, где типов нет вовсе. Прежний `=== null` давал
+     на таком объекте `Math.min(max, undefined)`, то есть NaN, — и все
+     бойцы «умирали» на первом же тике. Матрица показала 0.0% во всех
+     парах разом, что и выдало ошибку, но искать её пришлось. */
+  const requested = config.startHp ?? null;
+  const hp = requested === null ? max : Math.min(max, requested);
   const traitStates = new Map<TraitId, TraitState>();
   for (const id of config.traits) traitStates.set(id, createTraitState());
 
   return {
     config,
-    maxHp: hp,
+    maxHp: max,
     hp,
     initiative: 0,
     statuses: [],

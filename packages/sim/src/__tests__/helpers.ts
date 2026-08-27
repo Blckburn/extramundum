@@ -28,6 +28,7 @@ export function fighter(overrides: Partial<FighterConfig> = {}): FighterConfig {
     armor: 0,
     armorClass: 'medium',
     critBonus: 0,
+    startHp: null,
     weapon: { dmgMin: 10, dmgMax: 10, ilvl: 1, class: 'balanced' },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },

@@ -77,6 +77,15 @@ export const lootBalanceSchema = z.object({
   sell: z.object({
     base: z.number().min(0),
     rarityMultiplier: z.record(raritySchema, z.number().min(0)),
+    /**
+     * Прибавка к цене за аффикс, по тиру. GDD §6.3.
+     *
+     * Без неё два эпика — один с четырьмя T1, другой с четырьмя T5 —
+     * стоили бы одинаково, и читать аффиксы перед массовой продажей
+     * было бы незачем. А фильтр и замок существуют ровно затем,
+     * чтобы игрок читал.
+     */
+    affixTierBonus: byTier,
   }),
   drop: z.object({
     rarityWeights: z.record(raritySchema, z.number().min(0)),

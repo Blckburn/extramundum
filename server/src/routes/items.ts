@@ -132,10 +132,9 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
       rarities: input.rarities,
       sold,
       gold,
-      provisional: true,
     });
 
-    const body: SellResponse = { sold, gold, provisional: true };
+    const body: SellResponse = { sold, gold };
     return c.json(body);
   });
 

@@ -16,5 +16,6 @@ export * from './loot.js';
 export * from './player.js';
 export * from './render.js';
 export * from './routes.js';
+export * from './runs.js';
 export * from './validation.js';
 export * from './zones.js';

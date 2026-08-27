@@ -1,3 +1,4 @@
+import { balance as balanceData } from '@extramundum/data';
 import { API_ROUTES } from '@extramundum/shared';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -242,7 +243,12 @@ describe.skipIf(!HAS_DB)('API', () => {
 
       expect(row.gold).toBe(0);
       expect(row.level).toBe(1);
-      expect(row.statAtk).toBe(5);
+      /* Статы — из balance.archetypes, а не из тела запроса. Сравнение
+         именно с данными, а не с числом в тесте: числа архетипов
+         калибруются матрицей, и тест не должен падать от правки баланса.
+         Проверяется то, что заявлено, — что 999 в тело не проходит. */
+      expect(row.statAtk).toBe(balanceData.archetypes.forbidden.atk);
+      expect(row.statAtk).not.toBe(999);
     });
 
     it('профиль читается по сессии, а не по идентификатору из запроса', async () => {

@@ -195,7 +195,15 @@ export async function setLocked(
 /** Провизорная цена. Настоящая — M3c вместе с экономикой (§6.3). */
 export function sellPrice(item: Item): number {
   const multiplier = loot.sell.rarityMultiplier[item.rarity] ?? 1;
-  return Math.floor(loot.sell.base * multiplier * (1 + item.ilvl * loot.ilvlScale));
+
+  /* Аффиксы входят в цену, и это не украшение. Без них два эпика —
+     один с четырьмя T1, другой с четырьмя T5 — стоили бы одинаково,
+     и читать аффиксы перед массовой продажей было бы незачем. А фильтр
+     и замок из §6.3 существуют ровно затем, чтобы игрок читал. */
+  let quality = 0;
+  for (const affix of item.affixes) quality += loot.sell.affixTierBonus[affix.tier] ?? 0;
+
+  return Math.floor(loot.sell.base * multiplier * (1 + item.ilvl * loot.ilvlScale) * (1 + quality));
 }
 
 /**

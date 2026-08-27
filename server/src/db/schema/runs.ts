@@ -35,6 +35,28 @@ export const runs = pgTable(
     difficulty: difficultyEnum('difficulty').notNull(),
     /** Сколько боёв пройдено: 0..5 (GDD §7.2). */
     fightIndex: integer('fight_index').notNull().default(0),
+
+    /**
+     * Сид забега. Из него выводится, кто встретится в каждом бою
+     * и что выпадет.
+     *
+     * НА СЕРВЕРЕ И ТОЛЬКО ЗДЕСЬ. Клиенту он не отдаётся ни при каких
+     * условиях: с ним можно было бы посчитать состав всех пяти боёв
+     * заранее, и решение «идти дальше» перестало бы быть ставкой.
+     * Хранится, чтобы забег воспроизводился при разборе — как сид боя
+     * рядом с логом.
+     */
+    seed: text('seed').notNull(),
+
+    /**
+     * Оставшиеся заряды зелий. GDD §7.2: три на забег.
+     *
+     * Тратятся МЕЖДУ боями: игрок в бой не вмешивается, и единственное
+     * место, где заряд может быть решением, — экран между боями, там же,
+     * где выбор «эвакуироваться или дальше». Иначе зелье не механика,
+     * а автоматическая прибавка к HP.
+     */
+    potionsLeft: integer('potions_left').notNull().default(3),
     bag: jsonb('bag')
       .notNull()
       .default(sql`'[]'::jsonb`),
@@ -51,6 +73,7 @@ export const runs = pgTable(
       .where(sql`${table.state} = 'active'`),
     index('runs_player_idx').on(table.playerId),
     check('runs_fight_index_range', sql`${table.fightIndex} between 0 and 5`),
+    check('runs_potions_non_negative', sql`${table.potionsLeft} >= 0`),
   ],
 );
 

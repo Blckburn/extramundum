@@ -36,6 +36,7 @@ function build(archetype: (typeof ARCHETYPE_IDS)[number], extra: string[] = []):
     armor: a.armor,
     armorClass: 'medium',
     critBonus: 0,
+    startHp: null,
     weapon: { dmgMin: 8, dmgMax: 14, ilvl: 1, class: 'balanced' },
     offhand: null,
     percentAffixes: { might: [], bastion: [], swiftness: [] },

@@ -129,9 +129,9 @@ describe.skipIf(!HAS_DB)('предметы', () => {
   describe('экипировка', () => {
     it('слот берётся ИЗ БАЗЫ предмета, а не из запроса', async () => {
       const boots = item('eq-boots', { ilvl: 20 });
-      const { jar } = await withItems([boots]);
+      const { jar, ids } = await withItems([boots]);
       const inv = await inventory(jar);
-      const first = inv.items[0];
+      const first = own(inv, ids)[0];
       expect(first).toBeDefined();
       if (first === undefined) return;
 
@@ -143,9 +143,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('второй предмет в занятый слот возвращает первый в инвентарь', async () => {
-      const { jar } = await withItems([item('slot-a', { ilvl: 20 }), item('slot-a', { ilvl: 20 })]);
+      const { jar, ids } = await withItems([
+        item('slot-a', { ilvl: 20 }),
+        item('slot-a', { ilvl: 20 }),
+      ]);
       const inv = await inventory(jar);
-      const [a, b] = inv.items;
+      const [a, b] = own(inv, ids);
       expect(a?.slot).toBe(b?.slot);
       if (a === undefined || b === undefined) return;
 
@@ -160,9 +163,9 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('снятие возвращает предмет в инвентарь', async () => {
-      const { jar } = await withItems([item('uneq', { ilvl: 20 })]);
+      const { jar, ids } = await withItems([item('uneq', { ilvl: 20 })]);
       const inv = await inventory(jar);
-      const target = inv.items[0];
+      const target = own(inv, ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
@@ -174,9 +177,12 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('надетое меняет производные статы', async () => {
-      const { jar } = await withItems([item('stats', { ilvl: 30 })]);
+      /* Слот НЕ оружейный: стартовый меч уже надет, и предмет того же
+         слота мог бы оказаться слабее — тогда «хоть что-то изменилось»
+         проверялось бы на замене, а не на надевании. */
+      const { jar, ids } = await withItems([item('stats', { ilvl: 30, slot: 'chest' })]);
       const before = await inventory(jar);
-      const target = before.items[0];
+      const target = own(before, ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
@@ -187,6 +193,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       const changed =
         after.stats.atk !== before.stats.atk ||
         after.stats.armor !== before.stats.armor ||
+        after.stats.maxHp !== before.stats.maxHp ||
         after.stats.dmgMax !== before.stats.dmgMax ||
         after.stats.mightMultiplier !== before.stats.mightMultiplier;
       expect(changed).toBe(true);
@@ -195,23 +202,22 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
   describe('инвентарь и стеш', () => {
     it('предмет перемещается между инвентарём и стешем', async () => {
-      const { jar } = await withItems([item('move', { ilvl: 10 })]);
-      const inv = await inventory(jar);
-      const target = inv.items[0];
+      const { jar, ids } = await withItems([item('move', { ilvl: 10 })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       expect(
         (await post(ctx, API_ROUTES.itemsMove, { itemId: target.id, to: 'stash' }, jar)).status,
       ).toBe(200);
-      expect((await inventory(jar)).items[0]?.container).toBe('stash');
+      expect(own(await inventory(jar), ids)[0]?.container).toBe('stash');
 
       await post(ctx, API_ROUTES.itemsMove, { itemId: target.id, to: 'inv' }, jar);
-      expect((await inventory(jar)).items[0]?.container).toBe('inv');
+      expect(own(await inventory(jar), ids)[0]?.container).toBe('inv');
     });
 
     it('надетый предмет переместить нельзя', async () => {
-      const { jar } = await withItems([item('move-eq', { ilvl: 10 })]);
-      const target = (await inventory(jar)).items[0];
+      const { jar, ids } = await withItems([item('move-eq', { ilvl: 10 })]);
+      const target = own(await inventory(jar), ids)[0];
       if (target === undefined) return;
 
       await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
@@ -236,7 +242,10 @@ describe.skipIf(!HAS_DB)('предметы', () => {
 
       const res = await post(ctx, API_ROUTES.itemsSell, { rarities: ['common'], from: 'inv' }, jar);
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ sold: 2, provisional: true });
+      // Пометки `provisional` больше нет: цена считается настоящей
+      // формулой (§6.3, items.sell) — редкость, уровень и качество
+      // аффиксов. Абсолютная шкала ждёт стоков, форма окончательна.
+      expect(res.body).toMatchObject({ sold: 2 });
 
       const after = await inventory(jar);
       // Считаем ТОЛЬКО выданное тестом: стартовое оружие надето
@@ -429,7 +438,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       expect(Object.keys(body.deltas).length).toBeGreaterThan(0);
 
       // Превью НИЧЕГО не меняет: предмет остался не надетым.
-      expect((await inventory(jar)).items[0]?.container).toBe('inv');
+      expect(own(await inventory(jar), ids)[0]?.container).toBe('inv');
     });
 
     it('без правки отдаёт только текущий шанс', async () => {

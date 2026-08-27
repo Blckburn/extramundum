@@ -323,5 +323,10 @@
   "trait.bossHeavyStrike.name": "Замах",
   "trait.bossHeavyStrike.desc": "Каждый третий ход — тяжёлый удар ×1.5. В журнале виден за ход до нанесения.",
   "battle.telegraph": "Замахивается — следующий удар тяжёлый",
-  "battle.telegraph.short": "замах"
+  "battle.telegraph.short": "замах",
+  "error.run.alreadyActive": "Забег уже идёт",
+  "error.run.notActive": "Активного забега нет",
+  "error.run.finished": "Все бои забега пройдены",
+  "error.run.noPotions": "Зелья кончились",
+  "error.run.cannotExtract": "Эвакуация сейчас недоступна"
 }
