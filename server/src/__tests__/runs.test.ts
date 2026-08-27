@@ -158,6 +158,16 @@ describe.skipIf(!HAS_DB)('забег', () => {
       );
       // Множитель матчапа тоже готовым числом (§4.3, «ничего не спрятано»).
       expect(typeof wastes.matchup).toBe('number');
+
+      /* И восстановление — ЗОННОЕ, готовым числом. Подпись «между боями
+         четверть», написанная в клиенте один раз на все зоны, врала бы
+         на первой же из них. */
+      expect(wastes.hpRestore).toBe(WASTES.hpRestoreBetweenFights);
+      expect(wastes.hpRestore).not.toBe(raid.hpRestoreBetweenFights);
+
+      const catacombs = body.zones.find((z) => z.id === 'catacombs');
+      expect(catacombs?.hpRestore).toBe(raid.hpRestoreBetweenFights);
+
       expect(body.activeRun).toBeNull();
     });
 

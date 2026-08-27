@@ -26,7 +26,14 @@ import { fighterFromLoadout } from '../items/loadout.ts';
 import { loadoutOf } from '../items/repository.ts';
 import { findPlayerByUserId } from '../players/repository.ts';
 import { findActiveRun } from '../runs/repository.ts';
-import { drinkPotion, extract, fight, runView, startRun } from '../runs/service.ts';
+import {
+  drinkPotion,
+  extract,
+  fight,
+  restoreFractionOf,
+  runView,
+  startRun,
+} from '../runs/service.ts';
 import { parseBody, type AppEnv } from '../http/middleware.ts';
 
 /**
@@ -98,6 +105,7 @@ export function runRoutes(db: Database): Hono<AppEnv> {
         // не даст.
         unlocked: isZoneUnlocked(profile.level, zone),
         minLevel: zoneMinLevel(zone),
+        hpRestore: restoreFractionOf(zone),
       };
     });
 

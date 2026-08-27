@@ -142,6 +142,7 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
     potionsLeft: row.potionsLeft,
     bag,
     lootMultiplier: lootMultiplierAt(row.fightIndex),
+    hpRestore: restoreFractionOf(zone),
     next,
     canExtract: row.state === 'active' && canExtractAt(row.fightIndex),
   };

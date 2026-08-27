@@ -78,6 +78,8 @@ export type RunView = {
   readonly bag: readonly ItemView[];
   /** Множитель лута на СЛЕДУЮЩИЙ бой. GDD §7.2. */
   readonly lootMultiplier: number;
+  /** Доля запаса, возвращаемая между боями в ЭТОЙ зоне. §7.2. */
+  readonly hpRestore: number;
   /** `null`, если забег окончен. */
   readonly next: NextEnemy | null;
   /**
@@ -171,6 +173,15 @@ export type ZoneCard = {
   readonly unlocked: boolean;
   /** С какого уровня открывается. Показывается на запертой карточке. */
   readonly minLevel: number;
+  /**
+   * Доля запаса, возвращаемая между боями. §7.2.
+   *
+   * ПОКАЗЫВАЕТСЯ НА КАРТОЧКЕ, потому что это вход в решение «идти
+   * дальше», а не служебное число. И приходит от сервера, потому что
+   * величина зонная: подпись «между боями четверть», написанная
+   * в клиенте один раз на все зоны, врала бы на первой же из них.
+   */
+  readonly hpRestore: number;
 };
 
 export type ZonesResponse = {

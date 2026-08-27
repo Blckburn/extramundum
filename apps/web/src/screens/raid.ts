@@ -86,12 +86,15 @@ async function render(surface: Surface): Promise<void> {
         el('div', {}, [
           el('h2', { class: 'zone__name' }, [t(`zone.${zone.id}`)]),
           el('p', { class: 'zone__sub' }, [
-            `${t('zone.levels', { min: zone.levels[0], max: zone.levels[1] })} · ${t(
-              'zone.enemyArmor',
-              {
-                armor: t(`armorClass.${zone.armorClass}`),
-              },
-            )}`,
+            [
+              t('zone.levels', { min: zone.levels[0], max: zone.levels[1] }),
+              t('zone.enemyArmor', { armor: t(`armorClass.${zone.armorClass}`) }),
+              // Восстановление — ВХОД В РЕШЕНИЕ «идти дальше», а не
+              // служебное число, и оно зонное. Написать «между боями
+              // четверть» один раз на все зоны значило бы соврать
+              // на первой же из них.
+              t('zone.restore', { percent: Math.round(zone.hpRestore * 100) }),
+            ].join(' · '),
           ]),
         ]),
       ]),
@@ -167,7 +170,9 @@ async function render(surface: Surface): Promise<void> {
         `${t(`difficulty.${current.difficulty}`)} · ${t('raid.progress', {
           done: current.fightIndex,
           total: current.fightsTotal,
-        })} · ${t('raid.lootMultiplier', { value: current.lootMultiplier })}`,
+        })} · ${t('raid.lootMultiplier', { value: current.lootMultiplier })} · ${t('zone.restore', {
+          percent: Math.round(current.hpRestore * 100),
+        })}`,
       ]),
 
       el('div', { class: 'raid__hp' }, [
