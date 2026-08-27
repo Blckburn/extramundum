@@ -103,17 +103,52 @@ export function allowedTiers(ilvl: number, balance: LootBalance): readonly Affix
   return TIERS.filter((tier) => ilvl >= balance.affixTierMinIlvl[tier]);
 }
 
-function rollAffix(rng: Rng, ilvl: number, balance: LootBalance): ItemAffix {
-  const family = weighted<AffixFamily>(rng, balance.drop.familyWeights, ['might', 'strength']);
+/**
+ * Один аффикс под СЛОТ предмета.
+ *
+ * Семейство выбирается только из тех, что разрешены слоту
+ * (`drop.slotFamilies`). Это и есть роль слота: сапоги дают броню
+ * и скорость, кольцо — почти всё, нагрудник — только защиту.
+ * Пул слота, которого нет в данных, — ошибка данных: молча разрешить
+ * все семейства значило бы стереть роли, ради которых список заведён.
+ */
+function rollAffix(rng: Rng, ilvl: number, slot: EquipmentSlot, balance: LootBalance): ItemAffix {
+  const allowed = balance.drop.slotFamilies[slot];
+  if (allowed === undefined || allowed.length === 0) {
+    throw new Error(`нет списка семейств для слота «${slot}» в drop.slotFamilies`);
+  }
+
+  const family = weighted<AffixFamily>(rng, balance.drop.familyWeights, allowed);
   const tier = weighted<AffixTier>(rng, balance.drop.tierWeights, allowedTiers(ilvl, balance));
 
-  const [min, max] = balance.affixFamilies[family][tier];
+  const ladder = balance.affixFamilies[family];
+  const [min, max] = ladder[tier];
   const raw = min + rng.next() * (max - min);
 
-  // «Сила» — плоские единицы ATK, дробных не бывает. «Мощь» — доля урона,
-  // округляется до сотых процента: показывать игроку +12.3457% значит
-  // показывать шум вместо числа.
-  const value = family === 'strength' ? Math.round(raw) : Math.round(raw * 10_000) / 10_000;
+  /* Масштаб по ilvl применяется ЗДЕСЬ, один раз, и записывается в предмет
+     числом. Движок про ilvl аффикса не знает и знать не должен — у него
+     на входе готовая величина, как и требует §6.1 («хранится числом,
+     а не ссылкой на тир»).
+
+     Нужен он не всем: у брони, максимума HP и точности плоская прибавка
+     без масштаба обнуляется к высоким уровням, потому что знаменатель
+     митигации, формула HP и AGI растут вместе с уровнем. Какие семейства
+     масштабируются и какие процентные — записано В ДАННЫХ, а не выведено
+     здесь по имени семейства.
+
+     Формула повторяет `baseValue` из shared, и это не небрежность:
+     импортировать её сюда ЗНАЧЕНИЕМ нельзя — инвариант 2 требует ноль
+     рантайм-зависимостей, и на это есть проверка собранного dist.
+     Ровно по той же причине рядом живёт `ilvlScale` в fighter.ts.
+     Что копии не разошлись, проверяет тест. */
+  const scaled = ladder.scalesWithIlvl ? raw * (1 + ilvl * balance.ilvlScale) : raw;
+
+  // Плоские единицы дробными не бывают — их складывают со статом.
+  // Доли округляются до сотых процента: показывать игроку +12.3457%
+  // значит показывать шум вместо числа.
+  const value = ladder.percent
+    ? Math.round(scaled * 10_000) / 10_000
+    : Math.max(1, Math.round(scaled));
 
   return { family, tier, value };
 }
@@ -162,7 +197,7 @@ export function generateItem(
   const count = rng.int(minCount, maxCount);
 
   const affixes: ItemAffix[] = [];
-  for (let i = 0; i < count; i++) affixes.push(rollAffix(rng, ilvl, balance));
+  for (let i = 0; i < count; i++) affixes.push(rollAffix(rng, ilvl, base.slot, balance));
 
   return {
     baseKey: base.key,

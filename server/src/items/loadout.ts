@@ -1,18 +1,24 @@
 import { balance as balanceData, itemBase } from '@extramundum/data';
 import {
   baseValue,
+  isPercentFamily,
+  PERCENT_AFFIX_FAMILIES,
+  type AffixFamily,
   type EquipmentSlot,
   type FighterConfig,
+  type FlatAffixFamily,
   type Item,
   type ItemDerived,
   type ItemView,
   type LoadoutStats,
   type OffhandConfig,
+  type PercentAffixes,
+  type PercentAffixFamily,
   type PlayerProfile,
   type WeaponClass,
   weaponClassSchema,
 } from '@extramundum/shared';
-import { mightMultiplier } from '@extramundum/sim';
+import { familyMultiplier, maxHp as maxHpOf } from '@extramundum/sim';
 
 import { combatBalance } from '../battle/setup.ts';
 
@@ -57,31 +63,50 @@ function weaponClassOf(baseKey: string): WeaponClass {
   return weaponClass;
 }
 
-/** Все аффиксы «Мощи» набора — списком, как их ждёт движок. */
-function mightAffixes(loadout: Loadout): number[] {
+/**
+ * Значения одного семейства по всему набору — списком.
+ *
+ * ОДНА функция на все семь, а не семь похожих: скопированный перебор
+ * разошёлся бы при первой правке одного из них, и разошёлся бы молча —
+ * аффикс просто перестал бы работать, оставшись в тултипе.
+ */
+function affixValues(loadout: Loadout, family: AffixFamily): number[] {
   const values: number[] = [];
   for (const item of loadout.values()) {
     for (const affix of item.affixes) {
-      if (affix.family === 'might') values.push(affix.value);
+      if (affix.family === family) values.push(affix.value);
     }
   }
   return values;
 }
 
-function strengthBonus(loadout: Loadout): number {
+/** Сумма плоского семейства. Складывается в стат носителя, бюджета нет. */
+function flatBonus(loadout: Loadout, family: FlatAffixFamily): number {
   let total = 0;
-  for (const item of loadout.values()) {
-    for (const affix of item.affixes) {
-      if (affix.family === 'strength') total += affix.value;
-    }
-  }
+  for (const value of affixValues(loadout, family)) total += value;
   return total;
 }
 
+/** Процентные семейства — списками, как их ждёт движок: бюджет держит он. */
+function percentAffixesOf(loadout: Loadout): PercentAffixes {
+  return {
+    might: affixValues(loadout, 'might'),
+    bastion: affixValues(loadout, 'bastion'),
+    swiftness: affixValues(loadout, 'swiftness'),
+  };
+}
+
+/**
+ * Броня со всех слотов плюс «Крепость».
+ *
+ * «Оплот» СЮДА НЕ ВХОДИТ: он множитель, и его держит движок вместе
+ * с бюджетом семейства. Свернуть его здесь значило бы унести правило
+ * туда, где его нечем проверить тестом.
+ */
 function armorTotal(loadout: Loadout): number {
   let total = 0;
   for (const item of loadout.values()) total += derive(item).armor ?? 0;
-  return total;
+  return total + flatBonus(loadout, 'fortitude');
 }
 
 function offhandConfig(item: Item | undefined): OffhandConfig | null {
@@ -143,38 +168,64 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
 
   return {
     level: profile.level,
-    atk: profile.statAtk + strengthBonus(loadout),
+    atk: profile.statAtk + flatBonus(loadout, 'strength'),
     def: profile.statDef,
     agi: profile.statAgi,
     spd: profile.statSpd,
     // Пути уровня — M3c вместе с драфтом карточек.
     pathBonusHp: 0,
-    accuracy: 0,
+    // «Жила». ОТДЕЛЬНО от pathBonusHp: смешать два источника HP в одном
+    // числе — это форма бага v1.0 из §13 пункта 2.
+    gearBonusHp: flatBonus(loadout, 'vitality'),
+    // «Верность руки». До M3b здесь стоял ноль, и точность из §4.2
+    // существовала в документе и не существовала в игре.
+    accuracy: flatBonus(loadout, 'truehand'),
     armor: armorTotal(loadout),
     armorClass:
       chestItem === undefined ? 'medium' : (itemBase(chestItem.baseKey).armorClass ?? 'medium'),
     critBonus: 0,
     weapon,
     offhand: offhandConfig(loadout.get('offhand')),
-    damageAffixes: mightAffixes(loadout),
+    percentAffixes: percentAffixesOf(loadout),
     statuses: [],
     traits: [],
   };
 }
 
-/** Производные характеристики набора — их сравнивает превью. */
+/**
+ * Производные характеристики набора — их сравнивает превью.
+ *
+ * Числа здесь ТЕ ЖЕ, что уходят в бой: они берутся из собранного бойца,
+ * а не считаются вторым способом. Второй способ разошёлся бы, и превью
+ * обещало бы одно, а бой давал другое.
+ */
 export function loadoutStats(profile: PlayerProfile, loadout: Loadout): LoadoutStats {
   const config = fighterFromLoadout(profile, loadout);
-  const worn = mightAffixes(loadout);
+  const budget = combatBalance.items.familyBudget;
+
+  const percent = {} as Record<PercentAffixFamily, { worn: number; budget: number }>;
+  for (const family of PERCENT_AFFIX_FAMILIES) {
+    percent[family] = { worn: config.percentAffixes[family].length, budget: budget[family] };
+  }
 
   return {
     atk: config.atk,
-    armor: config.armor,
+    // Броня ПОСЛЕ «Оплота»: множитель держит движок, поэтому и число
+    // берётся у него, а не пересчитывается здесь.
+    armor: config.armor * familyMultiplier(config.percentAffixes.bastion, combatBalance, 'bastion'),
     dmgMin: config.weapon.dmgMin + (config.offhand?.kind === 'weapon' ? config.offhand.dmgMin : 0),
     dmgMax: config.weapon.dmgMax + (config.offhand?.kind === 'weapon' ? config.offhand.dmgMax : 0),
-    mightMultiplier: mightMultiplier(worn, combatBalance),
-    mightWorn: worn.length,
-    mightBudget: combatBalance.items.mightBudget,
+    spd: config.spd * familyMultiplier(config.percentAffixes.swiftness, combatBalance, 'swiftness'),
+    accuracy: config.accuracy,
+    maxHp: maxHpOf(config, combatBalance),
+    mightMultiplier: familyMultiplier(config.percentAffixes.might, combatBalance, 'might'),
+    bastionMultiplier: familyMultiplier(config.percentAffixes.bastion, combatBalance, 'bastion'),
+    swiftnessMultiplier: familyMultiplier(
+      config.percentAffixes.swiftness,
+      combatBalance,
+      'swiftness',
+    ),
+    percentAffixes: percent,
   };
 }
 
@@ -187,7 +238,7 @@ export function loadoutStats(profile: PlayerProfile, loadout: Loadout): LoadoutS
  */
 export function toView(item: Item, loadout: Loadout | null): ItemView {
   const base = itemBase(item.baseKey);
-  const counted = loadout === null ? null : countedMight(loadout);
+  const quotas = loadout === null ? null : countedQuotas(loadout);
 
   return {
     ...item,
@@ -196,7 +247,8 @@ export function toView(item: Item, loadout: Loadout | null): ItemView {
     ...(base.weaponClass === undefined ? {} : { weaponClass: base.weaponClass }),
     ...(base.armorClass === undefined ? {} : { armorClass: base.armorClass }),
     affixes: item.affixes.map((affix) => {
-      if (affix.family !== 'might' || counted === null) return affix;
+      if (quotas === null || !isPercentFamily(affix.family)) return affix;
+      const counted = quotas[affix.family];
       // Одинаковые значения неразличимы, поэтому расходуется квота:
       // из двух аффиксов по 0.15 считается ровно один, если бюджет занят.
       const quota = counted.get(affix.value) ?? 0;
@@ -206,12 +258,16 @@ export function toView(item: Item, loadout: Loadout | null): ItemView {
   };
 }
 
-/** Сколько экземпляров каждого значения «Мощи» попадает в бюджет. */
-function countedMight(loadout: Loadout): Map<number, number> {
-  const sorted = mightAffixes(loadout).sort((a, b) => b - a);
-  const quota = new Map<number, number>();
-  for (const value of sorted.slice(0, combatBalance.items.mightBudget)) {
-    quota.set(value, (quota.get(value) ?? 0) + 1);
+/** Сколько экземпляров каждого значения попадает в бюджет — по семействам. */
+function countedQuotas(loadout: Loadout): Record<PercentAffixFamily, Map<number, number>> {
+  const quotas = {} as Record<PercentAffixFamily, Map<number, number>>;
+  for (const family of PERCENT_AFFIX_FAMILIES) {
+    const sorted = affixValues(loadout, family).sort((a, b) => b - a);
+    const quota = new Map<number, number>();
+    for (const value of sorted.slice(0, combatBalance.items.familyBudget[family])) {
+      quota.set(value, (quota.get(value) ?? 0) + 1);
+    }
+    quotas[family] = quota;
   }
-  return quota;
+  return quotas;
 }

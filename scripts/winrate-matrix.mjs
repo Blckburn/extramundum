@@ -54,22 +54,31 @@ const ARCHETYPES = Object.keys(balance.archetypes).filter(
  * стартовые статы и трейты, а не лут. Как только предметы появятся
  * в M3, сюда придёт вторая матрица — «в тир-снаряжении», пункт 4.
  */
-function build(archetype, extraTraits = []) {
+function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
   const a = balance.archetypes[archetype];
+  /* Статы растут по той же прибавке за уровень, что у спарринг-манекена,
+     а броня и оружие — по масштабу ilvl из §6.1. Точной формулы роста
+     статов игрока в GDD нет (это M3c), поэтому берётся уже назначенная
+     в balance.sparring, а не выдумывается вторая. */
+  const scale = 1 + ((level - 1) * balance.sparring.statPerLevel) / 12;
+  const gear = 1 + ilvl * balance.items.ilvlScale;
+  const stat = (v) => (level === 1 ? v : Math.round(v * scale));
+
   return {
-    level: 1,
-    atk: a.atk,
-    def: a.def,
-    agi: a.agi,
-    spd: a.spd,
+    level,
+    atk: stat(a.atk),
+    def: stat(a.def),
+    agi: stat(a.agi),
+    spd: stat(a.spd),
     pathBonusHp: 0,
+    gearBonusHp: 0,
     accuracy: a.accuracy,
-    armor: a.armor,
+    armor: level === 1 ? a.armor : Math.round(a.armor * gear),
     armorClass: 'medium',
     critBonus: 0,
-    weapon: { dmgMin: 8, dmgMax: 14, ilvl: 1, class: 'balanced' },
+    weapon: { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
     offhand: null,
-    damageAffixes: [],
+    percentAffixes: { might: [], bastion: [], swiftness: [] },
     statuses: [],
     traits: [a.trait, ...extraTraits],
   };
@@ -182,28 +191,57 @@ for (const [school, ids] of Object.entries(SCHOOL_PROBE)) {
   }));
 }
 
-/* ─────────────── бюджет семейства «Мощь» (§4.6, пункт 4) ────────────── */
+/* ─────────── бюджеты процентных семейств (§4.6, пункт 4) ───────────── */
 
 /**
- * ПРОВЕРКА ЧИСЛА «ДВА» ЗАМЕРОМ. GDD §6.1 назначил бюджет расчётом:
+ * ПРОВЕРКА БЮДЖЕТОВ ЗАМЕРОМ. GDD §6.1 назначил бюджет «Мощи» расчётом:
  * «четыре аффикса T1 против четырёх T5 дают ×1.5 урона, то есть тир
  * снаряжения решал бы бой в одиночку; при двух — ×1.23, около 82%».
  * Расчёт — не замер, и до M3a проверить его было нечем: аффиксов
  * не существовало.
  *
+ * В M3b тем же способом проверяются «Оплот» и «Проворство»: они тоже
+ * процентные и тоже перемножаются, то есть способны сложиться так же.
+ * Одна процедура на все три, а не три похожих: скопированный замер
+ * разошёлся бы с первой правкой одного из них.
+ *
  * Считается ровно то, что обещано: носитель четырёх T1 против носителя
  * четырёх T5, и то же самое при двух. Плюс контрольный прогон
  * с ОТКЛЮЧЁННЫМ бюджетом — иначе «при двух мягче» не с чем сравнить.
  */
-const ladder = balance.items.affixFamilies.might;
-const midOf = (tier) => (ladder[tier][0] + ladder[tier][1]) / 2;
+const PERCENT_FAMILIES = ['might', 'bastion', 'swiftness'];
 
-function withMight(count, tier) {
-  return { ...build('theft'), damageAffixes: Array.from({ length: count }, () => midOf(tier)) };
+const midOf = (family, tier) => {
+  const ladder = balance.items.affixFamilies[family];
+  return (ladder[tier][0] + ladder[tier][1]) / 2;
+};
+
+/**
+ * УРОВЕНЬ ЗАМЕРА — 34-й, а не первый, и это исправление, а не настройка.
+ *
+ * T1 выпадает только с ilvl 34 (§6.1). Сравнение «четыре T1 против
+ * четырёх T5» на первом уровне описывает матчап, которого не бывает,
+ * — и для семейств, чья сила зависит от уровня, оно врёт. Поймано
+ * на «Оплоте»: на первом уровне четыре T1 давали 100% побед и с бюджетом,
+ * и без, то есть замер переставал различать, держит ограничение
+ * или нет. У «Мощи» этого не видно, потому что процент УРОНА от уровня
+ * не зависит; её число при первом уровне записано в balance.json
+ * ($mightBudget) и совпадает с расчётом GDD.
+ */
+const BUDGET_LEVEL = 34;
+
+function withFamily(family, count, tier) {
+  const empty = { might: [], bastion: [], swiftness: [] };
+  return {
+    ...build('theft', [], BUDGET_LEVEL, BUDGET_LEVEL),
+    percentAffixes: {
+      ...empty,
+      [family]: Array.from({ length: count }, () => midOf(family, tier)),
+    },
+  };
 }
 
-const mightRuns = Math.max(400, Math.round(RUNS / 4));
-const budget = balance.items.mightBudget;
+const budgetRuns = Math.max(400, Math.round(RUNS / 4));
 
 /**
  * КОНТРОЛЬНЫЙ ПРОГОН БЕЗ БЮДЖЕТА.
@@ -216,33 +254,50 @@ const budget = balance.items.mightBudget;
  * Бюджет отключается подменой коэффициента, а не правкой движка:
  * матрица не имеет права трогать то, что меряет.
  */
-const noBudget = { ...balance, items: { ...balance.items, mightBudget: 99 } };
+const withoutBudget = (family) => ({
+  ...balance,
+  items: {
+    ...balance.items,
+    familyBudget: { ...balance.items.familyBudget, [family]: 99 },
+  },
+});
 
-/** Множитель урона от N аффиксов тира при заданном бюджете. */
-const multiplier = (count, tier, cap) =>
-  Array.from({ length: count }, () => midOf(tier))
+/** Множитель от N аффиксов тира при заданном бюджете. */
+const multiplier = (family, count, tier, cap) =>
+  Array.from({ length: count }, () => midOf(family, tier))
     .slice(0, cap)
     .reduce((acc, v) => acc * (1 + v), 1);
 
-const mightBudgetProbe = [];
-for (const count of [4, 2]) {
-  for (const [mode, rules, cap] of [
-    ['с бюджетом', balance, budget],
-    ['без бюджета', noBudget, 99],
-  ]) {
-    mightBudgetProbe.push({
-      count,
-      mode,
-      ratio: multiplier(count, 'T1', cap) / multiplier(count, 'T5', cap),
-      /* Метка сида ОДНА на все четыре прогона, и это не мелочь.
-         Аффиксы «Мощи» не тратят бросков (на это есть тест), поэтому
-         при одном сиде три строки с множителем ×1.226 обязаны совпасть
-         ПОБИТОВО, а отличаться должна ровно одна — та, где бюджет снят.
-         С разными метками строки расходились на 3.8 п.п., и это была
-         разница ВЫБОРОК, а не баланса: ровно то, за что матрица ругает
-         условные броски. */
-      ...duel(withMight(count, 'T1'), withMight(count, 'T5'), 'might', mightRuns, rules),
-    });
+const budgetProbe = [];
+for (const family of PERCENT_FAMILIES) {
+  const budget = balance.items.familyBudget[family];
+  for (const count of [4, 2]) {
+    for (const [mode, rules, cap] of [
+      ['с бюджетом', balance, budget],
+      ['без бюджета', withoutBudget(family), 99],
+    ]) {
+      budgetProbe.push({
+        family,
+        budget,
+        count,
+        mode,
+        ratio: multiplier(family, count, 'T1', cap) / multiplier(family, count, 'T5', cap),
+        /* Метка сида ОДНА на все прогоны семейства, и это не мелочь.
+           Процентные аффиксы не тратят бросков (на это есть тест), поэтому
+           при одном сиде строки с одинаковым множителем обязаны совпасть
+           ПОБИТОВО, а отличаться должна ровно та, где бюджет снят.
+           С разными метками строки расходились на 3.8 п.п., и это была
+           разница ВЫБОРОК, а не баланса: ровно то, за что матрица ругает
+           условные броски. */
+        ...duel(
+          withFamily(family, count, 'T1'),
+          withFamily(family, count, 'T5'),
+          family,
+          budgetRuns,
+          rules,
+        ),
+      });
+    }
   }
 }
 
@@ -257,7 +312,7 @@ const breaches = pairs.filter((p) => p.rate < LOW || p.rate > HIGH);
 if (AS_JSON) {
   console.log(
     JSON.stringify(
-      { runs: RUNS, corridor: [LOW, HIGH], pairs, combos, solo, mightBudgetProbe, breaches },
+      { runs: RUNS, corridor: [LOW, HIGH], pairs, combos, solo, budgetProbe, breaches },
       null,
       2,
     ),
@@ -355,27 +410,33 @@ if (AS_JSON) {
     console.log('  Работает без условия, в отличие от соседей, — поэтому проверяется отдельно.');
   }
 
-  console.log(`\nБЮДЖЕТ СЕМЕЙСТВА «МОЩЬ» · §6.1, проверка расчёта замером`);
+  console.log(`\nБЮДЖЕТЫ ПРОЦЕНТНЫХ СЕМЕЙСТВ · §6.1, проверка расчёта замером`);
   console.log(`Носитель N аффиксов T1 против носителя N аффиксов T5.`);
-  console.log(`Текущий бюджет: ${budget}. Прогонов на пару: ${mightRuns}.\n`);
+  console.log(`Уровень и ilvl носителей: ${BUDGET_LEVEL} — там, где T1 выпадает.`);
+  console.log(`Прогонов на пару: ${budgetRuns}.\n`);
   console.log(
-    `${pad('аффиксов', 10)}${pad('режим', 14)}${padL('множитель', 11)}${padL('винрейт', 9)}`,
+    `${pad('семейство', 12)}${pad('аффиксов', 10)}${pad('режим', 14)}${padL('множитель', 11)}${padL('винрейт', 9)}`,
   );
-  console.log('─'.repeat(56));
-  for (const probe of mightBudgetProbe) {
+  console.log('─'.repeat(68));
+  let lastFamily = null;
+  for (const probe of budgetProbe) {
+    if (lastFamily !== null && probe.family !== lastFamily) console.log('');
+    lastFamily = probe.family;
     console.log(
-      pad(probe.count, 10) +
+      pad(probe.family, 12) +
+        pad(probe.count, 10) +
         pad(probe.mode, 14) +
         padL(`×${probe.ratio.toFixed(3)}`, 11) +
         padL(pct(probe.rate), 9),
     );
   }
   console.log('');
-  console.log('GDD §6.1 назначил бюджет РАСЧЁТОМ: «четыре T1 против четырёх T5');
-  console.log('дают ×1.5 урона», «при двух — ×1.23, около 82%». Строки');
+  console.log('GDD §6.1 назначил бюджет «Мощи» РАСЧЁТОМ: «четыре T1 против четырёх');
+  console.log('T5 дают ×1.5 урона», «при двух — ×1.23, около 82%». Строки');
   console.log('«без бюджета» проверяют первое утверждение, строки «с бюджетом» —');
   console.log('что ограничение действительно держит: при четырёх аффиксах оно');
-  console.log('обязано давать то же, что при двух.');
+  console.log('обязано давать то же, что при двух. Для «Оплота» и «Проворства»');
+  console.log('числа бюджета назначены по аналогии и проверяются здесь же.');
 
   console.log(`\nКРИВАЯ ЗОН (§4.6, пункт 4) — НЕ ПРОВЕРЯЕТСЯ.`);
   console.log('Отложено до M3b: зон и их противников ещё нет. Подставить');

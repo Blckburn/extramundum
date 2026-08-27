@@ -2,6 +2,7 @@ import type {
   ArmorClass,
   CombatBalance,
   FighterConfig,
+  PercentAffixFamily,
   TraitId,
   WeaponClass,
 } from '@extramundum/shared';
@@ -42,15 +43,18 @@ export type FighterState = {
 };
 
 /**
- * Максимум HP: `60 + DEF × 6 + уровень × 14 + бонусы_путей` (GDD §4.2).
+ * Максимум HP: `60 + DEF × 6 + уровень × 14 + бонусы_путей + бонусы_снаряжения`
+ * (GDD §4.2, семейство «Жила» добавлено в M3b).
  *
- * `pathBonusHp` СКЛАДЫВАЕТСЯ, а не выводится. Единственная функция,
- * считающая максимум HP, — эта; второй такой нет и быть не должно,
- * иначе повторится расхождение v1.0.
+ * Оба бонуса СКЛАДЫВАЮТСЯ, а не выводятся, и хранятся РАЗДЕЛЬНО.
+ * Единственная функция, считающая максимум HP, — эта; второй такой нет
+ * и быть не должно, иначе повторится расхождение v1.0.
  */
 export function maxHp(config: FighterConfig, balance: CombatBalance): number {
   const { base, perDef, perLevel } = balance.maxHp;
-  return base + config.def * perDef + config.level * perLevel + config.pathBonusHp;
+  return (
+    base + config.def * perDef + config.level * perLevel + config.pathBonusHp + config.gearBonusHp
+  );
 }
 
 export function createFighterState(config: FighterConfig, balance: CombatBalance): FighterState {
@@ -143,9 +147,15 @@ export function effectiveStats(
       : ({} as ReturnType<typeof activeTraitModifiers>);
 
   const atk = Math.max(0, (base.atk + (sm.atk ?? 0) + (tm.atk ?? 0)) * (tm.atkMultiplier ?? 1));
+  // «Оплот» умножает броню ДО статусов и трейтов, потому что это
+  // свойство снаряжения, а не эффект боя: стойка `stoneskin` должна
+  // множить уже усиленную аффиксами броню, а не наоборот. Порядок
+  // здесь виден и потому проверяем — перемножение коммутативно, но
+  // порядок задаёт, что от чего считается процент.
+  const gearArmor = base.armor * familyMultiplier(base.percentAffixes.bastion, balance, 'bastion');
   const armor = Math.max(
     0,
-    (base.armor + (sm.armor ?? 0) + (tm.armor ?? 0)) *
+    (gearArmor + (sm.armor ?? 0) + (tm.armor ?? 0)) *
       (sm.armorMultiplier ?? 1) *
       (tm.armorMultiplier ?? 1),
   );
@@ -164,7 +174,10 @@ export function effectiveStats(
     // он не менее плох.
     spd: Math.max(
       balance.tick.minSpd,
-      (base.spd + (sm.spd ?? 0) + (tm.spd ?? 0)) * (tm.spdMultiplier ?? 1),
+      (base.spd * familyMultiplier(base.percentAffixes.swiftness, balance, 'swiftness') +
+        (sm.spd ?? 0) +
+        (tm.spd ?? 0)) *
+        (tm.spdMultiplier ?? 1),
     ),
     armor,
     accuracy: Math.max(0, base.accuracy + (sm.accuracy ?? 0) + (tm.accuracy ?? 0)),
@@ -177,26 +190,35 @@ export function effectiveStats(
     incomingDamageMultiplier: tm.incomingDamageMultiplier ?? 1,
     dotDamageBonus: (tm.dotDamageBonus ?? 0) + focusBonus,
     guaranteedCrit: tm.guaranteedCrit ?? false,
-    mightMultiplier: mightMultiplier(base.damageAffixes, balance),
+    mightMultiplier: familyMultiplier(base.percentAffixes.might, balance, 'might'),
   };
 }
 
 /**
- * Множитель семейства «Мощь» из аффиксов носителя. GDD §6.1.
+ * Множитель процентного семейства из аффиксов носителя. GDD §6.1.
  *
- * Берутся ДВЕ СИЛЬНЕЙШИЕ (`balance.items.mightBudget`), остальные
+ * Берутся N СИЛЬНЕЙШИХ (`balance.items.familyBudget[family]`), остальные
  * не считаются. Без ограничения счёта лестница перестаёт значить:
- * четыре аффикса T1 против четырёх T5 дают ×1.5 урона, то есть тир
- * снаряжения решал бы бой в одиночку.
+ * у «Мощи» четыре аффикса T1 против четырёх T5 дают ×1.5 урона —
+ * замерено, — то есть тир снаряжения решал бы бой в одиночку.
+ *
+ * ОДНА функция на все три процентных семейства, а не три похожих.
+ * Разница между ними — только в том, какое число она умножает,
+ * и живёт она в месте вызова; скопированное правило бюджета разошлось
+ * бы при первой же правке одного из трёх.
  *
  * Сортировка копии, а не самого массива: конфигурация бойца общая
  * на весь прогон матрицы, и мутировать её здесь значило бы менять
  * входные данные из функции, которая обязана быть чистой.
  */
-export function mightMultiplier(affixes: readonly number[], balance: CombatBalance): number {
+export function familyMultiplier(
+  affixes: readonly number[],
+  balance: CombatBalance,
+  family: PercentAffixFamily,
+): number {
   if (affixes.length === 0) return 1;
 
-  const counted = [...affixes].sort((a, b) => b - a).slice(0, balance.items.mightBudget);
+  const counted = [...affixes].sort((a, b) => b - a).slice(0, balance.items.familyBudget[family]);
   let multiplier = 1;
   for (const value of counted) multiplier *= 1 + value;
   return multiplier;

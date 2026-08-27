@@ -168,3 +168,101 @@ describe('уникальный модификатор', () => {
     }
   });
 });
+
+describe('семейства аффиксов по слотам (M3b)', () => {
+  /**
+   * Роль слота — это и есть то, ради чего заводились защитные семейства
+   * (GDD §5.3). Проверяется, что генератор её соблюдает и что разные
+   * слоты действительно порождают разные наборы.
+   */
+
+  it('на слот не выпадает семейство, которого он не разрешает', () => {
+    for (const slot of ['helmet', 'chest', 'boots', 'bracers', 'amulet', 'ring'] as const) {
+      const allowed = new Set(loot.drop.slotFamilies[slot] ?? []);
+      expect(allowed.size, `слот «${slot}» без списка семейств`).toBeGreaterThan(0);
+
+      let seen = 0;
+      for (let i = 0; i < 300; i++) {
+        const item = generateItem(
+          `slot-${slot}-${i}`,
+          { ilvl: 40, slot, rarity: 'epic' },
+          loot,
+          bases,
+        );
+        for (const affix of item.affixes) {
+          expect(allowed.has(affix.family), `${slot}: выпало «${affix.family}»`).toBe(true);
+          seen++;
+        }
+      }
+      // Аффиксы обязаны быть В ЭТОЙ ЖЕ выборке, иначе проверка «ничего
+      // лишнего не выпало» проходит на пустом списке.
+      expect(seen, `${slot}: аффиксов не выпало вовсе`).toBeGreaterThan(300);
+    }
+  });
+
+  it('сапоги и шлем дают РАЗНЫЕ семейства — иначе слотов нет, есть один слот', () => {
+    const families = (slot: 'boots' | 'helmet' | 'ring'): Set<string> => {
+      const out = new Set<string>();
+      for (let i = 0; i < 300; i++) {
+        for (const affix of generateItem(
+          `f-${slot}-${i}`,
+          { ilvl: 40, slot, rarity: 'epic' },
+          loot,
+          bases,
+        ).affixes) {
+          out.add(affix.family);
+        }
+      }
+      return out;
+    };
+
+    const boots = families('boots');
+    const helmet = families('helmet');
+    const ring = families('ring');
+
+    expect(boots.has('swiftness')).toBe(true);
+    expect(helmet.has('swiftness')).toBe(false);
+    expect(helmet.has('bastion')).toBe(true);
+    expect(boots.has('bastion')).toBe(false);
+    // Кольцо — самый широкий слот, и это его роль.
+    expect(ring.size).toBeGreaterThan(boots.size);
+  });
+
+  it('плоские семейства РАСТУТ с ilvl, процентные — нет', () => {
+    /* Плоское число, не растущее с ilvl, к высоким уровням не значит
+       ничего — знаменатель митигации и формула HP растут вместе
+       с уровнем. Здесь проверяется, что масштаб действительно применён,
+       а не объявлен в данных и забыт в коде. */
+    const values = (ilvl: number, slot: 'helmet' | 'ring', family: string): number[] => {
+      const out: number[] = [];
+      for (let i = 0; i < 400; i++) {
+        for (const affix of generateItem(
+          `s-${slot}-${ilvl}-${i}`,
+          { ilvl, slot, rarity: 'epic' },
+          loot,
+          bases,
+        ).affixes) {
+          if (affix.family === family && affix.tier === 'T5') out.push(affix.value);
+        }
+      }
+      return out;
+    };
+
+    const lowFlat = values(1, 'helmet', 'fortitude');
+    const highFlat = values(40, 'helmet', 'fortitude');
+    expect(lowFlat.length, 'T5 «Крепости» не выпала на ilvl 1').toBeGreaterThan(0);
+    expect(highFlat.length, 'T5 «Крепости» не выпала на ilvl 40').toBeGreaterThan(0);
+
+    const avg = (xs: number[]): number => xs.reduce((a, b) => a + b, 0) / xs.length;
+    // 1 + 40 × 0.04 = 2.6 раза. Сравниваем средние, потому что внутри
+    // тира значение ещё и катается по диапазону.
+    expect(avg(highFlat)).toBeGreaterThan(avg(lowFlat) * 2);
+
+    const lowPct = values(1, 'helmet', 'bastion');
+    const highPct = values(40, 'helmet', 'bastion');
+    expect(lowPct.length, 'T5 «Оплота» не выпала на ilvl 1').toBeGreaterThan(0);
+    expect(highPct.length, 'T5 «Оплота» не выпала на ilvl 40').toBeGreaterThan(0);
+    // Процент от ilvl не зависит: он и так растёт вместе с тем, что множит.
+    expect(avg(highPct)).toBeCloseTo(avg(lowPct), 2);
+  });
+});

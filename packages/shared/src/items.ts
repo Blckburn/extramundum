@@ -68,21 +68,67 @@ export const affixTierSchema = z.enum(AFFIX_TIERS);
 export type AffixTier = z.infer<typeof affixTierSchema>;
 
 /**
- * Семейства аффиксов. ДВА, и это не сокращение объёма.
+ * Семейства аффиксов. СЕМЬ: два атакующих и пять защитных.
  *
- * GDD §6.1 задаёт лестницы ровно для двух: «Мощь» (процент урона)
- * и «Сила» (плоское к ATK). Числа для них выверены замером в M1c.
- * Третьего семейства с выверенными числами в документе нет, а придумать
- * их здесь значило бы завести баланс мимо документа и мимо матрицы —
- * ровно то, чем §13 пункт 4 закончился в v1.0.
+ * Два первых перенесены из GDD §6.1 дословно и выверены замером в M1c.
+ * Пять защитных пришли в M3b решением человека: до них кольцо, амулет
+ * и наручи отличались друг от друга только наличием брони, то есть
+ * слоты из §5.3 существовали, а ролей у них не было.
  *
- * Следствие, которое надо знать: пока семейств два, кольцо и амулет
- * отличаются от наручей только тем, что не дают брони. Защитные
- * семейства из §5.3 («сапоги — SPD/уклонение») ждут лестницы от человека.
+ * | Семейство   | Что даёт            | Форма   | Слоты                         |
+ * | ----------- | ------------------- | ------- | ----------------------------- |
+ * | `might`     | урон                | процент | оружие, оффхенд, наручи, амулет, кольцо |
+ * | `strength`  | ATK                 | плоское | там же                        |
+ * | `fortitude` | броня               | плоское | шлем, нагрудник, наручи, сапоги |
+ * | `bastion`   | броня               | процент | шлем, нагрудник               |
+ * | `vitality`  | максимум HP         | плоское | нагрудник, амулет, кольцо     |
+ * | `swiftness` | SPD                 | процент | сапоги, кольцо                |
+ * | `truehand`  | точность            | плоское | наручи, кольцо, амулет        |
+ *
+ * ПОЧЕМУ ПРОЦЕНТ ОТ БРОНИ, А НЕ ПРОЦЕНТ СНИЖЕНИЯ УРОНА. Прямое снижение
+ * перемножается в неуязвимость: четыре аффикса по −15% дают −48%, и это
+ * не упирается ни во что. Броня же проходит через `ARM/(ARM+40+12×lvl)`
+ * и самоограничивается — та же прибавка тем слабее, чем больше брони
+ * уже есть.
+ *
+ * ПОЧЕМУ ПРОЦЕНТ ЗДЕСЬ ВООБЩЕ ДОПУСТИМ, хотя §6.1 против процентов
+ * от стата. Возражение документа в том, что процент от ATK проходит
+ * через `1 + ATK/60` и даёт РАЗНОЕ на разных персонажах при одинаковой
+ * надписи. У брони это насыщение — то, ради чего её и выбрали вместо
+ * прямого снижения. У SPD преобразование линейное (инициатива копится
+ * ровно по SPD за тик), поэтому процент честен, а плоское было бы
+ * наоборот перекошено: при базовом SPD 9–15 «+1» это от 7% до 11%.
  */
-export const AFFIX_FAMILIES = ['might', 'strength'] as const;
+export const AFFIX_FAMILIES = [
+  'might',
+  'strength',
+  'fortitude',
+  'bastion',
+  'vitality',
+  'swiftness',
+  'truehand',
+] as const;
 export const affixFamilySchema = z.enum(AFFIX_FAMILIES);
 export type AffixFamily = z.infer<typeof affixFamilySchema>;
+
+/**
+ * Семейства, работающие МНОЖИТЕЛЕМ, а не слагаемым.
+ *
+ * Отдельный список, потому что от формы зависит всё остальное: плоские
+ * складываются в один стат и бюджета не требуют, процентные
+ * перемножаются и потому могут его требовать. Бюджет держит движок
+ * (`familyMultiplier`), и он же читает этот список.
+ */
+export const PERCENT_AFFIX_FAMILIES = ['might', 'bastion', 'swiftness'] as const;
+export type PercentAffixFamily = (typeof PERCENT_AFFIX_FAMILIES)[number];
+
+/** Плоские семейства: складываются в стат носителя, потолка счёта нет. */
+export const FLAT_AFFIX_FAMILIES = ['strength', 'fortitude', 'vitality', 'truehand'] as const;
+export type FlatAffixFamily = (typeof FLAT_AFFIX_FAMILIES)[number];
+
+export function isPercentFamily(family: AffixFamily): family is PercentAffixFamily {
+  return (PERCENT_AFFIX_FAMILIES as readonly string[]).includes(family);
+}
 
 export const itemAffixSchema = z.object({
   family: affixFamilySchema,
@@ -231,8 +277,9 @@ export type ItemDerived = {
 export type ItemAffixView = ItemAffix & {
   /**
    * Учитывается ли аффикс в бою. Заполняется ТОЛЬКО у надетых предметов
-   * и только для «Мощи»: бюджет семейства — две сильнейшие на персонажа
-   * (GDD §6.1), и третий аффикс не даёт ничего.
+   * и только у семейств С БЮДЖЕТОМ: считаются N сильнейших на персонажа,
+   * остальные не дают ничего (GDD §6.1 для «Мощи», замер M3b
+   * для остальных процентных).
    *
    * Считает сервер, потому что ответ зависит от всего надетого набора.
    * Клиент это рисует, а не выводит.
@@ -256,14 +303,50 @@ export type ItemView = Omit<Item, 'affixes'> & {
  */
 export type LoadoutStats = {
   readonly atk: number;
+  /** Броня ПОСЛЕ «Крепости» и «Оплота»: то самое число, что идёт в бой. */
   readonly armor: number;
   readonly dmgMin: number;
   readonly dmgMax: number;
+  readonly spd: number;
+  readonly accuracy: number;
+  readonly maxHp: number;
   readonly mightMultiplier: number;
-  /** Сколько аффиксов «Мощи» надето и сколько из них считается. */
-  readonly mightWorn: number;
-  readonly mightBudget: number;
+  readonly bastionMultiplier: number;
+  readonly swiftnessMultiplier: number;
+  /**
+   * Надето и учтено по каждому процентному семейству.
+   *
+   * Пара чисел, а не одно: «надел три, считаются две» — единственный
+   * способ объяснить игроку, почему третий аффикс ничего не дал.
+   * Прятать это хуже, чем показать: игрок надел бы третий, не получил
+   * ничего и решил бы, что система сломана.
+   */
+  readonly percentAffixes: Readonly<
+    Record<PercentAffixFamily, { readonly worn: number; readonly budget: number }>
+  >;
 };
+
+/**
+ * Числовые поля набора — те, у которых имеет смысл дельта в превью.
+ *
+ * Список явный, а не `Object.keys`: в `LoadoutStats` есть и составное
+ * поле (`percentAffixes`), и вычитать его нечем. Прежний перебор всех
+ * ключей работал, пока все они были числами, и сломался бы молча —
+ * `NaN` в дельте выглядит как «стало хуже», а не как ошибка.
+ */
+export const LOADOUT_STAT_KEYS = [
+  'atk',
+  'armor',
+  'dmgMin',
+  'dmgMax',
+  'spd',
+  'accuracy',
+  'maxHp',
+  'mightMultiplier',
+  'bastionMultiplier',
+  'swiftnessMultiplier',
+] as const satisfies readonly (keyof LoadoutStats)[];
+export type LoadoutStatKey = (typeof LOADOUT_STAT_KEYS)[number];
 
 export type InventoryResponse = {
   readonly items: readonly ItemView[];

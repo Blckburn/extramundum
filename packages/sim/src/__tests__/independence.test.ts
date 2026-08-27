@@ -276,7 +276,10 @@ describe('сам генератор', () => {
       [
         'аффиксы Мощи у атакующего',
         { attacker: {}, defender: { agi: 20 } },
-        { attacker: { damageAffixes: [0.12, 0.15, 0.15] }, defender: { agi: 20 } },
+        {
+          attacker: { percentAffixes: { might: [0.12, 0.15, 0.15], bastion: [], swiftness: [] } },
+          defender: { agi: 20 },
+        },
       ],
     ];
 

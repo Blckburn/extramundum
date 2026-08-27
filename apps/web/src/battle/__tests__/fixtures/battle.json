@@ -14,6 +14,7 @@
       "agi": 12,
       "spd": 11,
       "pathBonusHp": 0,
+      "gearBonusHp": 0,
       "accuracy": 0,
       "armor": 6,
       "armorClass": "medium",
@@ -25,7 +26,11 @@
         "class": "balanced"
       },
       "offhand": null,
-      "damageAffixes": [],
+      "percentAffixes": {
+        "might": [],
+        "bastion": [],
+        "swiftness": []
+      },
       "statuses": [],
       "traits": ["plaguebearer", "hexblade", "innateScholar"]
     },
@@ -36,6 +41,7 @@
       "agi": 9,
       "spd": 10,
       "pathBonusHp": 0,
+      "gearBonusHp": 0,
       "accuracy": 0,
       "armor": 9,
       "armorClass": "heavy",
@@ -51,7 +57,11 @@
         "blockChance": 0.35,
         "blockReduction": 0.7
       },
-      "damageAffixes": [],
+      "percentAffixes": {
+        "might": [],
+        "bastion": [],
+        "swiftness": []
+      },
       "statuses": [],
       "traits": ["thorns", "pyromancer", "innateGuard"]
     }

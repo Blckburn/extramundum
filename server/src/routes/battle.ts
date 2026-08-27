@@ -1,5 +1,6 @@
 import {
   API_ROUTES,
+  LOADOUT_STAT_KEYS,
   battleStartInputSchema,
   equipmentSlotSchema,
   simulatePreviewInputSchema,
@@ -190,10 +191,17 @@ async function applyChange(
   return next;
 }
 
-/** Разница производных набора. Только изменившееся. */
+/**
+ * Разница производных набора. Только изменившееся.
+ *
+ * Перебираются ЧИСЛОВЫЕ поля по явному списку, а не все ключи подряд:
+ * в наборе есть и составное поле (сколько аффиксов надето и сколько
+ * считается), и вычитание дало бы `NaN`, который на экране выглядит
+ * как «стало хуже», а не как ошибка.
+ */
 function statDeltas(before: LoadoutStats, after: LoadoutStats): Record<string, number> {
   const deltas: Record<string, number> = {};
-  for (const key of Object.keys(before) as Array<keyof LoadoutStats>) {
+  for (const key of LOADOUT_STAT_KEYS) {
     const diff = after[key] - before[key];
     // Ноль не показывается: строка «ATK +0» не сообщает ничего,
     // а список из восьми нулей прячет то единственное, что изменилось.
