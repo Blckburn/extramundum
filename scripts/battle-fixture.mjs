@@ -141,7 +141,21 @@ const fixture = {
   log,
 };
 
-const serialized = `${JSON.stringify(fixture, null, 2)}\n`;
+/* Форматируется ТУТ ЖЕ, а не оставляется Prettier на потом.
+   `JSON.stringify` всегда разворачивает массивы по строкам, а Prettier
+   короткие схлопывает, — значит сразу после генерации файл заведомо
+   не проходил `format:check`, и порядок «сгенерировать, потом
+   отформатировать» приходилось помнить. Я его не вспомнил, и CI
+   покраснел на форматировании эталона. Помнить больше нечего: скрипт
+   пишет ровно то, что примет проверка.
+
+   Prettier уже в devDependencies корня, новой зависимости здесь нет. */
+const prettier = await import('prettier');
+const options = (await prettier.resolveConfig(OUT)) ?? {};
+const serialized = await prettier.format(JSON.stringify(fixture), {
+  ...options,
+  filepath: OUT,
+});
 
 if (CHECK) {
   // Сравнение РАЗОБРАННОГО, а не текста: файл проходит через Prettier,
