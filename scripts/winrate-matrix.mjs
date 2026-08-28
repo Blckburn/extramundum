@@ -717,6 +717,28 @@ const zoneCurve = zones.map((zone, index) => {
     rate: across(monsterSpecs[key], `zone-${zone.id}-${key}`),
   }));
 
+  /* ТОТ ЖЕ боец без трейтов драфта. Разделяет два рычага: сколько
+     размаха дают КАРТЫ, а сколько — ШКОЛЫ ТРЕЙТОВ. Без этого деления
+     правка колоды и правка школ неразличимы по результату, и чинить
+     будут не то. Замерено: в Чумных ямах общий размах 64.7 п.п.,
+     а на одних картах 13.3 — то есть почти весь он приходит
+     от трейтов. */
+  const cardsOnly = byLean.map(({ lean, kit }) => ({
+    lean,
+    rate:
+      zone.monsters
+        .map(
+          (key) =>
+            duel(
+              { ...kit, traits: [balance.archetypes.forbidden.trait] },
+              monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
+              `cards-${zone.id}-${lean}-${key}`,
+              zoneRuns,
+            ).rate,
+        )
+        .reduce((a, b) => a + b, 0) / zone.monsters.length,
+  }));
+
   const leanRates = byLean.map(({ lean, kit }) => ({
     lean,
     rate:
@@ -777,6 +799,7 @@ const zoneCurve = zones.map((zone, index) => {
     within: Math.abs(rate - target) <= ZONE_TOLERANCE,
     perMonster,
     leanRates,
+    cardsOnly,
     boss: bossRate,
     suggested,
   };
@@ -1203,13 +1226,23 @@ if (AS_JSON) {
      разница между наклонами означает, что трудность зоны для игрока
      зависит от того, какой билд он собрал, — а это уже не про зону. */
   console.log('РАЗБРОС ПО НАКЛОНАМ ДРАФТА (среднее оружие, без босса)');
-  console.log(pad('зона', 12) + LEANS.map((l) => padL(l, 9)).join('') + padL('размах', 9));
+  console.log(
+    pad('зона', 12) +
+      LEANS.map((l) => padL(l, 9)).join('') +
+      padL('размах', 9) +
+      padL('без трейтов', 12),
+  );
   console.log('─'.repeat(86));
   for (const z of zoneCurve) {
     const rates = z.leanRates.map((r) => r.rate);
     const spread = Math.max(...rates) - Math.min(...rates);
+    const bare = z.cardsOnly.map((r) => r.rate);
+    const bareSpread = Math.max(...bare) - Math.min(...bare);
     console.log(
-      pad(z.id, 12) + z.leanRates.map((r) => padL(pct(r.rate), 9)).join('') + padL(pct(spread), 9),
+      pad(z.id, 12) +
+        z.leanRates.map((r) => padL(pct(r.rate), 9)).join('') +
+        padL(pct(spread), 9) +
+        padL(pct(bareSpread), 12),
     );
   }
   console.log('');
@@ -1219,8 +1252,9 @@ if (AS_JSON) {
       `РАЗМАХ ВЫШЕ ЦЕЛИ: ${leanSpreadWorst.id}, ${pct(leanSpreadWorst.spread)}. Это значит,`,
     );
     console.log('что трудность зоны определяется выбранным билдом сильнее, чем самой');
-    console.log('зоной. Смотреть надо в колоду и в силу школ трейтов, а не в power:');
-    console.log('множитель зоны двигает все наклоны разом и размах не меняет.');
+    console.log('зоной. Множитель зоны тут не поможет: он двигает все наклоны разом.');
+    console.log('Колонка «без трейтов» говорит, КУДА смотреть: если она заметно');
+    console.log('меньше общего размаха, дело в школах трейтов, а не в колоде.');
   }
   console.log('');
   console.log('');
