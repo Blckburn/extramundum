@@ -25,6 +25,7 @@ import { AppError } from '../http/errors.ts';
 import { fighterFromLoadout } from '../items/loadout.ts';
 import { loadoutOf } from '../items/repository.ts';
 import { findPlayerByUserId } from '../players/repository.ts';
+import { progressionOf } from '../progression/service.ts';
 import { findActiveRun } from '../runs/repository.ts';
 import {
   drinkPotion,
@@ -74,7 +75,8 @@ export function runRoutes(db: Database): Hono<AppEnv> {
   app.get(API_ROUTES.zones, async (c) => {
     const profile = await profileOf(c);
     const loadout = await loadoutOf(db, profile.id);
-    const weapon = fighterFromLoadout(profile, loadout).weapon.class;
+    const weapon = fighterFromLoadout(profile, loadout, await progressionOf(db, profile)).weapon
+      .class;
 
     const zones: ZoneCard[] = ZONES.map((zone) => {
       const difficulties = Object.fromEntries(

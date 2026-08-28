@@ -2,7 +2,7 @@ import { monsterSpec, zoneSpec } from '@extramundum/data/zones';
 import type { BattleSetup, Difficulty, PlayerProfile, ZoneId } from '@extramundum/shared';
 import { resolveBattle } from '@extramundum/sim';
 
-import { fighterFromLoadout, type Loadout } from '../items/loadout.ts';
+import { fighterFromLoadout, type Loadout, type ProgressionBonuses } from '../items/loadout.ts';
 
 import { monsterFighter, monsterLevel } from './monsters.ts';
 import { combatBalance, sparringDummy } from './setup.ts';
@@ -47,6 +47,10 @@ export type PreviewInput = {
   readonly runs: number;
   /** Набор, ПО КОТОРОМУ считать. Гипотетический — тоже сюда. */
   readonly loadout: Loadout;
+  /* Карты и трейты прогрессии. ПОЛЕ ОБЯЗАТЕЛЬНОЕ: превью, считающее
+     бойца без его карт, отвечает не на тот вопрос, который задал
+     игрок, — и врёт тем убедительнее, чем дальше игрок прошёл. */
+  readonly progression: ProgressionBonuses;
 };
 
 export type PreviewEstimate = {
@@ -58,7 +62,7 @@ export type PreviewEstimate = {
 };
 
 export function estimateWinRate(input: PreviewInput): PreviewEstimate {
-  const player = fighterFromLoadout(input.profile, input.loadout);
+  const player = fighterFromLoadout(input.profile, input.loadout, input.progression);
   const zone = zoneSpec(input.zone);
 
   /* Зоны нет — считаем по манекену и ГОВОРИМ об этом полем `basis`.

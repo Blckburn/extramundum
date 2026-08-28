@@ -28,6 +28,14 @@ const root = new URL('../', import.meta.url);
 const balance = JSON.parse(readFileSync(new URL('packages/data/balance.json', root), 'utf8'));
 
 const { resolveBattle } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
+/* Реестр трейтов нужен прогрессии игрока: школа трейта — данные движка,
+   и переписывать их сюда значило бы завести копию, которая разойдётся. */
+const { TRAITS } = await import(fileURLToPath(new URL('packages/sim/dist/traits.js', root)));
+/* Оффер драфта берётся у ПРОИЗВОДСТВЕННОЙ функции, а не повторяется
+   здесь: колода фильтруется наклоном, и вторая реализация фильтра
+   разошлась бы с первой молча — а значит матрица мерила бы билд,
+   которого игра не выдаёт. */
+const { offerCards } = await import(fileURLToPath(new URL('packages/shared/dist/index.js', root)));
 
 /* ────────────────────────────── аргументы ───────────────────────────── */
 
@@ -56,13 +64,21 @@ const ARCHETYPES = Object.keys(balance.archetypes).filter(
  */
 function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
   const a = balance.archetypes[archetype];
-  /* Статы растут по той же прибавке за уровень, что у спарринг-манекена,
-     а броня и оружие — по масштабу ilvl из §6.1. Точной формулы роста
-     статов игрока в GDD нет (это M3c), поэтому берётся уже назначенная
-     в balance.sparring, а не выдумывается вторая. */
-  const scale = 1 + ((level - 1) * balance.sparring.statPerLevel) / 12;
+  /* Рост статов — АВТОПРИРОСТ прогрессии (§5.2), а не прежняя прокси
+     `база × (1 + (уровень − 1) × sparring.statPerLevel / 12)`: настоящая
+     формула теперь есть, и держать рядом прокси значит мерить бойца,
+     которого игра не производит.
+
+     КАРТ И ТРЕЙТОВ ДРАФТА ЗДЕСЬ НЕТ, и это решение, а не пропуск.
+     Эта функция меряет силу АРХЕТИПА и ОДНОГО трейта в изоляции —
+     ради этого коридор §4.6 и написан. Добавь сюда восемь трейтов
+     драфта, и измеряемое утонет в них: разброс между архетипами стал
+     бы разбросом между школами драфта. Настоящий растущий боец
+     со всеми картами живёт в `tierGearedPlayer`, где он и нужен —
+     в кривой зон. */
+  const auto = (level - 1) * PROG.statPerLevel;
   const gear = 1 + ilvl * balance.items.ilvlScale;
-  const stat = (v) => (level === 1 ? v : Math.round(v * scale));
+  const stat = (v) => v + auto;
 
   return {
     level,
@@ -84,6 +100,117 @@ function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
     statuses: [],
     traits: [a.trait, ...extraTraits],
   };
+}
+
+/* ─────────────────── ПРОГРЕССИЯ ИГРОКА · GDD §5.2 ───────────────────
+ *
+ * До M3c эталонный боец рос ПРОКСИ-формулой: статы умножались
+ * на `1 + (уровень − 1) × sparring.statPerLevel / 12`, потому что
+ * настоящей формулы роста ещё не существовало. Теперь она есть,
+ * и держать рядом прокси значило бы калибровать зоны на бойце,
+ * которого игра не производит, — ровно та ошибка, из-за которой
+ * коридор архетипов однажды был выверен на игроке без базовой брони.
+ *
+ * ЧТО ЗДЕСЬ МОДЕЛИРУЕТСЯ И ПОЧЕМУ ИМЕННО ТАК:
+ *
+ * 1. Автоприрост — по единице в каждый стат за уровень. Спорить не о чем,
+ *    это `progression.statPerLevel`.
+ *
+ * 2. Карты — НАПРАВЛЕННЫЙ билд, но собранный ИЗ НАСТОЯЩИХ ОФФЕРОВ.
+ *    Оффер — три карты из колоды, отфильтрованной наклоном (§5.2);
+ *    карты своего наклона в нём может и не быть. Игрок берёт самую
+ *    глубокую карту своего наклона, если она предложена, иначе самую
+ *    глубокую вообще.
+ *
+ *    Модель «всегда лучшая карта наклона» была бы ЛОЖЬЮ В СИЛЬНУЮ
+ *    СТОРОНУ, и это не мелочь: она давала направленному ATK-билду
+ *    +134% к шансу крита к сороковому уровню, то есть упор в потолок
+ *    60% примерно с двенадцатого. Матрица мерила бы бойца, которого
+ *    игра не выдаёт, — та же ошибка, что с непримененной бронёй
+ *    архетипа, только в другую сторону.
+ *
+ * 3. Трейты — каждый пятый уровень, следующий трейт ШКОЛЫ этого наклона
+ *    в порядке реестра. Врождённые исключены: они принадлежат причине
+ *    изгнания, а не выбору.
+ *
+ * НАКЛОН — ОСЬ УСРЕДНЕНИЯ, а не параметр. Кривая зон меряется по всем
+ * четырём и усредняется, ровно по той же причине, по которой она уже
+ * усредняется по трём классам оружия: трудность зоны не должна зависеть
+ * от того, какой билд собрал игрок. Разойдись числа по наклонам сильно —
+ * это находка о балансе школ, и её видно в разбросе, а не в одном
+ * усреднённом числе.
+ */
+const CARDS = JSON.parse(readFileSync(new URL('packages/data/cards.json', root), 'utf8')).cards;
+const PROG = balance.progression;
+const LEANS = ['atk', 'def', 'agi', 'spd'];
+const LEAN_SCHOOL = { atk: 'str', def: 'def', agi: 'agi', spd: 'mag' };
+
+/** Врождённые трейты — те, что раздаёт причина изгнания. В пул не входят. */
+const INNATE = new Set(ARCHETYPES.map((k) => balance.archetypes[k].trait));
+
+function schoolPool(school) {
+  return [...TRAITS.values()]
+    .filter((t) => t.school === school && !INNATE.has(t.id))
+    .map((t) => t.id);
+}
+
+const TIER_RANK = { base: 0, synergy: 1, deep: 2 };
+
+/**
+ * Что игрок набрал к данному уровню, ведя один наклон.
+ *
+ * Возвращает прибавки в тех же полях, что у бойца, — второго словаря
+ * «имя эффекта → что менять» здесь заводить нельзя, он и есть то место,
+ * где карта начинает делать не то, что написано.
+ */
+function progressionAt(level, lean) {
+  const out = {
+    atk: 0,
+    def: 0,
+    agi: 0,
+    spd: 0,
+    armor: 0,
+    accuracy: 0,
+    pathBonusHp: 0,
+    critBonus: 0,
+    auto: (level - 1) * PROG.statPerLevel,
+    traits: [],
+  };
+
+  const leans = { atk: 0, def: 0, agi: 0, spd: 0 };
+  const pool = schoolPool(LEAN_SCHOOL[lean]);
+  // Сид фиксирован наклоном: прогон обязан воспроизводиться, иначе
+  // «стало лучше» неотличимо от другого расклада карт.
+  const seed = `matrix-draft-${lean}`;
+
+  for (let lv = 2; lv <= level; lv++) {
+    if (lv % PROG.traitEveryNLevels === 0) {
+      const next = pool[out.traits.length];
+      if (next !== undefined) out.traits.push(next);
+      continue;
+    }
+
+    const offer = offerCards(CARDS, leans, seed, lv, PROG);
+    if (offer.length === 0) continue;
+
+    /* Своего наклона нет в оффере — берётся ПЕРВАЯ предложенная,
+       а не «самая глубокая вообще». Порядок оффера уже задан сидом,
+       то есть выбор нейтрален; «самая глубокая» же сортировалась при
+       ничьей по порядку в файле и потому систематически доставалась
+       одному наклону. Замерено: при ней ATK-карты забирал даже игрок,
+       ведущий скорость, и наклоны расходились втрое (58 против 22
+       к сороковому уровню) — модель мерила порядок строк в json. */
+    const mine = offer.filter((c) => c.lean === lean);
+    const choice =
+      mine.length > 0
+        ? [...mine].sort((a, b) => TIER_RANK[b.tier] - TIER_RANK[a.tier])[0]
+        : offer[0];
+
+    leans[choice.lean] += 1;
+    for (const [key, value] of Object.entries(choice.effects)) out[key] += value;
+  }
+
+  return out;
 }
 
 /**
@@ -173,7 +300,6 @@ const combos = COMBOS.map(([label, archetype, traits]) => ({
  * уклонения, либо счётчика ходов. Подозрение на перекос проверяется
  * числом, а не остаётся подозрением.
  */
-const { TRAITS } = await import(fileURLToPath(new URL('packages/sim/dist/traits.js', root)));
 
 /**
  * Выбираемые трейты по школам — из реестра движка, а не из копии здесь.
@@ -399,9 +525,13 @@ function monsterFighter(spec, level, power) {
  * а матрица обязана считаться без неё. Что дубль не разошёлся, видно
  * по самой кривой: разойдись он — числа поехали бы разом во всех зонах.
  */
-function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
+function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass, lean = 'def') {
   const a = balance.archetypes[archetype];
-  const statScale = 1 + ((level - 1) * balance.sparring.statPerLevel) / 12;
+  /* НАСТОЯЩАЯ ПРОГРЕССИЯ, а не прокси-масштаб: автоприрост, карты
+     из настоящих офферов и трейты пятых уровней. Прежде здесь стояло
+     `база × (1 + (уровень − 1) × 1.6 / 12)` — прокси эпохи, когда
+     формулы роста ещё не было. */
+  const prog = progressionAt(level, lean);
   const gear = 1 + ilvl * balance.items.ilvlScale;
   const slots = ['weapon', 'offhand', 'helmet', 'chest', 'bracers', 'boots', 'amulet', 'ring'];
 
@@ -468,23 +598,26 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass) {
 
   return {
     level,
-    atk: Math.round(a.atk * statScale) + atk,
-    def: Math.round(a.def * statScale),
-    agi: Math.round(a.agi * statScale),
-    spd: Math.round(a.spd * statScale),
-    pathBonusHp: 0,
+    atk: a.atk + prog.auto + prog.atk + atk,
+    def: a.def + prog.auto + prog.def,
+    agi: a.agi + prog.auto + prog.agi,
+    spd: a.spd + prog.auto + prog.spd,
+    // Карты драфта — ОТДЕЛЬНОЕ поле от снаряжения: смешать два
+    // источника HP в одном числе это форма бага v1.0 (§13, пункт 2).
+    pathBonusHp: prog.pathBonusHp,
     gearBonusHp: hp,
-    accuracy: a.accuracy,
-    armor: Math.round(armor),
+    accuracy: a.accuracy + prog.accuracy,
+    armor: Math.round(armor + prog.armor),
     armorClass,
-    critBonus: 0,
+    critBonus: prog.critBonus,
     startHp: null,
     weapon: weapon ?? { dmgMin: 8, dmgMax: 14, ilvl, class: 'balanced' },
     offhand,
     percentAffixes,
     accuracyAffixes,
     statuses: [],
-    traits: [a.trait],
+    // Врождённый трейт причины изгнания плюс взятые на пятых уровнях.
+    traits: [a.trait, ...prog.traits],
   };
 }
 
@@ -514,11 +647,33 @@ const zoneCurve = zones.map((zone, index) => {
      из четырёх. Разный носитель по зонам смешал бы трудность зоны
      с силой архетипа, а меряется здесь первое.
 
-     ТРИ КОМПЛЕКТА, по одному на класс оружия, и результат усредняется:
-     игрок оружие выбирает под зону, а не получает броском. */
-  const kits = ['light', 'balanced', 'heavy'].map((weaponClass) =>
-    tierGearedPlayer('forbidden', playerLevel, playerLevel, `tier-${zone.id}`, weaponClass),
+     ДВЕНАДЦАТЬ КОМПЛЕКТОВ: три класса оружия × четыре наклона драфта,
+     и результат усредняется по всем. Причина у обеих осей одна:
+     трудность зоны не должна зависеть ни от того, какое оружие выпало,
+     ни от того, какой билд собрал игрок. Оружие игрок ВЫБИРАЕТ под зону
+     (§4.3), билд ведёт сам (§5.2) — мерить зону одним вариантом значит
+     мерить, повезло ли сегодня. Разброс по наклонам, если он велик, —
+     находка о балансе школ; он печатается отдельной строкой. */
+  const kits = ['light', 'balanced', 'heavy'].flatMap((weaponClass) =>
+    LEANS.map((lean) =>
+      tierGearedPlayer('forbidden', playerLevel, playerLevel, `tier-${zone.id}`, weaponClass, lean),
+    ),
   );
+
+  /* Тот же комплект, но по одному наклону: разброс между наклонами
+     показывает, ровна ли колода. Считается на среднем классе оружия —
+     иначе строк было бы двенадцать. */
+  const byLean = LEANS.map((lean) => ({
+    lean,
+    kit: tierGearedPlayer(
+      'forbidden',
+      playerLevel,
+      playerLevel,
+      `tier-${zone.id}`,
+      'balanced',
+      lean,
+    ),
+  }));
 
   const across = (spec, tag) => {
     const rates = kits.map(
@@ -531,6 +686,22 @@ const zoneCurve = zones.map((zone, index) => {
   const perMonster = zone.monsters.map((key) => ({
     key,
     rate: across(monsterSpecs[key], `zone-${zone.id}-${key}`),
+  }));
+
+  const leanRates = byLean.map(({ lean, kit }) => ({
+    lean,
+    rate:
+      zone.monsters
+        .map(
+          (key) =>
+            duel(
+              kit,
+              monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
+              `lean-${zone.id}-${lean}-${key}`,
+              zoneRuns,
+            ).rate,
+        )
+        .reduce((a, b) => a + b, 0) / zone.monsters.length,
   }));
 
   const bossRate = across(monsterSpecs[zone.boss], `zone-${zone.id}-boss`);
@@ -576,12 +747,36 @@ const zoneCurve = zones.map((zone, index) => {
     target,
     within: Math.abs(rate - target) <= ZONE_TOLERANCE,
     perMonster,
+    leanRates,
     boss: bossRate,
     suggested,
   };
 });
 
 const zoneBreaches = zoneCurve.filter((z) => !z.within);
+
+/**
+ * ЦЕЛЬ по разбросу наклонов, и это ЦЕЛЬ, а не порог.
+ *
+ * Драфт обещает направленный билд (§5.2). Обещание не означает, что
+ * один наклон обязан проходить зону, а другой — нет: тогда «выбери,
+ * во что вырос» превращается в «угадай единственный работающий путь»,
+ * то есть ровно в тот выбор без выбора, от которого 2.0 избавляется.
+ *
+ * Двадцать пунктов назначены, а не выведены: чем измеряется «школы
+ * значат что-то, но не всё», документ не говорит. Число помечено
+ * pending вместе с остальной калибровкой драфта.
+ *
+ * Прогон это НЕ ВАЛИТ. Величина новая, замерена впервые, и ронять
+ * на ней сборку значило бы держать её красной на вопросе, ответ
+ * на который принимает человек. Печатается — громко.
+ */
+const LEAN_SPREAD_GOAL = 0.2;
+const leanSpread = zoneCurve.map((z) => {
+  const rates = z.leanRates.map((r) => r.rate);
+  return { id: z.id, spread: Math.max(...rates) - Math.min(...rates) };
+});
+const leanSpreadWorst = leanSpread.reduce((a, b) => (b.spread > a.spread ? b : a));
 
 /* ─────────────────── ДОХОДИМОСТЬ ЗАБЕГА · GDD §7.2 ───────────────────
  *
@@ -734,6 +929,66 @@ const reach = ARCHETYPES.map((archetype) => {
 });
 
 const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) / reach.length;
+
+/* ─────────────── ДОХОДИМОСТЬ НА РАЗНЫХ УРОВНЯХ · §7.2 ────────────────
+ *
+ * Замер выше отвечает на один вопрос: «доживает ли ПЕРВАЯ сессия
+ * до решения». Он про свежего изгнанного и про первую зону, и другого
+ * вопроса не задаёт.
+ *
+ * Этот отвечает на второй: держится ли ставка ДАЛЬШЕ. Игрок растёт,
+ * зоны растут вместе с ним, и «забег остаётся риском» — утверждение
+ * про всю игру, а не про первый час. Вывести одно из другого нельзя:
+ * на десятом уровне у игрока снаряжение, две-три карты и трейт,
+ * а зона другая.
+ *
+ * ОСНОВАНИЕ РАЗНОЕ, и оно названо в выводе. На первом уровне игрок
+ * гол — комплекта у него нет и взяться неоткуда. На десятом и двадцатом
+ * он в эпическом комплекте своего уровня: это тот же эталон, на котором
+ * меряется кривая зон, и брать здесь другого значило бы получить два
+ * несравнимых числа.
+ */
+const REACH_LEVELS = [1, 10, 20];
+
+const zoneForLevel = (level) =>
+  zones.find((z) => level >= z.levels[0] && level <= z.levels[1]) ?? zones[zones.length - 1];
+
+const reachByLevel = REACH_LEVELS.map((level) => {
+  const zone = zoneForLevel(level);
+  // На первом уровне усредняем по архетипам, дальше — по наклонам
+  // драфта: с уровня выбор игрока начинает значить больше, чем причина
+  // изгнания.
+  const players =
+    level === 1
+      ? ARCHETYPES.map((a) => freshExile(a))
+      : LEANS.map((lean) =>
+          tierGearedPlayer('forbidden', level, level, `reach-${level}`, 'balanced', lean),
+        );
+
+  const tally = (withPotions) => {
+    const totals = { first: 0, second: 0, third: 0, full: 0 };
+    for (const [n, player] of players.entries()) {
+      const counts = [0, 0, 0, 0, 0, 0];
+      for (let i = 0; i < reachRuns; i++) {
+        counts[simulateRun(player, zone, `reachlv-${level}-${n}-${i}`, withPotions)]++;
+      }
+      const atLeast = (k) => counts.slice(k).reduce((a, b) => a + b, 0) / reachRuns;
+      totals.first += atLeast(2) / players.length;
+      totals.second += atLeast(3) / players.length;
+      totals.third += atLeast(4) / players.length;
+      totals.full += atLeast(5) / players.length;
+    }
+    return totals;
+  };
+
+  return {
+    level,
+    zone: zone.id,
+    basis: level === 1 ? 'голый новичок' : 'эпический комплект',
+    dry: tally(false),
+    potions: tally(true),
+  };
+});
 
 /* Порог стоит на ПЕРВОМ решении и на замере БЕЗ зелий. Первое решение —
    потому что не увидев ни одного, игрок не увидел механики вовсе.
@@ -892,7 +1147,10 @@ if (AS_JSON) {
 
   console.log(`\nКРИВАЯ ЗОН · §4.6, пункт 4`);
   console.log('Игрок в полном эпическом комплекте на верхнем уровне зоны,');
-  console.log(`нормальная сложность, ${zoneRuns} боёв на монстра.`);
+  console.log('с настоящей прогрессией §5.2: автоприрост, карты из офферов,');
+  console.log('трейты пятых уровней. Усреднение по трём классам оружия');
+  console.log('и четырём наклонам драфта.');
+  console.log(`Нормальная сложность, ${zoneRuns} боёв на монстра.`);
   console.log(`Допуск ±${(ZONE_TOLERANCE * 100).toFixed(0)} п.п.\n`);
   console.log(
     `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('винрейт', 9)}${padL('цель', 7)}${padL('босс', 8)}   по монстрам`,
@@ -909,6 +1167,31 @@ if (AS_JSON) {
         '   ' +
         z.perMonster.map((m) => `${m.key.split('.')[1]} ${pct(m.rate)}`).join(' · '),
     );
+  }
+  console.log('');
+  /* РАЗБРОС ПО НАКЛОНАМ. Печатается отдельно от усреднённой кривой,
+     потому что отвечает на другой вопрос: ровна ли колода. Большая
+     разница между наклонами означает, что трудность зоны для игрока
+     зависит от того, какой билд он собрал, — а это уже не про зону. */
+  console.log('РАЗБРОС ПО НАКЛОНАМ ДРАФТА (среднее оружие, без босса)');
+  console.log(pad('зона', 12) + LEANS.map((l) => padL(l, 9)).join('') + padL('размах', 9));
+  console.log('─'.repeat(86));
+  for (const z of zoneCurve) {
+    const rates = z.leanRates.map((r) => r.rate);
+    const spread = Math.max(...rates) - Math.min(...rates);
+    console.log(
+      pad(z.id, 12) + z.leanRates.map((r) => padL(pct(r.rate), 9)).join('') + padL(pct(spread), 9),
+    );
+  }
+  console.log('');
+  console.log(`ЦЕЛЬ по размаху ${pct(LEAN_SPREAD_GOAL)} — прогон этим не валится.`);
+  if (leanSpreadWorst.spread > LEAN_SPREAD_GOAL) {
+    console.log(
+      `РАЗМАХ ВЫШЕ ЦЕЛИ: ${leanSpreadWorst.id}, ${pct(leanSpreadWorst.spread)}. Это значит,`,
+    );
+    console.log('что трудность зоны определяется выбранным билдом сильнее, чем самой');
+    console.log('зоной. Смотреть надо в колоду и в силу школ трейтов, а не в power:');
+    console.log('множитель зоны двигает все наклоны разом и размах не меняет.');
   }
   console.log('');
   console.log('');
@@ -944,6 +1227,32 @@ if (AS_JSON) {
       padL(`${pct(reachAvg('third', 'dry'))}/${pct(reachAvg('third', 'potions'))}`, 11) +
       padL(`${pct(reachAvg('full', 'dry'))}/${pct(reachAvg('full', 'potions'))}`, 12),
   );
+  console.log('');
+  console.log('');
+  console.log('ДОХОДИМОСТЬ ПО УРОВНЯМ · §7.2, зона по уровню, нормальная сложность');
+  console.log('Первый уровень — голый новичок; дальше эпический комплект своего');
+  console.log('уровня, усреднение по четырём наклонам драфта.');
+  console.log('');
+  console.log(
+    pad('уровень', 9) +
+      pad('зона', 12) +
+      pad('основание', 20) +
+      padL('решение 1', 11) +
+      padL('решение 2', 11) +
+      padL('весь забег', 12) +
+      '   (без зелий / с зельями)',
+  );
+  console.log('─'.repeat(86));
+  for (const r of reachByLevel) {
+    console.log(
+      pad(r.level, 9) +
+        pad(r.zone, 12) +
+        pad(r.basis, 20) +
+        padL(`${pct(r.dry.first)}/${pct(r.potions.first)}`, 11) +
+        padL(`${pct(r.dry.second)}/${pct(r.potions.second)}`, 11) +
+        padL(`${pct(r.dry.full)}/${pct(r.potions.full)}`, 12),
+    );
+  }
   console.log('');
   console.log(`ЦЕЛЬ ${pct(REACH_TARGET)} до первого решения · ПОРОГ ПРОВЕРКИ ${pct(REACH_FLOOR)}`);
   console.log('Оба берутся без зелий: зелья — выбор игрока, а число обязано');

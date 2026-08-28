@@ -17,6 +17,7 @@ import {
   type BudgetedFamily,
   type PercentAffixFamily,
   type PlayerProfile,
+  traitIdSchema,
   type WeaponClass,
   weaponClassSchema,
 } from '@extramundum/shared';
@@ -140,14 +141,73 @@ function offhandConfig(item: Item | undefined): OffhandConfig | null {
 }
 
 /**
- * Боец из профиля и надетого.
+ * Что добавила ПРОГРЕССИЯ. GDD §5.2.
+ *
+ * Приходит аргументом, а не читается здесь из базы: сборка бойца
+ * обязана оставаться чистой — её зовут и превью, и бой, и матрица,
+ * а поход в базу из неё превратил бы каждый из них в запрос.
+ *
+ * АРГУМЕНТ ОБЯЗАТЕЛЬНЫЙ, умолчания нет намеренно. Эта функция собирает
+ * ТОЛЬКО игрока — монстры идут через `monsterFighter`, эталон матрицы
+ * собирается своим кодом, — а значит забытая прогрессия здесь означает
+ * бойца без своих карт и трейтов. Ровно так уже терялась базовая броня
+ * архетипа: она лежала в данных и не применялась нигде. Пусть пропуск
+ * будет ошибкой компиляции, а не находкой через месяц.
+ *
+ * `NO_PROGRESSION` остаётся для мест, где прогрессии правда нет:
+ * превью «как если бы надели» на чужом наборе и тесты сборки.
+ */
+export type ProgressionBonuses = {
+  /** Сумма прибавок выбранных карт. */
+  readonly cards: {
+    readonly atk: number;
+    readonly def: number;
+    readonly agi: number;
+    readonly spd: number;
+    readonly armor: number;
+    readonly accuracy: number;
+    readonly pathBonusHp: number;
+    readonly critBonus: number;
+  };
+  /** Автоприрост: по столько в КАЖДЫЙ из четырёх статов. */
+  readonly auto: number;
+  /** Взятые трейты — они доходят до боя отсюда. */
+  readonly traits: readonly string[];
+};
+
+export const NO_PROGRESSION: ProgressionBonuses = {
+  cards: {
+    atk: 0,
+    def: 0,
+    agi: 0,
+    spd: 0,
+    armor: 0,
+    accuracy: 0,
+    pathBonusHp: 0,
+    critBonus: 0,
+  },
+  auto: 0,
+  traits: [],
+};
+
+/**
+ * Боец из профиля, надетого и прогрессии.
  *
  * Без оружия боец выходит с голыми кулаками из `balance.unarmed` —
  * числа там намеренно жалкие, чтобы отсутствие оружия не выглядело
  * рабочим билдом. Класс брони берёт НАГРУДНИК (GDD §5.3), остальные
  * части дают только ARM и за класс не спорят.
+ *
+ * ПРОГРЕССИЯ СКЛАДЫВАЕТСЯ СВЕРХУ, как и снаряжение: автоприрост
+ * в каждый стат, карты по своим полям, трейты списком. Отдельного
+ * «уже посчитанного» числа в профиле нет намеренно — хранимая сумма
+ * однажды разошлась бы с набором карт.
  */
-export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): FighterConfig {
+export function fighterFromLoadout(
+  profile: PlayerProfile,
+  loadout: Loadout,
+  progression: ProgressionBonuses,
+): FighterConfig {
   const unarmed = balanceData.unarmed;
   const weaponItem = loadout.get('weapon');
   const chestItem = loadout.get('chest');
@@ -173,27 +233,30 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
           class: weaponClassOf(weaponItem.baseKey),
         };
 
+  const auto = progression.auto;
+  const cards = progression.cards;
+
   return {
     level: profile.level,
-    atk: profile.statAtk + flatBonus(loadout, 'strength'),
-    def: profile.statDef,
-    agi: profile.statAgi,
-    spd: profile.statSpd,
-    // Пути уровня — M3c вместе с драфтом карточек.
-    pathBonusHp: 0,
-    // «Жила». ОТДЕЛЬНО от pathBonusHp: смешать два источника HP в одном
-    // числе — это форма бага v1.0 из §13 пункта 2.
+    atk: profile.statAtk + auto + cards.atk + flatBonus(loadout, 'strength'),
+    def: profile.statDef + auto + cards.def,
+    agi: profile.statAgi + auto + cards.agi,
+    spd: profile.statSpd + auto + cards.spd,
+    // Карты драфта §5.2. ОТДЕЛЬНО от gearBonusHp: смешать два источника
+    // HP в одном числе — это форма бага v1.0 из §13 пункта 2.
+    pathBonusHp: cards.pathBonusHp,
+    // «Жила» — со снаряжения, и тоже отдельным полем.
     gearBonusHp: flatBonus(loadout, 'vitality'),
     /* Точность: БАЗА АРХЕТИПА плюс аффиксы «Верности руки» списком.
        Списком — потому что у семейства есть бюджет, и сильнейшие
        из суммы обратно не выделить. База отдельно — она не аффикс
        и под бюджет не попадает. */
-    accuracy: profile.baseAccuracy,
+    accuracy: profile.baseAccuracy + cards.accuracy,
     accuracyAffixes: affixValues(loadout, 'truehand'),
-    armor: armorTotal(profile, loadout),
+    armor: armorTotal(profile, loadout) + cards.armor,
     armorClass:
       chestItem === undefined ? 'medium' : (itemBase(chestItem.baseKey).armorClass ?? 'medium'),
-    critBonus: 0,
+    critBonus: cards.critBonus,
     // HP входа — по умолчанию максимум. Перенос между боями забега
     // ставит сюда «сколько осталось» (§7.2), и делает это рейд,
     // а не сборка бойца: сборка не знает, идёт ли забег.
@@ -202,7 +265,13 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
     offhand: offhandConfig(loadout.get('offhand')),
     percentAffixes: percentAffixesOf(loadout),
     statuses: [],
-    traits: [],
+    /* Трейты, взятые на пятых уровнях (§5.2). До M3c здесь стоял пустой
+       список, и реестр трейтов работал только на монстрах.
+
+       Строки СУЖАЮТСЯ схемой, а не приводятся типом: идентификатор
+       приходит из базы, и неизвестный обязан падать здесь, а не тихо
+       превращаться в трейт, которого нет. */
+    traits: progression.traits.map((id) => traitIdSchema.parse(id)),
   };
 }
 
@@ -213,8 +282,12 @@ export function fighterFromLoadout(profile: PlayerProfile, loadout: Loadout): Fi
  * а не считаются вторым способом. Второй способ разошёлся бы, и превью
  * обещало бы одно, а бой давал другое.
  */
-export function loadoutStats(profile: PlayerProfile, loadout: Loadout): LoadoutStats {
-  const config = fighterFromLoadout(profile, loadout);
+export function loadoutStats(
+  profile: PlayerProfile,
+  loadout: Loadout,
+  progression: ProgressionBonuses,
+): LoadoutStats {
+  const config = fighterFromLoadout(profile, loadout, progression);
   const budget = combatBalance.items.familyBudget;
 
   const percent = {} as Record<PercentAffixFamily, { worn: number; budget: number }>;

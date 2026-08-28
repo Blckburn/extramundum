@@ -30,6 +30,16 @@ export const API_ROUTES = {
   runPotion: '/run/potion',
   runExtract: '/run/extract',
 
+  /**
+   * Драфт уровня. GDD §5.2.
+   *
+   * Тело есть только у выбора, и в нём ОДИН идентификатор. Ни уровня,
+   * ни состава оффера клиент не присылает: уровень берётся из базы,
+   * оффер сервер пересчитывает из сида и сверяет с присланным.
+   */
+  draft: '/draft',
+  draftPick: '/draft/pick',
+
   /** Инвентарь и экипировка. GDD §5.3, §6.3. */
   items: '/items',
   itemsEquip: '/items/equip',

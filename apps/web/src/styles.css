@@ -1391,3 +1391,186 @@ body {
   color: var(--muted);
   opacity: 0.65;
 }
+
+/* ─────────────────────────── драфт уровня ──────────────────────────
+   GDD §5.2. Карточка — кнопка, а не div с обработчиком: клавиатура
+   и скринридер получают её бесплатно, а не отдельной работой. */
+
+.screen--draft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.draft__lead {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.draft__error {
+  color: var(--warn);
+}
+
+.draft__xp {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.draft__xpbar {
+  flex: 1 1 auto;
+  height: 0.75rem;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+}
+
+.draft__xpfill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.draft__xptext,
+.draft__pending {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.draft__xp--cap {
+  color: var(--accent);
+  font-size: 0.85rem;
+}
+
+.draft__leans {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.draft__leansLabel {
+  color: var(--muted);
+}
+
+.draft__lean {
+  padding: 0.1rem 0.4rem;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) / 2);
+  font-variant-numeric: tabular-nums;
+}
+
+.draft__options {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* Три карточки в ряд там, где есть место, и одна в столбец на 390px:
+     выбор из трёх должен читаться целиком, без прокрутки между ними. */
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 40rem) {
+  .draft__options {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.draft__option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  color: inherit;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+}
+
+.draft__option:hover:not([disabled]),
+.draft__option:focus-visible {
+  border-color: var(--accent);
+}
+
+.draft__option[disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Связка и глубина отличаются РАМКОЙ, а не только подписью: открывшаяся
+   карта — это событие, и она должна быть видна до чтения текста. */
+.draft__option--synergy {
+  border-color: var(--accent);
+}
+
+.draft__option--deep {
+  border-color: var(--warn);
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+
+.draft__optionName {
+  font-weight: 600;
+}
+
+.draft__tier {
+  align-self: flex-start;
+  padding: 0.05rem 0.35rem;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: calc(var(--radius) / 2);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.draft__option--deep .draft__tier {
+  background: var(--warn);
+}
+
+.draft__optionDesc {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.draft__effect {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Зов уровня в деревне. Появляется только когда есть что разбирать. */
+.village__levelup:empty {
+  display: none;
+}
+
+.village__levelup {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+}
+
+.village__levelupText {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 0.85rem;
+}
+
+.button--call {
+  background: var(--accent);
+  color: var(--bg);
+  border-color: var(--accent);
+}

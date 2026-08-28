@@ -14,6 +14,7 @@ export * from './errors.js';
 export * from './items.js';
 export * from './loot.js';
 export * from './player.js';
+export * from './progression.js';
 export * from './render.js';
 export * from './routes.js';
 export * from './runs.js';

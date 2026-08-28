@@ -23,6 +23,10 @@
       "types": "./dist/zones.d.ts",
       "default": "./dist/zones.js"
     },
+    "./cards": {
+      "types": "./dist/cards.d.ts",
+      "default": "./dist/cards.js"
+    },
     "./animations.json": "./animations.json"
   },
   "main": "./dist/index.js",

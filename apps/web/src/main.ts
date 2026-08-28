@@ -2,6 +2,7 @@ import { api, ApiClientError } from './api.ts';
 import { clear, el } from './dom.ts';
 import { getLocale, setLocale, t } from './i18n.ts';
 import { renderAuth } from './screens/auth.ts';
+import { renderDraft } from './screens/draft.ts';
 import { renderInventory } from './screens/inventory.ts';
 import { renderRaid } from './screens/raid.ts';
 import { renderVillage } from './screens/village.ts';
@@ -101,6 +102,12 @@ async function route(): Promise<void> {
       () => void route(),
       () => renderRaid(root!, village),
       () => renderInventory(root!, village),
+      /* Из драфта возвращаемся ПЕРЕЗАГРУЗКОЙ маршрута, а не в деревню:
+         уровень, статы и запас сил изменились на сервере, а `player`
+         здесь — снимок, сделанный при входе. Показать по нему деревню
+         значило бы показать старые числа сразу после того, как игрок
+         их поднял. */
+      () => renderDraft(root!, () => void route()),
     );
   village();
 }

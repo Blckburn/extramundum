@@ -3,6 +3,8 @@ import {
   apiErrorSchema,
   meResponseSchema,
   type ApiError,
+  type DraftPickInput,
+  type DraftResponse,
   type EquipInput,
   type InventoryResponse,
   type LockInput,
@@ -155,6 +157,24 @@ export const api = {
       method: 'POST',
       body: '{}',
     })) as RunExtractResponse;
+  },
+
+  /**
+   * Драфт уровня. GDD §5.2.
+   *
+   * В теле выбора — ОДИН идентификатор. Ни уровня, ни состава оффера
+   * клиент не присылает: уровень сервер берёт из базы, оффер считает
+   * сам и сверяет с присланным. Подделать выбор нечем.
+   */
+  async draft(): Promise<DraftResponse> {
+    return (await request(API_ROUTES.draft)) as DraftResponse;
+  },
+
+  async pickDraft(input: DraftPickInput): Promise<DraftResponse> {
+    return (await request(API_ROUTES.draftPick, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as DraftResponse;
   },
 
   /**

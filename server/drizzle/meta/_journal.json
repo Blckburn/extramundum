@@ -57,6 +57,13 @@
       "when": 1787873139664,
       "tag": "0007_legacy_profile_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787910937543,
+      "tag": "0008_dapper_stone_men",
+      "breakpoints": true
     }
   ]
 }
