@@ -5,12 +5,14 @@ import {
   isCardUnlocked,
   isTraitLevel,
   levelForXp,
+  isCardUseful,
   offerCards,
   offerTraits,
   xpForLevel,
   EMPTY_LEANS,
   type BuildLeans,
   type CardSpec,
+  type CeilingBalance,
   type ProgressionBalance,
 } from '../progression.js';
 
@@ -173,6 +175,85 @@ describe('оффер трёх карт', () => {
     const tiny = [card('only', 'atk', 'base')];
     expect(offerCards(tiny, EMPTY_LEANS, 'seed', 2, balance)).toHaveLength(1);
     expect(offerCards([], EMPTY_LEANS, 'seed', 2, balance)).toHaveLength(0);
+  });
+});
+
+describe('карта с достигнутым потолком исчезает из колоды', () => {
+  /* Числа из GDD §4.2: уклонение clamp(0.03 + AGI × 0.008, 0, 0.30),
+     крит 0.05 + AGI × 0.004 с потолком 60%. Взяты из документа,
+     а не из balance.json: тест обязан ловить расхождение данных
+     с текстом. */
+  const combat: CeilingBalance = {
+    dodge: { base: 0.03, perAgiOverAccuracy: 0.008, max: 0.3 },
+    crit: { base: 0.05, perAgi: 0.004, cap: 0.6 },
+  };
+  const fresh = { agi: 10, critBonus: 0, accuracy: 2 };
+
+  const card = (id: string, effects: CardSpec['effects']): CardSpec => ({
+    id,
+    lean: 'agi',
+    tier: 'base',
+    effects,
+  });
+
+  it('точность мертва, когда её хватает обнулить уклонение ЛЮБОГО врага', () => {
+    // 0.30 / 0.008 = 37.5 — с этого значения не уклонится никто.
+    const aim = card('agi.aim', { accuracy: 2 });
+    expect(isCardUseful(aim, { ...fresh, accuracy: 38 }, combat)).toBe(false);
+    // И ПАРА К НЕЙ: чуть ниже порога карта обязана оставаться живой,
+    // иначе проверка выше прошла бы и на фильтре, режущем всё подряд.
+    expect(isCardUseful(aim, { ...fresh, accuracy: 37 }, combat)).toBe(true);
+  });
+
+  it('крит мертв на потолке 60%', () => {
+    const nerve = card('agi.nerve', { critBonus: 0.02 });
+    expect(isCardUseful(nerve, { ...fresh, critBonus: 0.6 }, combat)).toBe(false);
+    expect(isCardUseful(nerve, { ...fresh, critBonus: 0.5 }, combat)).toBe(true);
+  });
+
+  it('AGI мертв, только когда упёрлись ОБА его потолка', () => {
+    const step = card('agi.step', { agi: 3 });
+    // Уклонение упёрлось (AGI 34 → 0.302 > 0.30), крит нет.
+    expect(isCardUseful(step, { agi: 40, critBonus: 0, accuracy: 2 }, combat)).toBe(true);
+    // Упёрлись оба.
+    expect(isCardUseful(step, { agi: 40, critBonus: 0.5, accuracy: 2 }, combat)).toBe(false);
+  });
+
+  it('карта жива, пока жив ХОТЬ ОДИН её эффект', () => {
+    // «Чтение боя»: AGI плюс точность. Точность упёрлась, AGI нет —
+    // значит карта жива.
+    const read = card('agi.read', { agi: 4, accuracy: 3 });
+    expect(isCardUseful(read, { agi: 10, critBonus: 0, accuracy: 60 }, combat)).toBe(true);
+    // А когда упёрлось ВСЁ, что она даёт, — исчезает.
+    expect(isCardUseful(read, { agi: 40, critBonus: 0.6, accuracy: 60 }, combat)).toBe(false);
+  });
+
+  it('прибавки без потолка не умирают никогда', () => {
+    const blade = card('atk.blade', { atk: 3 });
+    const marrow = card('def.marrow', { pathBonusHp: 18 });
+    const huge = { agi: 999, critBonus: 9, accuracy: 999 };
+    expect(isCardUseful(blade, huge, combat)).toBe(true);
+    expect(isCardUseful(marrow, huge, combat)).toBe(true);
+  });
+
+  it('оффер эти карты не показывает', () => {
+    const deck: CardSpec[] = [
+      card('agi.aim', { accuracy: 2 }),
+      card('agi.nerve', { critBonus: 0.02 }),
+      { id: 'atk.blade', lean: 'atk', tier: 'base', effects: { atk: 3 } },
+    ];
+    const capped = { agi: 10, critBonus: 0.6, accuracy: 99 };
+
+    const offer = offerCards(deck, EMPTY_LEANS, 'seed', 2, balance, {
+      values: capped,
+      combat,
+    });
+    expect(offer.map((c) => c.id)).toEqual(['atk.blade']);
+
+    // А БЕЗ ПОТОЛКОВ те же карты в оффере есть — иначе проверка выше
+    // прошла бы и на колоде, из которой их выкинуло что угодно другое.
+    const open = offerCards(deck, EMPTY_LEANS, 'seed', 2, balance);
+    expect(open).toHaveLength(3);
   });
 });
 

@@ -188,14 +188,98 @@ function offerRoll(seed: string, level: number, step: number): number {
  * Если открытых карт меньше, чем нужно, отдаётся сколько есть —
  * пустой оффер лучше выдуманного.
  */
+/**
+ * Что у бойца УЖЕ упёрлось в потолок.
+ *
+ * Считается из профиля и прогрессии — БЕЗ снаряжения, и это намеренно.
+ * Оффер обязан совпадать в момент показа и в момент применения выбора,
+ * иначе сервер отвергнет законную карту. Снаряжение игрок может сменить
+ * между двумя запросами, а карты и уровень — нет: они меняются только
+ * этим же драфтом.
+ */
+export type CardCeilings = {
+  /** Эффективный AGI. Кормит уклонение и крит, оба с потолком. */
+  readonly agi: number;
+  /** Накопленная прибавка к криту сверх той, что даёт AGI. */
+  readonly critBonus: number;
+  /** Эффективная точность. Она снимает уклонение ВРАГА, и у него есть дно. */
+  readonly accuracy: number;
+};
+
+/** Пороги потолков — из боевого баланса, а не из прогрессии. */
+export type CeilingBalance = {
+  readonly dodge: {
+    readonly base: number;
+    readonly perAgiOverAccuracy: number;
+    readonly max: number;
+  };
+  readonly crit: { readonly base: number; readonly perAgi: number; readonly cap: number };
+};
+
+/**
+ * Даёт ли карта хоть что-нибудь при нынешних потолках.
+ *
+ * КАРТА, ЧЕЙ ЭФФЕКТ УПЁРСЯ, ИСЧЕЗАЕТ ИЗ КОЛОДЫ. Запрещать повтор не надо:
+ * плоские прибавки складываются нормально, и взять «Хватку на клинке»
+ * пятый раз — законный ход. Убирать надо ровно то, что перестало давать
+ * эффект: игрок потолка не видит и берёт впустую.
+ *
+ * Потолков три, и все три — настоящие, а не «почти»:
+ *
+ *   AGI       кормит уклонение (потолок §4.2) и крит (потолок 60%).
+ *             Мёртв, только если УПЁРЛИСЬ ОБА: пока крит растёт,
+ *             очко AGI работает.
+ *   крит      прибавка сверх потолка не делает ничего.
+ *   точность  снимает уклонение врага, а оно не бывает ниже нуля.
+ *             Потолок здесь НЕ зависит от конкретного врага: уклонение
+ *             любого зажато сверху `dodge.max`, поэтому точности
+ *             `dodge.max / perAgiOverAccuracy` хватает, чтобы обнулить
+ *             уклонение КОГО УГОДНО. Дальше она не даёт ничего никому.
+ *
+ * Остальные поля потолков не имеют: урон, запас сил и инициатива растут
+ * без предела, а снижение урона броней подходит к своему потолку
+ * асимптотически и не достигает его никогда.
+ *
+ * Карта живёт, пока жив ХОТЬ ОДИН её эффект: «Чтение боя» даёт AGI
+ * и точность, и упёршаяся точность её не хоронит.
+ */
+export function isCardUseful(
+  card: CardSpec,
+  ceilings: CardCeilings,
+  balance: CeilingBalance,
+): boolean {
+  const { dodge, crit } = balance;
+
+  const critCapped = crit.base + ceilings.agi * crit.perAgi + ceilings.critBonus >= crit.cap;
+  const dodgeCapped = dodge.base + ceilings.agi * dodge.perAgiOverAccuracy >= dodge.max;
+  const accuracyCapped = ceilings.accuracy * dodge.perAgiOverAccuracy >= dodge.max;
+
+  const dead = (key: keyof CardEffects): boolean => {
+    if (key === 'agi') return dodgeCapped && critCapped;
+    if (key === 'critBonus') return critCapped;
+    if (key === 'accuracy') return accuracyCapped;
+    return false;
+  };
+
+  const effects = Object.entries(card.effects) as [keyof CardEffects, number | undefined][];
+  return effects.some(([key, value]) => (value ?? 0) !== 0 && !dead(key));
+}
+
 export function offerCards(
   deck: readonly CardSpec[],
   leans: BuildLeans,
   seed: string,
   level: number,
   balance: ProgressionBalance,
+  /* Потолки. Не передали — фильтруется только по наклону, как раньше:
+     чистые тесты правил не обязаны знать боевой баланс. */
+  ceilings?: { readonly values: CardCeilings; readonly combat: CeilingBalance },
 ): readonly CardSpec[] {
-  const pool = deck.filter((card) => isCardUnlocked(card, leans, balance));
+  const pool = deck.filter(
+    (card) =>
+      isCardUnlocked(card, leans, balance) &&
+      (ceilings === undefined || isCardUseful(card, ceilings.values, ceilings.combat)),
+  );
   const picked: CardSpec[] = [];
   const remaining = [...pool];
 

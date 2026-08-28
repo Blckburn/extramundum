@@ -163,6 +163,8 @@ const TIER_RANK = { base: 0, synergy: 1, deep: 2 };
  * «имя эффекта → что менять» здесь заводить нельзя, он и есть то место,
  * где карта начинает делать не то, что написано.
  */
+const ARCHETYPE = balance.archetypes.forbidden;
+
 function progressionAt(level, lean) {
   const out = {
     atk: 0,
@@ -190,7 +192,19 @@ function progressionAt(level, lean) {
       continue;
     }
 
-    const offer = offerCards(CARDS, leans, seed, lv, PROG);
+    /* Оффер фильтруется ещё и ПОТОЛКАМИ: карта, чей эффект упёрся,
+       из колоды исчезает. Без этого модель повторяла бы прежнюю
+       ошибку — брала бы игроку карты точности при уже обнулённом
+       уклонении врага и мерила билд, которого игра не выдаёт. */
+    const ceilings = {
+      values: {
+        agi: ARCHETYPE.agi + out.auto + out.agi,
+        critBonus: out.critBonus,
+        accuracy: ARCHETYPE.accuracy + out.accuracy,
+      },
+      combat: balance,
+    };
+    const offer = offerCards(CARDS, leans, seed, lv, PROG, ceilings);
     if (offer.length === 0) continue;
 
     /* Своего наклона нет в оффере — берётся ПЕРВАЯ предложенная,
@@ -621,7 +635,22 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass, lea
   };
 }
 
-const zoneRuns = Math.max(200, Math.round(RUNS / 5));
+/**
+ * Боёв на один поединок в секции зон.
+ *
+ * Делитель БОЛЬШЕ, чем у пар архетипов, и это не экономия на точности,
+ * а её перераспределение. Кривая зон усредняется по ДВЕНАДЦАТИ
+ * комплектам (три класса оружия × четыре наклона), поэтому выборка
+ * на зону — это runs × 12, а не runs. При прежнем делителе 5 ночной
+ * прогон на 10 000 упирался в получасовой таймаут: секция зон выросла
+ * впятеро вместе с числом комплектов.
+ *
+ * Точность на зону при этом та же: было 3 комплекта × 2000 = 6000
+ * боёв, стало 12 × 500 = 6000. Разница в том, что теперь они сняты
+ * с двенадцати разных бойцов, а не с трёх, — то есть оценка ЛУЧШЕ
+ * при том же счёте.
+ */
+const zoneRuns = Math.max(200, Math.round(RUNS / 20));
 
 /**
  * Режим подбора: печатает, какой `power` дал бы целевой винрейт.

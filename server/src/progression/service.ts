@@ -10,6 +10,7 @@ import {
   offerTraits,
   xpForLevel,
   type BuildLeans,
+  type CardCeilings,
   type CardLean,
   type CardSpec,
   type DraftOption,
@@ -155,6 +156,28 @@ const toOption = (card: CardSpec): DraftOption => ({
   effects: card.effects,
 });
 
+/**
+ * Потолки бойца — из профиля и прогрессии, БЕЗ снаряжения.
+ *
+ * Снаряжение сюда не входит намеренно: оффер обязан совпасть в момент
+ * показа и в момент применения выбора, а надетое игрок может сменить
+ * между двумя запросами. Карты и уровень — не может: их меняет этот же
+ * драфт. Иначе сервер отверг бы законную карту, и виноват был бы
+ * не игрок.
+ */
+function ceilingsOf(
+  profile: PlayerProfile,
+  cardIds: readonly string[],
+  level: number,
+): CardCeilings {
+  const cards = cardBonuses(cardIds);
+  return {
+    agi: profile.statAgi + autoBonus(level) + cards.agi,
+    critBonus: cards.critBonus,
+    accuracy: profile.baseAccuracy + cards.accuracy,
+  };
+}
+
 export type DraftContext = {
   readonly profile: PlayerProfile;
   /** Сид драфта. В публичный профиль НЕ входит: по нему считаются
@@ -166,6 +189,8 @@ export type DraftContext = {
   /** Уровень, за который выбирают сейчас. `null` — разбирать нечего. */
   readonly level: number | null;
   readonly pending: number;
+  /** Что уже упёрлось в потолок: такие карты из колоды исчезают. */
+  readonly ceilings: CardCeilings;
 };
 
 export async function draftContext(
@@ -193,6 +218,9 @@ export async function draftContext(
     // влиять на колоду четвёртого, иначе фильтр по билду отстаёт.
     level: pending > 0 ? profile.level + 1 : null,
     pending,
+    // Потолки считаются на УРОВЕНЬ, за который выбирают: автоприрост
+    // за него уже применён к бойцу вместе с картой.
+    ceilings: ceilingsOf(profile, cardIds, pending > 0 ? profile.level + 1 : profile.level),
   };
 }
 
@@ -225,7 +253,10 @@ export function draftView(ctx: DraftContext): DraftView {
     level: ctx.level,
     pending: ctx.pending,
     kind: 'card',
-    options: offerCards(CARDS, ctx.leans, seed, ctx.level, progression).map(toOption),
+    options: offerCards(CARDS, ctx.leans, seed, ctx.level, progression, {
+      values: ctx.ceilings,
+      combat: combatBalance,
+    }).map(toOption),
     leans: ctx.leans,
   };
 }
