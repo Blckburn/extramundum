@@ -176,6 +176,63 @@ describe('оффер трёх карт', () => {
   });
 });
 
+describe('оффер РАВНОМЕРЕН по колоде', () => {
+  /* Двенадцать карт, по три на наклон, — та же форма, что у настоящей
+     колоды. Порядок в массиве важен: именно по нему промахивался
+     сломанный бросок. */
+  const deck: CardSpec[] = (['atk', 'def', 'agi', 'spd'] as const).flatMap((lean) =>
+    [0, 1, 2].map((n) => ({
+      id: `${lean}.${n}`,
+      lean,
+      tier: 'base' as const,
+      effects: {},
+    })),
+  );
+  const at = new Map(deck.map((card, index) => [card.id, index]));
+
+  const sample = (): { leans: Record<string, number>; adjacent: number; offers: number } => {
+    const leans: Record<string, number> = { atk: 0, def: 0, agi: 0, spd: 0 };
+    let adjacent = 0;
+    let offers = 0;
+
+    for (let seed = 0; seed < 300; seed += 1) {
+      for (let level = 2; level <= 20; level += 1) {
+        const offer = offerCards(deck, EMPTY_LEANS, `seed${seed}`, level, balance);
+        for (const card of offer) leans[card.lean] = (leans[card.lean] ?? 0) + 1;
+        const indexes = offer.map((c) => at.get(c.id) ?? 0).sort((a, b) => a - b);
+        if ((indexes[2] ?? 0) - (indexes[0] ?? 0) <= 2) adjacent += 1;
+        offers += 1;
+      }
+    }
+    return { leans, adjacent, offers };
+  };
+
+  it('ни один наклон не предлагается заметно чаще другого', () => {
+    const { leans } = sample();
+    const counts = Object.values(leans);
+    const expected = counts.reduce((a, b) => a + b, 0) / counts.length;
+    for (const [lean, count] of Object.entries(leans)) {
+      expect(Math.abs(count - expected) / expected, `наклон ${lean}`).toBeLessThan(0.05);
+    }
+  });
+
+  it('три карты оффера НЕ соседние в колоде', () => {
+    /* Так выглядел баг: FNV-1a кончается умножением, поэтому строки,
+       различающиеся последним символом — а шаги оффера различались
+       именно им, — давали почти одинаковый бросок. Все три карты
+       выпадали подряд, 100% троек, и наклоны с краёв колоды
+       предлагались в полтора раза реже средних.
+
+       Проверяется не «бывает неподряд», а ДОЛЯ: 10 непрерывных окон
+       из 220 сочетаний — это 4.5%, и настоящая случайность обязана
+       попасть туда, а не в ноль и не в сотню. */
+    const { adjacent, offers } = sample();
+    const share = adjacent / offers;
+    expect(share).toBeGreaterThan(0.02);
+    expect(share).toBeLessThan(0.08);
+  });
+});
+
 describe('оффер трёх трейтов', () => {
   const pool = ['t1', 't2', 't3', 't4', 't5'];
 
