@@ -18,6 +18,7 @@ export function renderVillage(
   onSignedOut: () => void,
   onRaid?: () => void,
   onInventory?: () => void,
+  onDraft?: () => void,
 ): void {
   clear(root);
 
@@ -32,6 +33,34 @@ export function renderVillage(
       el('span', { class: 'stat__label' }, [t(labelKey)]),
       el('span', { class: 'stat__value' }, [String(value)]),
     ]);
+
+  /* Зов нового уровня. GDD §5.2.
+
+     Спрашивается У СЕРВЕРА, а не выводится из профиля: сколько уровней
+     ждёт разбора, знает он один — это разность заработанного по опыту
+     и числа уже сделанных выборов. Считать её здесь значило бы завести
+     второе место для кривой опыта. */
+  const levelUp = el('div', { class: 'village__levelup' });
+
+  if (onDraft !== undefined) {
+    void api.draft().then(
+      ({ draft }) => {
+        if (draft.pending <= 0) return;
+        const call = el('button', { class: 'button button--call', type: 'button' }, [
+          t('draft.open'),
+        ]);
+        call.addEventListener('click', onDraft);
+        levelUp.append(
+          el('p', { class: 'village__levelupText' }, [t('draft.ready', { count: draft.pending })]),
+          call,
+        );
+      },
+      () => {
+        // Молча: недоступный драфт не должен ронять деревню целиком.
+        // Игрок увидит его при следующем заходе.
+      },
+    );
+  }
 
   const signOut = el('button', { class: 'button button--ghost', type: 'button' }, [
     t('auth.action.signOut'),
@@ -63,6 +92,11 @@ export function renderVillage(
         stat('village.stat.gold', player.gold),
         stat('village.stat.elo', player.elo),
       ]),
+
+      /* Место под зов драфта. Заполняется ОТДЕЛЬНЫМ запросом, потому что
+         профиль здесь — тот, что прочитали при входе, а опыт меняется
+         в рейде. Пустое место лучше устаревшего числа. */
+      levelUp,
 
       // Восемь слотов экипировки. Что в них надето, показывает экран
       // снаряжения (M3a); здесь остаются иконки пустых слотов —
