@@ -20,18 +20,9 @@
       "armorClass": "medium",
       "critBonus": 0,
       "startHp": null,
-      "weapon": {
-        "dmgMin": 8,
-        "dmgMax": 14,
-        "ilvl": 4,
-        "class": "balanced"
-      },
+      "weapon": { "dmgMin": 8, "dmgMax": 14, "ilvl": 4, "class": "balanced" },
       "offhand": null,
-      "percentAffixes": {
-        "might": [],
-        "bastion": [],
-        "swiftness": []
-      },
+      "percentAffixes": { "might": [], "bastion": [], "swiftness": [] },
       "accuracyAffixes": [],
       "statuses": [],
       "traits": ["plaguebearer", "hexblade", "innateScholar"]
@@ -49,42 +40,21 @@
       "armorClass": "heavy",
       "critBonus": 0,
       "startHp": null,
-      "weapon": {
-        "dmgMin": 7,
-        "dmgMax": 12,
-        "ilvl": 4,
-        "class": "heavy"
-      },
-      "offhand": {
-        "kind": "shield",
-        "blockChance": 0.35,
-        "blockReduction": 0.7
-      },
-      "percentAffixes": {
-        "might": [],
-        "bastion": [],
-        "swiftness": []
-      },
+      "weapon": { "dmgMin": 7, "dmgMax": 12, "ilvl": 4, "class": "heavy" },
+      "offhand": { "kind": "shield", "blockChance": 0.35, "blockReduction": 0.7 },
+      "percentAffixes": { "might": [], "bastion": [], "swiftness": [] },
       "accuracyAffixes": [],
       "statuses": [],
       "traits": ["thorns", "pyromancer", "innateGuard", "bossEnrage", "bossHeavyStrike"]
     }
   ],
   "maxHp": [176, 194],
-  "outcome": {
-    "winner": 1,
-    "ticks": 119,
-    "hpRemaining": [0, 57]
-  },
+  "outcome": { "winner": 1, "ticks": 119, "hpRemaining": [0, 57] },
   "log": {
     "version": 2,
     "seed": "m2b-fixture-0",
     "events": [
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 9
-      },
+      { "t": "turn_start", "actor": 0, "tick": 9 },
       {
         "t": "attack",
         "actor": 0,
@@ -101,23 +71,9 @@
           "final": 7
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 7,
-        "crit": false,
-        "hpAfter": 187
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "innateGuard"
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 9
-      },
+      { "t": "damage", "target": 1, "amount": 7, "crit": false, "hpAfter": 187 },
+      { "t": "trait_fire", "actor": 1, "trait": "innateGuard" },
+      { "t": "turn_start", "actor": 1, "tick": 9 },
       {
         "t": "attack",
         "actor": 1,
@@ -134,18 +90,8 @@
           "final": 15
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 15,
-        "crit": false,
-        "hpAfter": 161
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 18
-      },
+      { "t": "damage", "target": 0, "amount": 15, "crit": false, "hpAfter": 161 },
+      { "t": "turn_start", "actor": 0, "tick": 18 },
       {
         "t": "attack",
         "actor": 0,
@@ -162,18 +108,8 @@
           "final": 17
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 17,
-        "crit": false,
-        "hpAfter": 170
-      },
-      {
-        "t": "trait_fire",
-        "actor": 0,
-        "trait": "plaguebearer"
-      },
+      { "t": "damage", "target": 1, "amount": 17, "crit": false, "hpAfter": 170 },
+      { "t": "trait_fire", "actor": 0, "trait": "plaguebearer" },
       {
         "t": "status_apply",
         "target": 1,
@@ -182,19 +118,8 @@
         "stacks": 1,
         "duration": 61
       },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 160
-      },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 160 },
       {
         "t": "status_tick",
         "target": 1,
@@ -203,11 +128,7 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 19
-      },
+      { "t": "turn_start", "actor": 1, "tick": 19 },
       {
         "t": "attack",
         "actor": 1,
@@ -224,18 +145,8 @@
           "final": 25
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 25,
-        "crit": true,
-        "hpAfter": 135
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "pyromancer"
-      },
+      { "t": "damage", "target": 0, "amount": 25, "crit": true, "hpAfter": 135 },
+      { "t": "trait_fire", "actor": 1, "trait": "pyromancer" },
       {
         "t": "status_apply",
         "target": 0,
@@ -244,11 +155,7 @@
         "stacks": 1,
         "duration": 60
       },
-      {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
+      { "t": "telegraph", "actor": 1, "inTurns": 1 },
       {
         "t": "status_tick",
         "target": 0,
@@ -257,11 +164,7 @@
         "stacks": 1,
         "amount": 3
       },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 27
-      },
+      { "t": "turn_start", "actor": 0, "tick": 27 },
       {
         "t": "attack",
         "actor": 0,
@@ -278,23 +181,9 @@
           "final": 5
         }
       },
-      {
-        "t": "block",
-        "actor": 1,
-        "mitigated": 11
-      },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 5,
-        "crit": false,
-        "hpAfter": 163
-      },
-      {
-        "t": "trait_fire",
-        "actor": 0,
-        "trait": "hexblade"
-      },
+      { "t": "block", "actor": 1, "mitigated": 11 },
+      { "t": "damage", "target": 1, "amount": 5, "crit": false, "hpAfter": 163 },
+      { "t": "trait_fire", "actor": 0, "trait": "hexblade" },
       {
         "t": "status_apply",
         "target": 1,
@@ -303,11 +192,7 @@
         "stacks": 1,
         "duration": 21
       },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 29
-      },
+      { "t": "turn_start", "actor": 1, "tick": 29 },
       {
         "t": "attack",
         "actor": 1,
@@ -324,18 +209,8 @@
           "final": 23
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 23,
-        "crit": false,
-        "hpAfter": 109
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 36
-      },
+      { "t": "damage", "target": 0, "amount": 23, "crit": false, "hpAfter": 109 },
+      { "t": "turn_start", "actor": 0, "tick": 36 },
       {
         "t": "attack",
         "actor": 0,
@@ -352,18 +227,8 @@
           "final": 12
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 12,
-        "crit": false,
-        "hpAfter": 151
-      },
-      {
-        "t": "trait_fire",
-        "actor": 0,
-        "trait": "plaguebearer"
-      },
+      { "t": "damage", "target": 1, "amount": 12, "crit": false, "hpAfter": 151 },
+      { "t": "trait_fire", "actor": 0, "trait": "plaguebearer" },
       {
         "t": "status_apply",
         "target": 1,
@@ -372,19 +237,8 @@
         "stacks": 1,
         "duration": 61
       },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 108
-      },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 108 },
       {
         "t": "status_tick",
         "target": 1,
@@ -401,16 +255,8 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 39
-      },
-      {
-        "t": "dodge",
-        "actor": 0,
-        "mitigated": 0
-      },
+      { "t": "turn_start", "actor": 1, "tick": 39 },
+      { "t": "dodge", "actor": 0, "mitigated": 0 },
       {
         "t": "status_tick",
         "target": 0,
@@ -419,43 +265,13 @@
         "stacks": 1,
         "amount": 3
       },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 45
-      },
-      {
-        "t": "dodge",
-        "actor": 1,
-        "mitigated": 0
-      },
-      {
-        "t": "status_expire",
-        "target": 1,
-        "instance": 3,
-        "status": "hex",
-        "stacks": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 49
-      },
-      {
-        "t": "dodge",
-        "actor": 0,
-        "mitigated": 0
-      },
-      {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 54
-      },
+      { "t": "turn_start", "actor": 0, "tick": 45 },
+      { "t": "dodge", "actor": 1, "mitigated": 0 },
+      { "t": "status_expire", "target": 1, "instance": 3, "status": "hex", "stacks": 1 },
+      { "t": "turn_start", "actor": 1, "tick": 49 },
+      { "t": "dodge", "actor": 0, "mitigated": 0 },
+      { "t": "telegraph", "actor": 1, "inTurns": 1 },
+      { "t": "turn_start", "actor": 0, "tick": 54 },
       {
         "t": "attack",
         "actor": 0,
@@ -472,26 +288,9 @@
           "final": 13
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 13,
-        "crit": false,
-        "hpAfter": 134
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 104
-      },
+      { "t": "damage", "target": 1, "amount": 13, "crit": false, "hpAfter": 134 },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 104 },
       {
         "t": "status_tick",
         "target": 1,
@@ -508,11 +307,7 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 59
-      },
+      { "t": "turn_start", "actor": 1, "tick": 59 },
       {
         "t": "attack",
         "actor": 1,
@@ -529,13 +324,7 @@
           "final": 15
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 15,
-        "crit": false,
-        "hpAfter": 89
-      },
+      { "t": "damage", "target": 0, "amount": 15, "crit": false, "hpAfter": 89 },
       {
         "t": "status_tick",
         "target": 0,
@@ -544,11 +333,7 @@
         "stacks": 1,
         "amount": 3
       },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 63
-      },
+      { "t": "turn_start", "actor": 0, "tick": 63 },
       {
         "t": "attack",
         "actor": 0,
@@ -565,23 +350,9 @@
           "final": 3
         }
       },
-      {
-        "t": "block",
-        "actor": 1,
-        "mitigated": 8
-      },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 3,
-        "crit": false,
-        "hpAfter": 127
-      },
-      {
-        "t": "trait_fire",
-        "actor": 0,
-        "trait": "hexblade"
-      },
+      { "t": "block", "actor": 1, "mitigated": 8 },
+      { "t": "damage", "target": 1, "amount": 3, "crit": false, "hpAfter": 127 },
+      { "t": "trait_fire", "actor": 0, "trait": "hexblade" },
       {
         "t": "status_apply",
         "target": 1,
@@ -590,11 +361,7 @@
         "stacks": 1,
         "duration": 21
       },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 69
-      },
+      { "t": "turn_start", "actor": 1, "tick": 69 },
       {
         "t": "attack",
         "actor": 1,
@@ -611,18 +378,8 @@
           "final": 11
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 11,
-        "crit": false,
-        "hpAfter": 75
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 72
-      },
+      { "t": "damage", "target": 0, "amount": 11, "crit": false, "hpAfter": 75 },
+      { "t": "turn_start", "actor": 0, "tick": 72 },
       {
         "t": "attack",
         "actor": 0,
@@ -639,18 +396,8 @@
           "final": 5
         }
       },
-      {
-        "t": "block",
-        "actor": 1,
-        "mitigated": 13
-      },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 5,
-        "crit": false,
-        "hpAfter": 122
-      },
+      { "t": "block", "actor": 1, "mitigated": 13 },
+      { "t": "damage", "target": 1, "amount": 5, "crit": false, "hpAfter": 122 },
       {
         "t": "status_tick",
         "target": 1,
@@ -659,13 +406,7 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "status_expire",
-        "target": 0,
-        "instance": 2,
-        "status": "burn",
-        "stacks": 1
-      },
+      { "t": "status_expire", "target": 0, "instance": 2, "status": "burn", "stacks": 1 },
       {
         "t": "status_tick",
         "target": 1,
@@ -674,18 +415,8 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "status_expire",
-        "target": 1,
-        "instance": 1,
-        "status": "poison",
-        "stacks": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 79
-      },
+      { "t": "status_expire", "target": 1, "instance": 1, "status": "poison", "stacks": 1 },
+      { "t": "turn_start", "actor": 1, "tick": 79 },
       {
         "t": "attack",
         "actor": 1,
@@ -702,23 +433,9 @@
           "final": 12
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 12,
-        "crit": false,
-        "hpAfter": 63
-      },
-      {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 81
-      },
+      { "t": "damage", "target": 0, "amount": 12, "crit": false, "hpAfter": 63 },
+      { "t": "telegraph", "actor": 1, "inTurns": 1 },
+      { "t": "turn_start", "actor": 0, "tick": 81 },
       {
         "t": "attack",
         "actor": 0,
@@ -735,38 +452,11 @@
           "final": 14
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 14,
-        "crit": false,
-        "hpAfter": 104
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 62
-      },
-      {
-        "t": "status_expire",
-        "target": 1,
-        "instance": 5,
-        "status": "hex",
-        "stacks": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 89
-      },
+      { "t": "damage", "target": 1, "amount": 14, "crit": false, "hpAfter": 104 },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 62 },
+      { "t": "status_expire", "target": 1, "instance": 5, "status": "hex", "stacks": 1 },
+      { "t": "turn_start", "actor": 1, "tick": 89 },
       {
         "t": "attack",
         "actor": 1,
@@ -783,18 +473,8 @@
           "final": 17
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 17,
-        "crit": false,
-        "hpAfter": 45
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 90
-      },
+      { "t": "damage", "target": 0, "amount": 17, "crit": false, "hpAfter": 45 },
+      { "t": "turn_start", "actor": 0, "tick": 90 },
       {
         "t": "attack",
         "actor": 0,
@@ -811,26 +491,9 @@
           "final": 12
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 12,
-        "crit": false,
-        "hpAfter": 92
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 44
-      },
+      { "t": "damage", "target": 1, "amount": 12, "crit": false, "hpAfter": 92 },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 44 },
       {
         "t": "status_tick",
         "target": 1,
@@ -839,18 +502,8 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "status_expire",
-        "target": 1,
-        "instance": 4,
-        "status": "poison",
-        "stacks": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 99
-      },
+      { "t": "status_expire", "target": 1, "instance": 4, "status": "poison", "stacks": 1 },
+      { "t": "turn_start", "actor": 1, "tick": 99 },
       {
         "t": "attack",
         "actor": 1,
@@ -867,18 +520,8 @@
           "final": 12
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 12,
-        "crit": false,
-        "hpAfter": 32
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 99
-      },
+      { "t": "damage", "target": 0, "amount": 12, "crit": false, "hpAfter": 32 },
+      { "t": "turn_start", "actor": 0, "tick": 99 },
       {
         "t": "attack",
         "actor": 0,
@@ -895,18 +538,8 @@
           "final": 17
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 17,
-        "crit": false,
-        "hpAfter": 73
-      },
-      {
-        "t": "trait_fire",
-        "actor": 0,
-        "trait": "plaguebearer"
-      },
+      { "t": "damage", "target": 1, "amount": 17, "crit": false, "hpAfter": 73 },
+      { "t": "trait_fire", "actor": 0, "trait": "plaguebearer" },
       {
         "t": "status_apply",
         "target": 1,
@@ -915,19 +548,8 @@
         "stacks": 1,
         "duration": 61
       },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 31
-      },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 31 },
       {
         "t": "status_tick",
         "target": 1,
@@ -936,11 +558,7 @@
         "stacks": 1,
         "amount": 2
       },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 109
-      },
+      { "t": "turn_start", "actor": 0, "tick": 109 },
       {
         "t": "attack",
         "actor": 0,
@@ -957,36 +575,11 @@
           "final": 14
         }
       },
-      {
-        "t": "damage",
-        "target": 1,
-        "amount": 14,
-        "crit": false,
-        "hpAfter": 57
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "thorns",
-        "note": "reflect 1"
-      },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 1,
-        "crit": false,
-        "hpAfter": 30
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 109
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "bossEnrage"
-      },
+      { "t": "damage", "target": 1, "amount": 14, "crit": false, "hpAfter": 57 },
+      { "t": "trait_fire", "actor": 1, "trait": "thorns", "note": "reflect 1" },
+      { "t": "damage", "target": 0, "amount": 1, "crit": false, "hpAfter": 30 },
+      { "t": "turn_start", "actor": 1, "tick": 109 },
+      { "t": "trait_fire", "actor": 1, "trait": "bossEnrage" },
       {
         "t": "status_apply",
         "target": 1,
@@ -995,31 +588,11 @@
         "stacks": 1,
         "duration": -1
       },
-      {
-        "t": "dodge",
-        "actor": 0,
-        "mitigated": 0
-      },
-      {
-        "t": "telegraph",
-        "actor": 1,
-        "inTurns": 1
-      },
-      {
-        "t": "turn_start",
-        "actor": 0,
-        "tick": 118
-      },
-      {
-        "t": "dodge",
-        "actor": 1,
-        "mitigated": 0
-      },
-      {
-        "t": "turn_start",
-        "actor": 1,
-        "tick": 119
-      },
+      { "t": "dodge", "actor": 0, "mitigated": 0 },
+      { "t": "telegraph", "actor": 1, "inTurns": 1 },
+      { "t": "turn_start", "actor": 0, "tick": 118 },
+      { "t": "dodge", "actor": 1, "mitigated": 0 },
+      { "t": "turn_start", "actor": 1, "tick": 119 },
       {
         "t": "attack",
         "actor": 1,
@@ -1036,22 +609,9 @@
           "final": 66
         }
       },
-      {
-        "t": "damage",
-        "target": 0,
-        "amount": 66,
-        "crit": true,
-        "hpAfter": 0
-      },
-      {
-        "t": "trait_fire",
-        "actor": 1,
-        "trait": "pyromancer"
-      },
-      {
-        "t": "death",
-        "actor": 0
-      }
+      { "t": "damage", "target": 0, "amount": 66, "crit": true, "hpAfter": 0 },
+      { "t": "trait_fire", "actor": 1, "trait": "pyromancer" },
+      { "t": "death", "actor": 0 }
     ]
   }
 }
