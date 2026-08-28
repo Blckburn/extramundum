@@ -8,7 +8,8 @@ import {
 } from '@extramundum/shared';
 
 import arenaJson from './rigs/arena.json' with { type: 'json' };
-import beastJson from './rigs/beast.json' with { type: 'json' };
+import corvidJson from './rigs/corvid.json' with { type: 'json' };
+import crawlerJson from './rigs/crawler.json' with { type: 'json' };
 import bruteJson from './rigs/brute.json' with { type: 'json' };
 import gauntJson from './rigs/gaunt.json' with { type: 'json' };
 import humanoidJson from './rigs/humanoid.json' with { type: 'json' };
@@ -39,19 +40,27 @@ export const RIGS = {
   arena: rigSpecSchema.parse(arenaJson),
   munda: rigSpecSchema.parse(mundaJson),
 
-  /* Силуэты монстров (M3b). ЧЕТЫРЕ ФОРМЫ НА ДВАДЦАТЬ МОНСТРОВ, и это
-     решение, а не экономия: различать врага надо СИЛУЭТОМ с одного
-     взгляда, а двадцать похожих человекоподобных фигур не различались
-     бы вовсе. Кто есть кто внутри формы, говорит перекраска из записи
-     монстра (`recolor`) — она же держит правило «монстры это данные». */
+  /* Силуэты монстров. ПЯТЬ ФОРМ НА ДВАДЦАТЬ МОНСТРОВ, и это решение,
+     а не экономия: различать врага надо СИЛУЭТОМ с одного взгляда,
+     а двадцать похожих человекоподобных фигур не различались бы вовсе.
+     Кто есть кто внутри формы, говорит перекраска из записи монстра
+     (`recolor`) — она же держит правило «монстры это данные».
+
+     ЗВЕРИНОГО СИЛУЭТА ЗДЕСЬ БОЛЬШЕ НЕТ. Четвероногий риг `beast`
+     изображал одичавших собак, и решением человека собак в игре быть
+     не должно — ни как противников, ни как силуэта. Носившие его трое
+     разошлись по двум новым формам: птице и бесформенному ползущему.
+     Переименовать монстров было мало: имя меняется в локали, а на арене
+     игрок видит риг. */
   gaunt: rigSpecSchema.parse(gauntJson),
   brute: rigSpecSchema.parse(bruteJson),
-  beast: rigSpecSchema.parse(beastJson),
+  corvid: rigSpecSchema.parse(corvidJson),
+  crawler: rigSpecSchema.parse(crawlerJson),
   husk: rigSpecSchema.parse(huskJson),
 } as const satisfies Record<string, RigSpec>;
 
 /** Риги, пригодные для БОЙЦА: у них есть узлы-привязки из `animations.stage`. */
-export const FIGHTER_RIG_IDS = ['humanoid', 'gaunt', 'brute', 'beast', 'husk'] as const;
+export const FIGHTER_RIG_IDS = ['humanoid', 'gaunt', 'brute', 'corvid', 'crawler', 'husk'] as const;
 export type FighterRigId = (typeof FIGHTER_RIG_IDS)[number];
 
 export type RigId = keyof typeof RIGS;

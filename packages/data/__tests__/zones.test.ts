@@ -2,7 +2,7 @@ import { ALL_TRAIT_IDS, ARMOR_CLASSES, WEAPON_CLASSES, ZONE_IDS } from '@extramu
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { balance, palette, RIGS } from '../index.ts';
+import { balance, FIGHTER_RIG_IDS, palette, RIGS } from '../index.ts';
 import { MONSTERS, ZONES, monsterSpec, zoneSpec } from '../zones.ts';
 
 /**
@@ -197,5 +197,59 @@ describe('монстры', () => {
       });
       expect(new Set(looks).size, `зона «${zone.id}»: одинаковые монстры`).toBe(looks.length);
     }
+  });
+});
+/**
+ * СОБАЧЬЕГО СИЛУЭТА В ИГРЕ НЕТ. Решение человека.
+ *
+ * Первая попытка была переименованием: «Одичавшая собака» стала
+ * «Трупными воронами», а риг остался четвероногим — на арене игрок
+ * видел ту же собаку под другим именем. Имя живёт в локали, силуэт
+ * в риге, и одно другое не заменяет.
+ *
+ * Тест держит ОБЕ стороны: и что рига больше нет, и что ни один монстр
+ * на него не ссылается. Проверять только вторую было бы мало —
+ * неиспользуемый риг вернулся бы в чей-нибудь новый монстр.
+ */
+describe('в игре нет собак', () => {
+  it('рига `beast` не существует', () => {
+    expect(Object.keys(RIGS)).not.toContain('beast');
+    expect(FIGHTER_RIG_IDS as readonly string[]).not.toContain('beast');
+  });
+
+  it('ни один монстр не ссылается на звериный риг', () => {
+    expect(MONSTERS.length, 'монстров нет — проверять нечего').toBeGreaterThan(0);
+    for (const monster of MONSTERS) {
+      expect(monster.rig, `монстр «${monster.key}»`).not.toBe('beast');
+    }
+  });
+
+  it('ни в одном ключе монстра и ни в одном риге нет собаки по имени', () => {
+    /* Ключи читает человек, и «пёс» в ключе — это заявка на силуэт,
+       который потом кто-нибудь и нарисует. Список узкий намеренно:
+       широкий отлавливал бы `bloodhound` в названии трейта и мешал бы
+       работать вместо того, чтобы держать правило. */
+    const forbidden = ['dog', 'hound', 'puppy', 'wolf'];
+    const names = [...MONSTERS.map((m) => m.key), ...Object.keys(RIGS)];
+
+    for (const name of names) {
+      for (const word of forbidden) {
+        expect(name.toLowerCase(), `«${name}» содержит «${word}»`).not.toContain(word);
+      }
+    }
+  });
+
+  it('заменившие риги действительно РАЗНЫЕ формы, а не копии', () => {
+    // Иначе «заменили силуэт» прошло бы и на двух одинаковых ригах
+    // под разными именами.
+    const corvid = RIGS.corvid.nodes.map((n) => `${n.name}:${n.size.join(',')}`).sort();
+    const crawler = RIGS.crawler.nodes.map((n) => `${n.name}:${n.size.join(',')}`).sort();
+    expect(corvid).not.toEqual(crawler);
+
+    // И у птицы есть клюв, а у бесформенного нет ни одной ноги:
+    // это то, ЧЕМ они читаются, и без этого они снова неразличимы.
+    expect(RIGS.corvid.nodes.some((n) => n.name === 'beak')).toBe(true);
+    expect(RIGS.crawler.nodes.some((n) => n.name.startsWith('leg'))).toBe(false);
+    expect(RIGS.corvid.nodes.some((n) => n.name.startsWith('leg'))).toBe(true);
   });
 });

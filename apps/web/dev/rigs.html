@@ -1,0 +1,76 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Силуэты монстров</title>
+<style>
+  body {
+    margin: 0;
+    background: #100f0d;
+  }
+  .row {
+    display: flex;
+  }
+  figure {
+    margin: 0;
+    flex: 1;
+  }
+  figcaption {
+    color: #d8cfbc;
+    font:
+      13px/1.4 system-ui,
+      sans-serif;
+    text-align: center;
+    padding: 6px 0 10px;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 300px;
+  }
+</style>
+<div class="row" id="row"></div>
+<script type="module">
+  /**
+   * Пробная страница: все силуэты монстров рядом, в настоящем рендере.
+   * Нужна ровно затем, чтобы «формы разные» проверялось глазами,
+   * а не только по числу узлов в тесте. В сборку не идёт.
+   */
+  const { createBattleScene } = await import('/src/render/index.ts');
+  const { WebGLRenderer } = await import('three');
+
+  const rigs = new URLSearchParams(location.search).get('rigs')?.split(',') ?? [
+    'humanoid',
+    'gaunt',
+    'brute',
+    'corvid',
+    'crawler',
+    'husk',
+  ];
+  const zoom = Number(new URLSearchParams(location.search).get('zoom') ?? 1);
+  const row = document.getElementById('row');
+
+  for (const rig of rigs) {
+    const fig = document.createElement('figure');
+    const canvas = document.createElement('canvas');
+    const cap = document.createElement('figcaption');
+    cap.textContent = rig;
+    fig.append(canvas, cap);
+    row.append(fig);
+
+    const width = canvas.clientWidth;
+    const built = createBattleScene(width / 300, { rig });
+    const renderer = new WebGLRenderer({ canvas, antialias: false });
+    renderer.setSize(width, 300, false);
+    renderer.setClearColor(0x100f0d, 1);
+
+    /* Камера наводится на ФАКТИЧЕСКОЕ положение правого бойца, а не
+       на записанное числом: позиция живёт в scene.ts, и второе её
+       место разошлось бы с первым при первой же правке сцены. */
+    const target = built.fighters[1].root.position;
+    built.camera.aspect = width / 300;
+    built.camera.position.set(target.x + 2.0 / zoom, 0.75 + 1.1 / zoom, target.z + 3.2 / zoom);
+    built.camera.lookAt(target.x, 0.6, target.z);
+    built.camera.updateProjectionMatrix();
+    renderer.render(built.scene, built.camera);
+  }
+  window.__ready = true;
+</script>

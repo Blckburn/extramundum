@@ -1,0 +1,112 @@
+{
+  "id": "corvid",
+  "$comment": "Птица. Трупные вороны и всё, что кормится на падали. Силуэт узнаётся ТРЕМЯ вещами, и ни одна не лишняя: клин клюва пирамидой, сложенные крылья плоскими пластинами вдоль корпуса и веер хвоста сзади. Корпус наклонён вперёд и сидит на тонких ногах — птица не стоит столбом и не стелется по земле, и это единственный силуэт с такой посадкой. Узлы `earth` и `charcoal` несущие: на них ссылается перекраска записей монстров.",
+  "nodes": [
+    {
+      "name": "root",
+      "parent": null,
+      "offset": [0, 0, 0],
+      "size": [0, 0, 0],
+      "color": "ink"
+    },
+    {
+      "name": "legL",
+      "parent": "root",
+      "offset": [-0.08, 0.13, 0],
+      "size": [0.05, 0.26, 0.05],
+      "color": "charcoal"
+    },
+    {
+      "name": "clawL",
+      "parent": "legL",
+      "offset": [0, -0.15, 0.06],
+      "size": [0.11, 0.05, 0.16],
+      "color": "soot"
+    },
+    {
+      "name": "legR",
+      "parent": "root",
+      "offset": [0.08, 0.13, 0],
+      "size": [0.05, 0.26, 0.05],
+      "color": "charcoal"
+    },
+    {
+      "name": "clawR",
+      "parent": "legR",
+      "offset": [0, -0.15, 0.06],
+      "size": [0.11, 0.05, 0.16],
+      "color": "soot"
+    },
+    {
+      "name": "torso",
+      "parent": "root",
+      "offset": [0, 0.4, 0.02],
+      "size": [0.32, 0.32, 0.54],
+      "color": "earth"
+    },
+    {
+      "name": "breast",
+      "parent": "torso",
+      "offset": [0, -0.06, 0.2],
+      "size": [0.26, 0.24, 0.14],
+      "color": "earth"
+    },
+    {
+      "name": "wingL",
+      "parent": "torso",
+      "offset": [-0.17, 0.02, -0.04],
+      "size": [0.06, 0.3, 0.44],
+      "color": "charcoal"
+    },
+    {
+      "name": "wingTipL",
+      "parent": "wingL",
+      "offset": [0, -0.14, -0.24],
+      "size": [0.05, 0.14, 0.22],
+      "color": "soot"
+    },
+    {
+      "name": "wingR",
+      "parent": "torso",
+      "offset": [0.17, 0.02, -0.04],
+      "size": [0.06, 0.3, 0.44],
+      "color": "charcoal"
+    },
+    {
+      "name": "wingTipR",
+      "parent": "wingR",
+      "offset": [0, -0.14, -0.24],
+      "size": [0.05, 0.14, 0.22],
+      "color": "soot"
+    },
+    {
+      "name": "tailFan",
+      "parent": "torso",
+      "offset": [0, -0.05, -0.38],
+      "size": [0.28, 0.05, 0.4],
+      "color": "charcoal"
+    },
+    {
+      "name": "neck",
+      "parent": "torso",
+      "offset": [0, 0.17, 0.16],
+      "size": [0.14, 0.16, 0.14],
+      "color": "earth"
+    },
+    {
+      "name": "head",
+      "parent": "neck",
+      "offset": [0, 0.11, 0.06],
+      "size": [0.18, 0.17, 0.2],
+      "color": "charcoal"
+    },
+    {
+      "name": "beak",
+      "parent": "head",
+      "offset": [0, -0.02, 0.2],
+      "size": [0.1, 0.1, 0.3],
+      "shape": "pyramid",
+      "color": "bone"
+    }
+  ]
+}

@@ -63,7 +63,7 @@
     {
       "key": "wastes.carrionCrows",
       "zone": "wastes",
-      "rig": "beast",
+      "rig": "corvid",
       "recolor": {
         "earth": "soot",
         "charcoal": "earth"
@@ -376,7 +376,7 @@
     {
       "key": "forge.cinderCrawler",
       "zone": "forge",
-      "rig": "beast",
+      "rig": "crawler",
       "recolor": {
         "earth": "flame",
         "charcoal": "soot"
@@ -425,7 +425,7 @@
     {
       "key": "abyss.pitCrawler",
       "zone": "abyss",
-      "rig": "beast",
+      "rig": "crawler",
       "recolor": {
         "earth": "bile",
         "charcoal": "soot",

@@ -26,9 +26,9 @@ describe('облик противника из данных монстра', () 
   it('ключ силуэта выбирает риг: разные ключи — разные формы', () => {
     // Две формы, а не одна: тест «риг применился» прошёл бы и на сцене,
     // которая всегда строит одно и то же.
-    expect(rigIdOf({ rig: 'beast' })).toBe('beast');
+    expect(rigIdOf({ rig: 'corvid' })).toBe('corvid');
     expect(rigIdOf({ rig: 'brute' })).toBe('brute');
-    expect(rigIdOf({ rig: 'beast' })).not.toBe(rigIdOf({ rig: 'brute' }));
+    expect(rigIdOf({ rig: 'corvid' })).not.toBe(rigIdOf({ rig: 'brute' }));
   });
 
   it('без облика противник человекоподобен — как и был до M3b', () => {
