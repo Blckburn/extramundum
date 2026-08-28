@@ -20,6 +20,7 @@ import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { fighterFromLoadout, toView } from '../items/loadout.ts';
 import { loadoutOf } from '../items/repository.ts';
+import { progressionOf } from '../progression/service.ts';
 import type { PlayerProfile } from '@extramundum/shared';
 
 import {
@@ -119,7 +120,7 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
   const { profile, row } = ctx;
   const zone = requireZone(row.zone);
   const loadout = await loadoutOf(db, profile.id);
-  const player = fighterFromLoadout(profile, loadout);
+  const player = fighterFromLoadout(profile, loadout, await progressionOf(db, profile));
   const maxHp = maxHpOf(player, combatBalance);
 
   const finished = row.state !== 'active' || row.fightIndex >= raid.fightsPerRun;
@@ -206,7 +207,10 @@ export async function startRun(
   }
 
   const loadout = await loadoutOf(db, profile.id);
-  const maxHp = maxHpOf(fighterFromLoadout(profile, loadout), combatBalance);
+  const maxHp = maxHpOf(
+    fighterFromLoadout(profile, loadout, await progressionOf(db, profile)),
+    combatBalance,
+  );
 
   const row = await insertRun(db, {
     playerId: profile.id,
@@ -251,7 +255,11 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   }
 
   const loadout = await loadoutOf(db, profile.id);
-  const player = fighterFromLoadout(profile, loadout);
+  /* Карты драфта и трейты пятых уровней входят в бойца ЗДЕСЬ, а не
+     где-то ещё: боец боя и боец превью собираются одной функцией
+     и одной прогрессией, иначе превью обещало бы одно, а бой давал
+     другое. */
+  const player = fighterFromLoadout(profile, loadout, await progressionOf(db, profile));
   const maxHp = maxHpOf(player, combatBalance);
 
   const spec = enemyFor(zone, row.fightIndex, row.seed);
@@ -345,7 +353,10 @@ export async function drinkPotion(db: Database, profile: PlayerProfile): Promise
   }
 
   const loadout = await loadoutOf(db, profile.id);
-  const maxHp = maxHpOf(fighterFromLoadout(profile, loadout), combatBalance);
+  const maxHp = maxHpOf(
+    fighterFromLoadout(profile, loadout, await progressionOf(db, profile)),
+    combatBalance,
+  );
   const healed = Math.min(maxHp, profile.hpCurrent + Math.round(maxHp * raid.potionHealFraction));
 
   const applied = await spendPotion(db, {

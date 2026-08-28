@@ -15,6 +15,7 @@ import { AppError } from '../http/errors.ts';
 import { parseBody, type AppEnv } from '../http/middleware.ts';
 import { loadoutStats, type Loadout } from '../items/loadout.ts';
 import { equipItemView, loadoutOf } from '../items/repository.ts';
+import { progressionOf } from '../progression/service.ts';
 import { findPlayerByUserId } from '../players/repository.ts';
 import { requireSession } from '../auth/session.ts';
 
@@ -60,6 +61,10 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
 
     const started = performance.now();
     const current = await loadoutOf(db, profile.id);
+    /* Прогрессия читается ОДИН раз и идёт в оба прогона: сравниваются
+       два набора на одном и том же бойце, а не боец с картами против
+       бойца без них. */
+    const progression = await progressionOf(db, profile);
 
     /* «Что будет, если надеть» — по ИДЕНТИФИКАТОРУ предмета.
        Клиент присылает id, сервер проверяет владение и собирает набор
@@ -75,6 +80,7 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
         difficulty: input.difficulty,
         runs: input.runs,
         loadout,
+        progression,
       });
 
     const base = estimate(current);
@@ -108,7 +114,10 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
             // Дельты считает СЕРВЕР по тем же правилам, по которым
             // собирает бойца для боя: две функции с разными правилами
             // разошлись бы, и превью обещало бы одно, а бой давал другое.
-            deltas: statDeltas(loadoutStats(profile, current), loadoutStats(profile, hypothetical)),
+            deltas: statDeltas(
+              loadoutStats(profile, current, progression),
+              loadoutStats(profile, hypothetical, progression),
+            ),
           }),
     };
     return c.json(body);

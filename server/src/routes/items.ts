@@ -17,6 +17,7 @@ import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { parseBody, type AppEnv } from '../http/middleware.ts';
 import { countedQuotas, loadoutStats, toView } from '../items/loadout.ts';
+import { progressionOf } from '../progression/service.ts';
 import {
   equipItem,
   equippedMap,
@@ -65,10 +66,11 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
   /** Всё, что есть у игрока, плюс производные набора. */
   app.get(API_ROUTES.items, async (c) => {
     const profile = await playerOf(c);
-    const [all, equipped, loadout] = await Promise.all([
+    const [all, equipped, loadout, progression] = await Promise.all([
       listItems(db, profile.id),
       equippedMap(db, profile.id),
       loadoutOf(db, profile.id),
+      progressionOf(db, profile),
     ]);
 
     const quotas = countedQuotas(loadout);
@@ -82,7 +84,7 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
       // и сверхбюджетный аффикс не был бы зачёркнут ни у кого.
       items: all.map((item) => toView(item, item.container === 'equipped' ? quotas : null)),
       equipped: Object.fromEntries(equipped),
-      stats: loadoutStats(profile, loadout),
+      stats: loadoutStats(profile, loadout, progression),
       gold: profile.gold,
       capacity: loot.capacity,
     };

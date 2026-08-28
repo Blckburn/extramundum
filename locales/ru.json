@@ -94,6 +94,8 @@
   "difficulty.normal": "Обычная",
   "error.conflict": "Уже занято",
   "error.credentials.invalid": "Неверная почта или пароль",
+  "error.draft.notOffered": "Этого выбора тебе не предлагали",
+  "error.draft.nothingPending": "Нечего выбирать: новых уровней нет",
   "error.field.email.invalid": "Похоже, это не адрес почты",
   "error.field.email.taken": "На эту почту персонаж уже создан",
   "error.field.email.tooLong": "Адрес почты слишком длинный",

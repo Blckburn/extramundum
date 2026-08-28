@@ -94,6 +94,8 @@
   "difficulty.normal": "Normal",
   "error.conflict": "Already taken",
   "error.credentials.invalid": "Wrong email or password",
+  "error.draft.notOffered": "That option was not offered to you",
+  "error.draft.nothingPending": "Nothing to draft: no new levels",
   "error.field.email.invalid": "That does not look like an email address",
   "error.field.email.taken": "A character already exists for this email",
   "error.field.email.tooLong": "Email address is too long",
