@@ -163,6 +163,8 @@ const TIER_RANK = { base: 0, synergy: 1, deep: 2 };
  * «имя эффекта → что менять» здесь заводить нельзя, он и есть то место,
  * где карта начинает делать не то, что написано.
  */
+const ARCHETYPE = balance.archetypes.forbidden;
+
 function progressionAt(level, lean) {
   const out = {
     atk: 0,
@@ -190,7 +192,19 @@ function progressionAt(level, lean) {
       continue;
     }
 
-    const offer = offerCards(CARDS, leans, seed, lv, PROG);
+    /* Оффер фильтруется ещё и ПОТОЛКАМИ: карта, чей эффект упёрся,
+       из колоды исчезает. Без этого модель повторяла бы прежнюю
+       ошибку — брала бы игроку карты точности при уже обнулённом
+       уклонении врага и мерила билд, которого игра не выдаёт. */
+    const ceilings = {
+      values: {
+        agi: ARCHETYPE.agi + out.auto + out.agi,
+        critBonus: out.critBonus,
+        accuracy: ARCHETYPE.accuracy + out.accuracy,
+      },
+      combat: balance,
+    };
+    const offer = offerCards(CARDS, leans, seed, lv, PROG, ceilings);
     if (offer.length === 0) continue;
 
     /* Своего наклона нет в оффере — берётся ПЕРВАЯ предложенная,
