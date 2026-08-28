@@ -13,11 +13,13 @@
     "items.ts",
     "render.ts",
     "zones.ts",
+    "cards.ts",
     "balance.json",
     "assets.json",
     "palette.json",
     "animations.json",
     "zones.json",
+    "cards.json",
     "monsters.json",
     "rigs/*.json",
     "items/*.json"

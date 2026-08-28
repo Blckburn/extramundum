@@ -1,0 +1,107 @@
+{
+  "$source": "GDD §5.2. Документ задаёт ПРАВИЛО (три карты из колоды, отфильтрованной по билду) и порог синергий («трижды выбрал ATK»), но не карты и не числа",
+  "$note": "КОЛОДА — ДАННЫЕ, как монстры и зоны. Новая карта это запись здесь, а не правка кода: в сервере и в движке не упомянута по имени ни одна.\n\nЭффект карты — набор прибавок к тем же полям бойца, что уже собирает снаряжение. Второго способа менять бойца не заводится: разойдись они, превью обещало бы одно, а бой давал другое.\n\nЧИСЛА ПОМЕЧЕНЫ pending. Выведено из траектории только одно — простая карта в стат (+3, см. progression.$statPerLevel). Всё остальное назначено по форме: синергия чуть выше простой карты, глубокая — заметно выше, и обе несут ВТОРОЙ эффект, потому что «то же самое, но больше» не делает билд направленным, а только быстрее.",
+  "$leans": "НАКЛОН карты — это то, что она засчитывает в билд, а не то, какой стат трогает. `armor` и `hp` считаются защитой, `accuracy` и `crit` — ловкостью: игрок, трижды взявший броню, собирает защитный билд, и колода обязана это понимать. Без этого «фильтр по билду» разбирал бы четыре стата и не видел бы остального.",
+  "$tiers": "base — всегда в колоде; synergy — с progression.synergyThreshold выборов своего наклона; deep — с deepSynergyThreshold. Порог сравнивается с числом УЖЕ СДЕЛАННЫХ выборов этого наклона, включая трейты соответствующей школы: иначе на пятых уровнях билд «забывал» о себе.",
+  "calibration": "pending",
+  "cards": [
+    {
+      "id": "atk.blade",
+      "lean": "atk",
+      "tier": "base",
+      "effects": { "atk": 3 }
+    },
+    {
+      "id": "def.hide",
+      "lean": "def",
+      "tier": "base",
+      "effects": { "def": 3 }
+    },
+    {
+      "id": "agi.step",
+      "lean": "agi",
+      "tier": "base",
+      "effects": { "agi": 3 }
+    },
+    {
+      "id": "spd.wind",
+      "lean": "spd",
+      "tier": "base",
+      "effects": { "spd": 3 }
+    },
+    {
+      "id": "def.plate",
+      "lean": "def",
+      "tier": "base",
+      "effects": { "armor": 8 }
+    },
+    {
+      "id": "def.marrow",
+      "lean": "def",
+      "tier": "base",
+      "effects": { "pathBonusHp": 18 }
+    },
+    {
+      "id": "agi.aim",
+      "lean": "agi",
+      "tier": "base",
+      "effects": { "accuracy": 2 }
+    },
+    {
+      "id": "agi.nerve",
+      "lean": "agi",
+      "tier": "base",
+      "effects": { "critBonus": 0.02 }
+    },
+
+    {
+      "id": "atk.grip",
+      "lean": "atk",
+      "tier": "synergy",
+      "effects": { "atk": 4, "critBonus": 0.03 }
+    },
+    {
+      "id": "def.bulwark",
+      "lean": "def",
+      "tier": "synergy",
+      "effects": { "def": 4, "armor": 10 }
+    },
+    {
+      "id": "agi.read",
+      "lean": "agi",
+      "tier": "synergy",
+      "effects": { "agi": 4, "accuracy": 3 }
+    },
+    {
+      "id": "spd.flurry",
+      "lean": "spd",
+      "tier": "synergy",
+      "effects": { "spd": 4, "atk": 2 }
+    },
+
+    {
+      "id": "atk.execution",
+      "lean": "atk",
+      "tier": "deep",
+      "effects": { "atk": 5, "critBonus": 0.05 }
+    },
+    {
+      "id": "def.keep",
+      "lean": "def",
+      "tier": "deep",
+      "effects": { "def": 5, "armor": 14, "pathBonusHp": 20 }
+    },
+    {
+      "id": "agi.ghost",
+      "lean": "agi",
+      "tier": "deep",
+      "effects": { "agi": 5, "accuracy": 5 }
+    },
+    {
+      "id": "spd.storm",
+      "lean": "spd",
+      "tier": "deep",
+      "effects": { "spd": 5, "agi": 3, "critBonus": 0.02 }
+    }
+  ]
+}
