@@ -310,6 +310,22 @@ async function render(surface: Surface): Promise<void> {
       t('raid.action.continue'),
     ]) as HTMLButtonElement;
 
+    /* ИТОГ БОЯ НЕ ПОКАЗЫВАЕТСЯ, ПОКА БОЙ НЕ ДОСМОТРЕН.
+     
+       До этой правки панель наград и кнопка «продолжить» выкладывались
+       ВМЕСТЕ с ареной, то есть «Отряд погиб», добыча и кнопка выхода
+       стояли над боем с первого кадра. Это не мелочь показа: единственная
+       причина смотреть бой — узнать, чем он кончится, — уничтожалась
+       одной кнопкой, и на живых сессиях бой пропускали всегда.
+     
+       Кнопка «сразу итог» остаётся: смотреть пока нечего, две коробки
+       бьют друг друга. Она уходит вместе с работой над зрелищностью,
+       а не раньше. */
+    const outcomeBar = el('div', { class: 'arena__bar' }, [readout]);
+    const reveal = (): void => {
+      if (!outcomeBar.contains(done)) outcomeBar.append(rewardsBlock(result), done);
+    };
+
     host.append(
       el('div', { class: 'arena__stage' }, [canvas, overlay]),
       controls,
@@ -317,7 +333,7 @@ async function render(surface: Surface): Promise<void> {
       // Награды стоят в ПАНЕЛИ, а не отдельной строкой: сетка арены
       // раздаёт области четырём известным детям, и пятый ребёнок
       // попал бы в неявную строку и растянул её за край экрана.
-      el('div', { class: 'arena__bar' }, [readout, rewardsBlock(result), done]),
+      outcomeBar,
     );
 
     const mounted = await mountBattle(
@@ -327,8 +343,14 @@ async function render(surface: Surface): Promise<void> {
         outcome: result.outcome,
         maxHp: result.maxHp,
         enemyLook: result.enemyLook,
+        onFinished: reveal,
       },
     );
+
+    /* Страховка на случай, когда показать бой не удалось (нет WebGL,
+       не загрузился движок): без неё игрок остался бы на экране
+       без единой кнопки. */
+    if (mounted === null) reveal();
 
     done.addEventListener('click', () => {
       mounted?.stop();
