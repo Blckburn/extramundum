@@ -236,9 +236,21 @@ async function render(surface: Surface): Promise<void> {
   function actions(current: RunView): HTMLElement {
     const row = el('div', { class: 'raid__actions' });
 
-    const add = (label: string, className: string, act: () => Promise<void>): void => {
+    /* У кнопки решения ДВЕ строки: что делаешь и что из этого следует.
+       На живых сессиях эвакуацией не воспользовались ни разу, и причина
+       оказалась не в балансе: игрок считал, что уходя РИСКУЕТ уже
+       выбитым. Правило §7.2 обратное — уносится всё, — но нигде
+       не сказано. Механика не изменена, изменено только то, что о ней
+       написано. */
+    const add = (
+      label: string,
+      className: string,
+      act: () => Promise<void>,
+      hint?: string,
+    ): void => {
       const button = el('button', { class: className, type: 'button' }, [
-        label,
+        el('span', { class: 'raid__actionLabel' }, [label]),
+        ...(hint === undefined ? [] : [el('span', { class: 'raid__actionHint' }, [hint])]),
       ]) as HTMLButtonElement;
       button.addEventListener('click', () => {
         // Кнопка гасится на время запроса: два «в бой» подряд отправили
@@ -252,10 +264,19 @@ async function render(surface: Surface): Promise<void> {
     };
 
     if (current.next !== null) {
-      add(t('raid.action.fight'), 'button', async () => {
-        const result = await api.runFight();
-        await showBattle(result);
-      });
+      add(
+        t('raid.action.fight'),
+        'button',
+        async () => {
+          const result = await api.runFight();
+          await showBattle(result);
+        },
+        // Цена риска называется только когда она есть: с пустой сумкой
+        // терять нечего, и подпись про потерю была бы пугалкой впустую.
+        current.bag.length === 0
+          ? undefined
+          : t('raid.action.fightHint', { count: current.bag.length }),
+      );
     }
 
     if (current.potionsLeft > 0 && current.hp < current.maxHp) {
@@ -272,15 +293,17 @@ async function render(surface: Surface): Promise<void> {
 
     if (current.canExtract) {
       // Эвакуация — не «отмена», а решение. Подпись говорит, что именно
-      // игрок забирает, иначе выбор делается вслепую.
+      // игрок забирает и что при этом НИЧЕГО не теряет: без второго
+      // половина решения принималась вслепую.
       add(
-        t('raid.action.extract', { count: current.bag.length }),
+        t('raid.action.extract'),
         'button button--ghost',
         async () => {
           await api.runExtract();
           await refresh();
           draw();
         },
+        t('raid.action.extractHint', { count: current.bag.length }),
       );
     }
 

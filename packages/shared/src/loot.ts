@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { affixFamilySchema, affixTierSchema, equipmentSlotSchema, raritySchema } from './items.js';
+import {
+  affixFamilySchema,
+  affixTierSchema,
+  equipmentSlotSchema,
+  raritySchema,
+  type Rarity,
+} from './items.js';
 
 /**
  * Коэффициенты генерации лута. GDD §6.1, §6.2.
@@ -88,7 +94,37 @@ export const lootBalanceSchema = z.object({
     affixTierBonus: byTier,
   }),
   drop: z.object({
+    /**
+     * Веса редкости ПО УМОЛЧАНИЮ — для источников, у которых нет
+     * убитого врага: стартовый набор, набор разработки, тесты.
+     * Лут из боя считает веса по уровню монстра (`rarityByLevel`).
+     */
     rarityWeights: z.record(raritySchema, z.number().min(0)),
+    /**
+     * Веса редкости для лута ИЗ БОЯ: `base + perLevel × уровень монстра`.
+     *
+     * Редкость приходит от силы врага, а не сыплется ровным потоком.
+     * На живых сессиях ровный поток и оказался причиной, по которой лут
+     * перестал быть решением: «смотришь на калькулятор и ждёшь зелёные
+     * цифры».
+     */
+    rarityByLevel: z.record(
+      raritySchema,
+      z.object({ base: z.number().min(0), perLevel: z.number() }),
+    ),
+    /**
+     * Добавка к весам, которую даёт ТОЛЬКО босс.
+     *
+     * Эпик и легендарка живут здесь, а не в `rarityByLevel`: обычный
+     * монстр не роняет их вовсе. Это заодно чинит эвакуацию — босс стоит
+     * на пятом бою, значит идти до конца осмысленно из-за ДОСТУПА
+     * К КАТЕГОРИИ лута, а не из-за множителя количества.
+     *
+     * Легендарка по-прежнему выключена нулём (нет уникальных
+     * модификаторов, GDD §6.2), но проходит по той же ветке: включение
+     * остаётся правкой одного числа.
+     */
+    bossRarityBonus: z.record(raritySchema, z.number().min(0)),
     familyWeights: z.record(affixFamilySchema, z.number().min(0)),
     /**
      * Какие семейства вообще могут выпасть на слоте. GDD §5.3.
@@ -106,3 +142,29 @@ export type LootBalance = z.infer<typeof lootBalanceSchema>;
 
 export type { AffixTier } from './items.js';
 export { affixTierSchema };
+
+/**
+ * Веса редкости для предмета, выпавшего с конкретного врага. GDD §6.2.
+ *
+ * ЧИСТАЯ ФУНКЦИЯ И ОДНА НА ВСЕХ: её зовёт и сервер при выдаче лута,
+ * и матрица при замере плотности. Вторая реализация разошлась бы,
+ * и замер мерил бы не то, что получает игрок.
+ *
+ * Отрицательный вес не бывает: `common` убывает с уровнем и на глубоких
+ * зонах ушёл бы в минус, а минус во взвешенном выборе — это не «реже»,
+ * а сдвиг всей выборки.
+ */
+export function rarityWeightsFor(
+  level: number,
+  isBoss: boolean,
+  drop: LootBalance['drop'],
+): Partial<Record<Rarity, number>> {
+  const out: Partial<Record<Rarity, number>> = {};
+
+  for (const [rarity, curve] of Object.entries(drop.rarityByLevel)) {
+    const bonus = isBoss ? (drop.bossRarityBonus[rarity as Rarity] ?? 0) : 0;
+    out[rarity as Rarity] = Math.max(0, curve.base + curve.perLevel * level) + bonus;
+  }
+
+  return out;
+}

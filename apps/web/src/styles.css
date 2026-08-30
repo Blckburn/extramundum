@@ -1574,3 +1574,18 @@ body {
   color: var(--bg);
   border-color: var(--accent);
 }
+
+/* Кнопка решения в рейде: что делаешь и что из этого следует. */
+.raid__actions .button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.raid__actionHint {
+  font-size: 0.72rem;
+  font-weight: 400;
+  opacity: 0.75;
+}

@@ -4,7 +4,7 @@ import { resolveBattle } from '@extramundum/sim';
 
 import { fighterFromLoadout, type Loadout, type ProgressionBonuses } from '../items/loadout.ts';
 
-import { monsterFighter, monsterLevel } from './monsters.ts';
+import { monsterFighter, monsterLevel, monsterPower } from './monsters.ts';
 import { combatBalance, sparringDummy } from './setup.ts';
 
 /**
@@ -74,7 +74,8 @@ export function estimateWinRate(input: PreviewInput): PreviewEstimate {
   }
 
   const level = monsterLevel(input.profile.level, zone, input.difficulty);
-  const enemies = zone.monsters.map((key) => monsterFighter(monsterSpec(key), level, zone.power));
+  const power = monsterPower(zone, input.difficulty);
+  const enemies = zone.monsters.map((key) => monsterFighter(monsterSpec(key), level, power));
 
   return {
     ...duel(input, player, enemies),

@@ -66,6 +66,18 @@ export type GenerateItemInput = {
   readonly slot?: EquipmentSlot;
   /** Если не задана — выбирается броском по весам. */
   readonly rarity?: Rarity;
+  /**
+   * Веса редкости ВМЕСТО табличных.
+   *
+   * Нужны затем, что редкость зависит от того, КОГО убили: чем сильнее
+   * враг, тем выше шанс редкого, а эпик роняет только босс. Считать это
+   * здесь генератор не может — он не знает ни монстра, ни зоны, и знать
+   * не должен: его дело предмет, а не то, откуда предмет взялся.
+   *
+   * Поэтому веса приходят аргументом, а таблица в балансе остаётся
+   * умолчанием для всех прочих источников (стартовый набор, тесты).
+   */
+  readonly rarityWeights?: Readonly<Partial<Record<Rarity, number>>>;
 };
 
 const TIERS: readonly AffixTier[] = ['T1', 'T2', 'T3', 'T4', 'T5'];
@@ -183,7 +195,7 @@ export function generateItem(
 
   const rarity =
     input.rarity ??
-    weighted<Rarity>(rng, balance.drop.rarityWeights, [
+    weighted<Rarity>(rng, input.rarityWeights ?? balance.drop.rarityWeights, [
       'common',
       'magic',
       'rare',
