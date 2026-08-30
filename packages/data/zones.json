@@ -18,7 +18,7 @@
       "id": "wastes",
       "levels": [1, 8],
       "armorClass": "light",
-      "power": 1.08,
+      "power": 1.04,
       "monsters": ["wastes.scavenger", "wastes.carrionCrows", "wastes.footpad"],
       "boss": "wastes.tollman"
     },
@@ -26,7 +26,7 @@
       "id": "warcamp",
       "levels": [8, 16],
       "armorClass": "medium",
-      "power": 0.84,
+      "power": 0.85,
       "monsters": ["warcamp.picket", "warcamp.mercenary", "warcamp.shieldman"],
       "boss": "warcamp.serjeant"
     },
@@ -34,7 +34,7 @@
       "id": "catacombs",
       "levels": [16, 24],
       "armorClass": "cloth",
-      "power": 1.0,
+      "power": 1.04,
       "monsters": ["catacombs.plaguebearer", "catacombs.corpsehandler", "catacombs.emberkeeper"],
       "boss": "catacombs.quarantineWarden"
     },
@@ -42,7 +42,7 @@
       "id": "forge",
       "levels": [24, 32],
       "armorClass": "heavy",
-      "power": 1.09,
+      "power": 1.15,
       "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.cinderCrawler"],
       "boss": "forge.masterSmith"
     },
@@ -50,7 +50,7 @@
       "id": "abyss",
       "levels": [32, 40],
       "armorClass": "mixed",
-      "power": 1.69,
+      "power": 1.6,
       "monsters": ["abyss.pitCrawler", "abyss.boneStacker", "abyss.lastCarter"],
       "boss": "abyss.firstExile"
     }

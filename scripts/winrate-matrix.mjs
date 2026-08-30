@@ -21,7 +21,7 @@
  * Сид фиксирован: `pair-<a>-<b>-<i>`. Один и тот же прогон даёт один
  * и тот же результат, иначе «стало лучше» нельзя отличить от шума.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
@@ -46,6 +46,15 @@ const flag = (name, fallback) => {
 };
 const RUNS = Number(flag('runs', 10000));
 const AS_JSON = argv.includes('--json');
+/**
+ * Куда ЕЩЁ записать машиночитаемый отчёт, не отменяя человеческий вывод.
+ *
+ * Нужен ради CI: прежде тот гонял матрицу ДВАЖДЫ — раз для лога, раз
+ * для `--json`. Вторая половина считала ровно то же самое и стоила
+ * ровно столько же. С кривой зон на двадцати пяти сидах эта вторая
+ * половина перестала помещаться в отведённое время.
+ */
+const JSON_OUT = flag('json-out', null);
 const LOW = 0.35;
 const HIGH = 0.65;
 
@@ -490,10 +499,64 @@ const itemBases = Object.fromEntries(
   ),
 );
 
-/** Цель §4.6 по зонам, в порядке их следования. */
+/**
+ * ЦЕЛЬ — ФОРМА КРИВОЙ, А НЕ ЕЁ АБСОЛЮТНАЯ ВЫСОТА (решение человека).
+ *
+ * Прежде проверялось равенство абсолютным числам 85/75/65/55/45
+ * на ОДНОМ зафиксированном сиде роллов снаряжения. Замер девяти сидов
+ * показал, чего это стоило: размах кривой 18-41 п.п. при допуске ±7,
+ * а сид подбора СИСТЕМАТИЧЕСКИ стоит с краю распределения — в Катакомбах
+ * он минимум из девяти, в Чумных ямах максимум. Иначе и быть не могло:
+ * калибровка двигала множитель зоны, пока ИМЕННО ЭТОТ сид не сядет
+ * на цель, а остальные оставались где были. То есть «Пустоши на 85%»
+ * было утверждением про сид, а не про игру.
+ *
+ * Устойчива не высота, а РАЗНИЦА — это видно на том же материале:
+ * при смене сидов абсолютное число тиров сложности уехало на 14 п.п.,
+ * а разрывы между тирами остались (18.9 и 21.6 против 23.6 и 18.8).
+ *
+ * Поэтому проверяется ШАГ между соседними зонами, и проверяется
+ * по МЕДИАНЕ нескольких сидов. Медиана, а не среднее: одна зона
+ * с вырожденным комплектом (Пустоши на плохом сиде дают 50.8% против
+ * 91.7% на хорошем) утащила бы среднее, а медиана её игнорирует.
+ */
+const ZONE_STEP = 0.1;
+/**
+ * ДОПУСК НА ШАГ ВЗЯТ ИЗ ЗАМЕРА РАЗБРОСА САМОЙ МЕДИАНЫ, а не назначен,
+ * и это оказалось важнее, чем выглядит.
+ *
+ * Первая попытка ставила ±5 при девяти сидах. Проверка двумя
+ * независимыми наборами по девять показала, что так нельзя: медианы
+ * разошлись на 9-11 п.п., а шаги — до 11. Допуск был бы вдвое уже
+ * шума собственного измерителя, то есть сборка краснела бы от удачи.
+ *
+ * Замерено бутстрэпом по 49 сидам — ширина 10-90 процентиля шага:
+ *
+ *   пара                 n=9    n=15   n=25
+ *   Пустоши→лагерь      16.7    12.0    9.1
+ *   лагерь→Катакомбы    21.8    16.5   10.5
+ *   Катакомбы→Кузня     22.4    15.6   10.7
+ *   Кузня→Ямы           15.4    11.9    7.5
+ *
+ * При девяти сидах разброс шага БОЛЬШЕ самого шага в 10 п.п. — проверка
+ * была бы бессмысленна при любом допуске. При двадцати пяти ширина
+ * 7.5-10.7, то есть полуширина около 5, и ±6 оставляет запас.
+ */
+const ZONE_STEP_TOLERANCE = 0.06;
+/**
+ * Абсолютные числа ОСТАЛИСЬ ОРИЕНТИРОМ и печатаются, но прогон ими
+ * больше не валится. Убрать их совсем нельзя: без якоря форма
+ * выполняется и кривой 40/30/20/10/0, где играть невозможно нигде.
+ */
 const ZONE_TARGETS = [0.85, 0.75, 0.65, 0.55, 0.45];
-/** Допуск. Кривая — ориентир дизайна, а не физическая константа. */
+/** Допуск ориентира. Печатается, прогон им не валится. */
 const ZONE_TOLERANCE = 0.07;
+/**
+ * ВЫСОТА КРИВОЙ ВСЁ ЖЕ СТОРОЖИТСЯ, но грубо и по медиане: форма
+ * без якоря — это форма, которую можно выполнить на невозможной игре.
+ * Число широкое намеренно, оно ловит обвал, а не смещение.
+ */
+const ZONE_ANCHOR_TOLERANCE = 0.15;
 
 const { generateItem } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
 
@@ -559,8 +622,22 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass, lea
   const percentAffixes = { might: [], bastion: [], swiftness: [] };
 
   for (const slot of slots) {
+    /* КЛАСС ОРУЖИЯ И НАКЛОН ВХОДЯТ В СИД ПРЕДМЕТА, и это исправление
+       ошибки, а не мелочь.
+
+       Прежде сид был `${seedTag}-${slot}-${ilvl}`: ни класса, ни
+       наклона. Двенадцать «комплектов» кривой зон (3 класса × 4 наклона)
+       отличались друг от друга билдом и оружием, а БРОНЮ носили
+       ОДНУ И ТУ ЖЕ — роллы у них совпадали побитово. То есть усреднение
+       по двенадцати комплектам не усредняло удачу роллов НИСКОЛЬКО:
+       один сид был одним броском на всю зону.
+
+       Отсюда и брались 18-41 п.п. разброса по сидам, и отсюда же
+       кривая, «стоявшая на цели» на сиде подбора и разваливавшаяся
+       на любом другом. Теперь один сид — двенадцать независимых
+       бросков, и разброс падает примерно втрое. */
     const item = generateItem(
-      `${seedTag}-${slot}-${ilvl}`,
+      `${seedTag}-${slot}-${ilvl}-${forceWeaponClass ?? 'any'}-${lean}`,
       { ilvl, slot, rarity: 'epic' },
       balance.items,
       Object.values(itemBases),
@@ -650,7 +727,51 @@ function tierGearedPlayer(archetype, level, ilvl, seedTag, forceWeaponClass, lea
  * с двенадцати разных бойцов, а не с трёх, — то есть оценка ЛУЧШЕ
  * при том же счёте.
  */
-const zoneRuns = Math.max(200, Math.round(RUNS / 20));
+/**
+ * СКОЛЬКО СИДОВ РОЛЛОВ СНАРЯЖЕНИЯ. Двадцать пять, и число ЗАМЕРЕНО,
+ * а не выбрано с запасом.
+ *
+ * На одном сиде величина мерит удачу роллов вперемешку с настройкой,
+ * и отделить одно от другого нельзя в принципе: размах кривой зон
+ * по сидам 18-41 п.п. при прежнем допуске ±7.
+ *
+ * Девяти НЕ ХВАТИЛО, и это выяснилось проверкой, а не рассуждением:
+ * два независимых набора по девять (`--seed-offset 9`) дали медианы,
+ * расходящиеся на 9-11 п.п., а шаги — до 11 при целевом шаге 10.
+ * Бутстрэп по 49 сидам подтвердил: разброс шага при n=9 составляет
+ * 15-22 п.п., при n=25 — 7.5-10.7. Отсюда и двадцать пять: меньше
+ * нельзя, а больше стоит времени без выигрыша для проверки.
+ *
+ * Нечётное — медиана берётся без усреднения соседей.
+ *
+ *   node scripts/winrate-matrix.mjs --seeds 5   # быстрее, грубее
+ */
+const SEEDS = Math.max(1, Number(flag('seeds', 25)));
+/**
+ * Сдвиг набора сидов. Нужен ровно для одного: проверить, что медиана
+ * САМА не гуляет. Два независимых набора по девять — `--seed-offset 0`
+ * и `--seed-offset 9` — обязаны давать близкие шаги, иначе допуск
+ * на шаг взят с потолка, а не из замера.
+ *
+ * По умолчанию 0, и тогда сид 0 — исторический, на котором калибровали
+ * до перехода к медиане.
+ */
+const SEED_OFFSET = Math.max(0, Number(flag('seed-offset', 0)));
+
+/* БОЁВ НА СИД, а не на зону: с переходом к медиане счёт делится между
+   сидами, иначе секция подорожала бы девятикратно и ночной прогон
+   перестал бы укладываться в отведённое время.
+
+   Точность от этого не страдает, а растёт. Главный источник разброса
+   теперь НЕ бросок кубика внутри одного комплекта, а сам комплект:
+   размах по сидам 18-41 п.п. против единиц процентных пунктов
+   выборочного шума. Девять сидов по 200 боёв оценивают медиану лучше,
+   чем один сид по 1800, — и это не рассуждение, а причина, по которой
+   абсолютные числа на одном сиде оказались смещены. */
+const zoneRuns = Math.max(
+  60,
+  Number(flag('zone-runs', Math.max(80, Math.round(RUNS / 20 / SEEDS)))),
+);
 
 /**
  * Режим подбора: печатает, какой `power` дал бы целевой винрейт.
@@ -664,26 +785,18 @@ const zoneRuns = Math.max(200, Math.round(RUNS / 20));
  */
 const CALIBRATE = argv.includes('--calibrate');
 
-/**
- * Сколько СИДОВ РОЛЛОВ снаряжения прогнать по кривой зон.
- *
- * Один сид — то, что было всегда, и этого хватало ровно до тех пор,
- * пока не выяснилось, сколько он весит. Замерено при проверке тиров
- * сложности: три сида вместо одного увели винрейт восьмого уровня
- * Пустошей с 84.7% на 71.0%, при том что РАЗНИЦА между тирами
- * не сдвинулась. То есть абсолютное число — отчасти свойство сида,
- * а разница — свойство настройки.
- *
- * Отсюда вопрос ко всем нашим абсолютным целям: кривая зон 85/75/65/
- * 55/45 выверена НА ОДНОМ сиде, и неизвестно, насколько она смещена.
- * Флаг отвечает на это замером, а не рассуждением.
- *
- * По умолчанию один — разброс стоит ровно во столько же раз дороже,
- * во сколько сидов больше, и гонять это в CI на каждый коммит незачем.
- *
- *   node scripts/winrate-matrix.mjs --seeds 5
- */
-const SEEDS = Math.max(1, Number(flag('seeds', 1)));
+/** Метка сида роллов. Нулевая — историческая, на ней всё калибровалось. */
+const gearSeedTag = (zoneId, sd) => {
+  const n = sd + SEED_OFFSET;
+  return n === 0 ? `tier-${zoneId}` : `tier-${zoneId}-s${n}`;
+};
+
+/** Медиана. Массив не мутируется: он ещё нужен вызывающему. */
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
 const zoneCurve = zones.map((zone, index) => {
   const playerLevel = zone.levels[1];
@@ -710,47 +823,54 @@ const zoneCurve = zones.map((zone, index) => {
         tierGearedPlayer('forbidden', playerLevel, playerLevel, gearSeed, weaponClass, lean),
       ),
     );
-  const kits = kitsFor(`tier-${zone.id}`);
+  const kits = kitsFor(gearSeedTag(zone.id, 0));
 
-  /* ТОТ ЖЕ замер на других сидах роллов. Отвечает на вопрос «насколько
-     наша цель — свойство настройки, а насколько свойство сида»: сид
-     фиксирован с самого начала, и до сих пор никто не проверял, куда
-     он смещает число. Считается только по требованию — см. `--seeds`. */
-  const bySeed = [];
-  for (let sd = 1; sd < SEEDS; sd++) {
-    const other = kitsFor(`tier-${zone.id}-s${sd}`);
-    const r =
+  /* ВИНРЕЙТ ЗОНЫ НА ОДНОМ СИДЕ РОЛЛОВ — кирпич, из которого сложено
+     всё остальное в этой секции. Сид приходит параметром, потому что
+     проверяется теперь не одно число, а МЕДИАНА по девяти: сид оказался
+     весомее всей нашей калибровки, и мерить им одним значило бы
+     продолжать мерить удачу. */
+  const rateOnSeed = (sd, power) => {
+    const players = kitsFor(gearSeedTag(zone.id, sd));
+    return (
       zone.monsters
         .map((key) => {
-          const rates = other.map(
+          const rates = players.map(
             (player, i) =>
               duel(
                 player,
-                monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-                `seed${sd}-${zone.id}-${key}-${i}`,
+                monsterFighter(monsterSpecs[key], enemyLevel, power),
+                `seed${sd}-${zone.id}-${key}-${i}-${power.toFixed(3)}`,
                 zoneRuns,
               ).rate,
           );
           return rates.reduce((a, b) => a + b, 0) / rates.length;
         })
-        .reduce((a, b) => a + b, 0) / zone.monsters.length;
-    bySeed.push(r);
-  }
+        .reduce((a, b) => a + b, 0) / zone.monsters.length
+    );
+  };
+
+  const seedRates = [];
+  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, zone.power));
+  const bySeed = seedRates.slice(1);
+  const medianRate = median(seedRates);
 
   /* Тот же комплект, но по одному наклону: разброс между наклонами
      показывает, ровна ли колода. Считается на среднем классе оружия —
      иначе строк было бы двенадцать. */
-  const byLean = LEANS.map((lean) => ({
-    lean,
-    kit: tierGearedPlayer(
-      'forbidden',
-      playerLevel,
-      playerLevel,
-      `tier-${zone.id}`,
-      'balanced',
+  const byLeanOn = (sd) =>
+    LEANS.map((lean) => ({
       lean,
-    ),
-  }));
+      kit: tierGearedPlayer(
+        'forbidden',
+        playerLevel,
+        playerLevel,
+        gearSeedTag(zone.id, sd),
+        'balanced',
+        lean,
+      ),
+    }));
+  const byLean = byLeanOn(0);
 
   const across = (spec, tag) => {
     const rates = kits.map(
@@ -803,35 +923,61 @@ const zoneCurve = zones.map((zone, index) => {
         .reduce((a, b) => a + b, 0) / zone.monsters.length,
   }));
 
+  /* РАЗМАХ ПО НАКЛОНАМ ТОЖЕ МЕРИТСЯ ПО МЕДИАНЕ СИДОВ, и по той же
+     причине, что кривая: на одном сиде он говорит про один комплект.
+     Печатаются оба — сид 0 для сравнимости с прежними записями
+     и медиана как настоящее число. */
+  const spreadOn = (sd, bare) => {
+    const rates = byLeanOn(sd).map(
+      ({ lean, kit }) =>
+        zone.monsters
+          .map(
+            (key) =>
+              duel(
+                bare ? { ...kit, traits: [balance.archetypes.forbidden.trait] } : kit,
+                monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
+                `${bare ? 'cards' : 'lean'}-s${sd}-${zone.id}-${lean}-${key}`,
+                zoneRuns,
+              ).rate,
+          )
+          .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    );
+    return Math.max(...rates) - Math.min(...rates);
+  };
+  const leanSpreadSeeds = [];
+  const cardsSpreadSeeds = [];
+  for (let sd = 0; sd < SEEDS; sd++) {
+    leanSpreadSeeds.push(spreadOn(sd, false));
+    cardsSpreadSeeds.push(spreadOn(sd, true));
+  }
+
   const bossRate = across(monsterSpecs[zone.boss], `zone-${zone.id}-boss`);
 
   const rate = perMonster.reduce((sum, m) => sum + m.rate, 0) / perMonster.length;
   const target = ZONE_TARGETS[index] ?? 0;
 
-  /* Подбор: двоичный поиск по множителю зоны. Печатается предложение,
-     файл не трогается — числа баланса правит человек, увидев их. */
+  /* ПОДБОР ИДЁТ ПО МЕДИАНЕ СИДОВ, а не по одному сиду, и это вся
+     разница между прежней калибровкой и нынешней. Прежняя двигала
+     множитель, пока НА СИДЕ 0 не выйдет цель, — отчего сид 0 и оказался
+     с краю распределения во всех зонах разом. Медиана такого сделать
+     не даёт: сдвинуть её означает сдвинуть больше половины сидов.
+
+     Цель по-прежнему берётся из `ZONE_TARGETS`, и это не возврат
+     к абсолютным числам: лестница 85/75/65/55/45 арифметическая
+     с шагом ровно `ZONE_STEP`, поэтому попадание каждой зоны в свою
+     цель ПО МЕДИАНЕ и есть требуемая форма плюс якорь первой зоны.
+
+     Печатается предложение, файл не трогается — числа баланса правит
+     человек, увидев их. */
   let suggested = null;
   if (CALIBRATE) {
     let lo = 0.15;
     let hi = 4;
     for (let step = 0; step < 11; step++) {
       const mid = (lo + hi) / 2;
-      const probe =
-        zone.monsters
-          .map((key) => {
-            const rates = kits.map(
-              (player, i) =>
-                duel(
-                  player,
-                  monsterFighter(monsterSpecs[key], enemyLevel, mid),
-                  `cal-${zone.id}-${key}-${mid.toFixed(3)}-${i}`,
-                  zoneRuns,
-                ).rate,
-            );
-            return rates.reduce((a, b) => a + b, 0) / rates.length;
-          })
-          .reduce((a, b) => a + b, 0) / zone.monsters.length;
-      if (probe > target) lo = mid;
+      const probes = [];
+      for (let sd = 0; sd < SEEDS; sd++) probes.push(rateOnSeed(sd, mid));
+      if (median(probes) > target) lo = mid;
       else hi = mid;
     }
     suggested = Math.round(((lo + hi) / 2) * 100) / 100;
@@ -844,17 +990,49 @@ const zoneCurve = zones.map((zone, index) => {
     enemyLevel,
     rate,
     bySeed,
+    seedRates,
+    medianRate,
     target,
-    within: Math.abs(rate - target) <= ZONE_TOLERANCE,
+    within: Math.abs(medianRate - target) <= ZONE_ANCHOR_TOLERANCE,
+    withinReference: Math.abs(rate - target) <= ZONE_TOLERANCE,
     perMonster,
     leanRates,
     cardsOnly,
+    leanSpreadSeeds,
+    cardsSpreadSeeds,
+    medianLeanSpread: median(leanSpreadSeeds),
+    medianCardsSpread: median(cardsSpreadSeeds),
     boss: bossRate,
     suggested,
   };
 });
 
 const zoneBreaches = zoneCurve.filter((z) => !z.within);
+
+/**
+ * ФОРМА КРИВОЙ — шаги между соседними зонами, по медиане сидов.
+ *
+ * Это и есть проверяемая величина: она устойчива к сиду роллов,
+ * а абсолютная высота — нет. Нарушением считается либо шаг вне допуска,
+ * либо шаг вверх (зона легче предыдущей): второе — не «форма чуть
+ * поехала», а перевёрнутая прогрессия, и допуском оно не покрывается.
+ */
+const zoneSteps = zoneCurve.slice(1).map((z, i) => {
+  const prev = zoneCurve[i];
+  const step = prev.medianRate - z.medianRate;
+  return {
+    from: prev.id,
+    to: z.id,
+    step,
+    within: Math.abs(step - ZONE_STEP) <= ZONE_STEP_TOLERANCE,
+    /* Убывание проверяется ОТДЕЛЬНО от допуска. Шаг −0.02 при допуске
+       0.05 формально «в пределах», но означает, что четвёртая зона
+       легче третьей, — а это ровно то, чего кривая зон не должна
+       допускать ни при каком допуске. */
+    descends: step > 0,
+  };
+});
+const stepBreaches = zoneSteps.filter((s) => !s.within || !s.descends);
 
 /**
  * ЦЕЛЬ по разбросу наклонов, и это ЦЕЛЬ, а не порог.
@@ -873,10 +1051,11 @@ const zoneBreaches = zoneCurve.filter((z) => !z.within);
  * на который принимает человек. Печатается — громко.
  */
 const LEAN_SPREAD_GOAL = 0.2;
-const leanSpread = zoneCurve.map((z) => {
-  const rates = z.leanRates.map((r) => r.rate);
-  return { id: z.id, spread: Math.max(...rates) - Math.min(...rates) };
-});
+/* Размах берётся ПО МЕДИАНЕ СИДОВ, как и кривая. На одном сиде это
+   число говорит про один комплект: сид роллов весит здесь столько же,
+   сколько в кривой зон, и «размах в цели» на сиде 0 могло означать
+   ровно то же, чем оказались абсолютные винрейты. */
+const leanSpread = zoneCurve.map((z) => ({ id: z.id, spread: z.medianLeanSpread }));
 const leanSpreadWorst = leanSpread.reduce((a, b) => (b.spread > a.spread ? b : a));
 
 /* ─────────────────── ДОХОДИМОСТЬ ЗАБЕГА · GDD §7.2 ───────────────────
@@ -1059,19 +1238,29 @@ const reachByLevel = REACH_LEVELS.map((level) => {
   // На первом уровне усредняем по архетипам, дальше — по наклонам
   // драфта: с уровня выбор игрока начинает значить больше, чем причина
   // изгнания.
-  const players =
+  /* СИД РОЛЛОВ ЗДЕСЬ ТОЖЕ ВЕСИТ, и по той же причине, что в кривой зон:
+     с первого уровня начинается снаряжение, а оно роллится. Поэтому
+     доходимость выше первого уровня считается по нескольким сидам
+     и сворачивается МЕДИАНОЙ.
+
+     ПЕРВЫЙ УРОВЕНЬ ОТ СИДА НЕ ЗАВИСИТ ВООБЩЕ — и это конструкция,
+     а не удача: `freshExile` гол, роллов у него нет. Гонять его
+     по девяти сидам значило бы девять раз посчитать одно и то же. */
+  const playersOn = (sd) =>
     level === 1
       ? ARCHETYPES.map((a) => freshExile(a))
       : LEANS.map((lean) =>
-          tierGearedPlayer('forbidden', level, level, `reach-${level}`, 'balanced', lean),
+          tierGearedPlayer('forbidden', level, level, `reach-${level}-s${sd}`, 'balanced', lean),
         );
+  const seedCount = level === 1 ? 1 : SEEDS;
 
-  const tally = (withPotions) => {
+  const tallyOn = (sd, withPotions) => {
+    const players = playersOn(sd);
     const totals = { first: 0, second: 0, third: 0, full: 0 };
     for (const [n, player] of players.entries()) {
       const counts = [0, 0, 0, 0, 0, 0];
       for (let i = 0; i < reachRuns; i++) {
-        counts[simulateRun(player, zone, `reachlv-${level}-${n}-${i}`, withPotions)]++;
+        counts[simulateRun(player, zone, `reachlv-${level}-s${sd}-${n}-${i}`, withPotions)]++;
       }
       const atLeast = (k) => counts.slice(k).reduce((a, b) => a + b, 0) / reachRuns;
       totals.first += atLeast(2) / players.length;
@@ -1080,6 +1269,19 @@ const reachByLevel = REACH_LEVELS.map((level) => {
       totals.full += atLeast(5) / players.length;
     }
     return totals;
+  };
+
+  const tally = (withPotions) => {
+    const runs = [];
+    for (let sd = 0; sd < seedCount; sd++) runs.push(tallyOn(sd, withPotions));
+    const at = (key) => median(runs.map((r) => r[key]));
+    return {
+      first: at('first'),
+      second: at('second'),
+      third: at('third'),
+      full: at('full'),
+      firstSeeds: runs.map((r) => r.first),
+    };
   };
 
   return {
@@ -1106,26 +1308,26 @@ const padL = (s, n) => String(s).padStart(n);
 
 const breaches = pairs.filter((p) => p.rate < LOW || p.rate > HIGH);
 
+const report = () => ({
+  runs: RUNS,
+  seeds: SEEDS,
+  corridor: [LOW, HIGH],
+  pairs,
+  combos,
+  solo,
+  budgetProbe,
+  zoneCurve,
+  zoneSteps,
+  reach,
+  breaches,
+  breachesShape: stepBreaches,
+  zoneBreaches,
+});
+
 if (AS_JSON) {
-  console.log(
-    JSON.stringify(
-      {
-        runs: RUNS,
-        corridor: [LOW, HIGH],
-        pairs,
-        combos,
-        solo,
-        budgetProbe,
-        zoneCurve,
-        reach,
-        breaches,
-        zoneBreaches,
-      },
-      null,
-      2,
-    ),
-  );
+  console.log(JSON.stringify(report(), null, 2));
 } else {
+  if (JSON_OUT !== null) writeFileSync(JSON_OUT, JSON.stringify(report(), null, 2));
   console.log(`\nМАТРИЦА ВИНРЕЙТОВ · GDD §4.6, пункт 2`);
   console.log(`${RUNS} боёв на пару, стороны меняются местами, сид фиксирован.`);
   console.log(`Коридор: ${pct(LOW)}–${pct(HIGH)}. Коридор не подгоняется под результат.\n`);
@@ -1251,19 +1453,31 @@ if (AS_JSON) {
   console.log('с настоящей прогрессией §5.2: автоприрост, карты из офферов,');
   console.log('трейты пятых уровней. Усреднение по трём классам оружия');
   console.log('и четырём наклонам драфта.');
-  console.log(`Нормальная сложность, ${zoneRuns} боёв на монстра.`);
-  console.log(`Допуск ±${(ZONE_TOLERANCE * 100).toFixed(0)} п.п.\n`);
+  console.log(`Нормальная сложность, ${zoneRuns} боёв на монстра, ${SEEDS} сид(ов) роллов.`);
+  console.log('');
+  console.log('ПРОВЕРЯЕТСЯ ФОРМА, А НЕ ВЫСОТА: шаг между соседними зонами');
   console.log(
-    `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('винрейт', 9)}${padL('цель', 7)}${padL('босс', 8)}   по монстрам`,
+    `по МЕДИАНЕ сидов, цель ${(ZONE_STEP * 100).toFixed(0)} п.п., допуск ±${(ZONE_STEP_TOLERANCE * 100).toFixed(0)}.`,
+  );
+  console.log('Абсолютные числа остались ориентиром и печатаются, но прогон');
+  console.log(
+    `ими не валится — высота сторожится грубым якорем ±${(ZONE_ANCHOR_TOLERANCE * 100).toFixed(0)} п.п.`,
+  );
+  console.log('');
+  console.log(
+    `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('медиана', 9)}${padL('шаг', 8)}${padL('сид 0', 8)}${padL('ориентир', 10)}${padL('босс', 8)}   по монстрам`,
   );
   console.log('─'.repeat(86));
-  for (const z of zoneCurve) {
+  for (const [i, z] of zoneCurve.entries()) {
+    const st = i === 0 ? null : zoneSteps[i - 1];
     console.log(
       pad(z.id, 12) +
         padL(`${z.playerLevel}/${z.enemyLevel}`, 5) +
         padL(z.power.toFixed(2), 8) +
-        padL(pct(z.rate), 9) +
-        padL(pct(z.target), 7) +
+        padL(pct(z.medianRate), 9) +
+        padL(st === null ? '—' : `${(st.step * 100).toFixed(1)}`, 8) +
+        padL(pct(z.rate), 8) +
+        padL(pct(z.target), 10) +
         padL(pct(z.boss), 8) +
         '   ' +
         z.perMonster.map((m) => `${m.key.split('.')[1]} ${pct(m.rate)}`).join(' · '),
@@ -1289,15 +1503,14 @@ if (AS_JSON) {
         padL('мин', 9) +
         padL('макс', 9) +
         padL('размах', 9) +
-        padL('среднее', 10) +
-        padL('среднее−цель', 14),
+        padL('медиана', 10) +
+        padL('мед−сид 0', 14),
     );
     console.log('─'.repeat(86));
     for (const z of zoneCurve) {
-      const all = [z.rate, ...z.bySeed];
+      const all = z.seedRates;
       const lo = Math.min(...all);
       const hi = Math.max(...all);
-      const avg = all.reduce((a, b) => a + b, 0) / all.length;
       console.log(
         pad(z.id, 12) +
           padL(pct(z.target), 8) +
@@ -1305,13 +1518,14 @@ if (AS_JSON) {
           padL(pct(lo), 9) +
           padL(pct(hi), 9) +
           padL(`${((hi - lo) * 100).toFixed(1)} п.п.`, 9) +
-          padL(pct(avg), 10) +
-          padL(`${((avg - z.target) * 100).toFixed(1)} п.п.`, 14),
+          padL(pct(z.medianRate), 10) +
+          padL(`${((z.medianRate - z.rate) * 100).toFixed(1)} п.п.`, 14),
       );
     }
     console.log('');
-    console.log('Сид 0 — тот, на котором кривая калибровалась. «Среднее−цель»');
-    console.log('показывает, насколько подобранное число смещено сидом подбора.');
+    console.log('Сид 0 — исторический, на нём кривая калибровалась до перехода');
+    console.log('к медиане. «Медиана−сид 0» показывает, насколько он смещён:');
+    console.log('это и есть цена прежней калибровки по одному сиду.');
     console.log('');
   }
 
@@ -1319,24 +1533,23 @@ if (AS_JSON) {
      потому что отвечает на другой вопрос: ровна ли колода. Большая
      разница между наклонами означает, что трудность зоны для игрока
      зависит от того, какой билд он собрал, — а это уже не про зону. */
-  console.log('РАЗБРОС ПО НАКЛОНАМ ДРАФТА (среднее оружие, без босса)');
+  console.log(`РАЗБРОС ПО НАКЛОНАМ ДРАФТА (среднее оружие, без босса, ${SEEDS} сид(ов))`);
+  console.log('Винрейты по наклонам — на сиде 0; размах — МЕДИАНА по сидам.');
   console.log(
     pad('зона', 12) +
-      LEANS.map((l) => padL(l, 9)).join('') +
+      LEANS.map((l) => padL(l, 8)).join('') +
       padL('размах', 9) +
-      padL('без трейтов', 12),
+      padL('на сиде 0', 11) +
+      padL('без трейтов', 13),
   );
   console.log('─'.repeat(86));
   for (const z of zoneCurve) {
-    const rates = z.leanRates.map((r) => r.rate);
-    const spread = Math.max(...rates) - Math.min(...rates);
-    const bare = z.cardsOnly.map((r) => r.rate);
-    const bareSpread = Math.max(...bare) - Math.min(...bare);
     console.log(
       pad(z.id, 12) +
-        z.leanRates.map((r) => padL(pct(r.rate), 9)).join('') +
-        padL(pct(spread), 9) +
-        padL(pct(bareSpread), 12),
+        z.leanRates.map((r) => padL(pct(r.rate), 8)).join('') +
+        padL(pct(z.medianLeanSpread), 9) +
+        padL(pct(z.leanSpreadSeeds[0]), 11) +
+        padL(pct(z.medianCardsSpread), 13),
     );
   }
   console.log('');
@@ -1389,6 +1602,7 @@ if (AS_JSON) {
   console.log('ДОХОДИМОСТЬ ПО УРОВНЯМ · §7.2, зона по уровню, нормальная сложность');
   console.log('Первый уровень — голый новичок; дальше эпический комплект своего');
   console.log('уровня, усреднение по четырём наклонам драфта.');
+  console.log(`Числа — МЕДИАНА по ${SEEDS} сидам роллов; на первом уровне роллов нет.`);
   console.log('');
   console.log(
     pad('уровень', 9) +
@@ -1397,17 +1611,21 @@ if (AS_JSON) {
       padL('решение 1', 11) +
       padL('решение 2', 11) +
       padL('весь забег', 12) +
+      padL('размах реш. 1', 15) +
       '   (без зелий / с зельями)',
   );
   console.log('─'.repeat(86));
   for (const r of reachByLevel) {
+    const seeds = r.dry.firstSeeds;
+    const span = seeds.length > 1 ? Math.max(...seeds) - Math.min(...seeds) : 0;
     console.log(
       pad(r.level, 9) +
         pad(r.zone, 12) +
         pad(r.basis, 20) +
         padL(`${pct(r.dry.first)}/${pct(r.potions.first)}`, 11) +
         padL(`${pct(r.dry.second)}/${pct(r.potions.second)}`, 11) +
-        padL(`${pct(r.dry.full)}/${pct(r.potions.full)}`, 12),
+        padL(`${pct(r.dry.full)}/${pct(r.potions.full)}`, 12) +
+        padL(seeds.length > 1 ? `${(span * 100).toFixed(1)} п.п.` : 'роллов нет', 15),
     );
   }
   console.log('');
@@ -1441,12 +1659,26 @@ if (AS_JSON) {
     console.log('');
   }
 
-  if (zoneBreaches.length > 0) {
-    console.log(`\nКРИВАЯ ЗОН НАРУШЕНА в ${zoneBreaches.length} зон(ах):`);
-    for (const z of zoneBreaches) {
-      console.log(`  ${z.id}: ${pct(z.rate)} против цели ${pct(z.target)}`);
+  if (stepBreaches.length > 0) {
+    console.log(`\nФОРМА КРИВОЙ НАРУШЕНА в ${stepBreaches.length} шаг(ах):`);
+    for (const st of stepBreaches) {
+      const why = !st.descends ? 'зона НЕ ТРУДНЕЕ предыдущей' : 'шаг вне допуска';
+      console.log(
+        `  ${st.from} → ${st.to}: ${(st.step * 100).toFixed(1)} п.п. ` +
+          `против ${(ZONE_STEP * 100).toFixed(0)} — ${why}`,
+      );
     }
-    console.log('Править надо power в zones.json, а не цель в §4.6.');
+    console.log('Править надо power в zones.json, и подбирать ПО МЕДИАНЕ:');
+    console.log('`--calibrate` теперь ищет её, а не попадание одного сида.');
+  }
+
+  if (zoneBreaches.length > 0) {
+    console.log(`\nВЫСОТА КРИВОЙ УШЛА в ${zoneBreaches.length} зон(ах):`);
+    for (const z of zoneBreaches) {
+      console.log(`  ${z.id}: медиана ${pct(z.medianRate)} против ориентира ${pct(z.target)}`);
+    }
+    console.log('Форма может быть верной на кривой, где играть невозможно');
+    console.log('нигде, — поэтому якорь тоже проверяется, пусть и грубо.');
   }
   console.log('');
 
@@ -1461,8 +1693,16 @@ if (AS_JSON) {
   }
 }
 
-/* Красным считается и нарушение коридора архетипов, и выход кривой зон
-   за допуск. Второе добавлено в M3b: пункт 4 §4.6 перестал быть
-   «не проверяется», а проверка, которая печатает число и не роняет
-   сборку, — это комментарий, а не проверка. */
-process.exit(breaches.length > 0 || zoneBreaches.length > 0 || reachBreached ? 1 : 0);
+/* Красным считается коридор архетипов, ФОРМА кривой зон, её высота
+   по грубому якорю и доходимость.
+
+   Кривая добавлена в M3b: пункт 4 §4.6 перестал быть «не проверяется»,
+   а проверка, которая печатает число и не роняет сборку, — это
+   комментарий, а не проверка. Форма пришла на место абсолютных чисел
+   позже: те мерили сид роллов наравне с настройкой, и держать их
+   красной линией значило бы валить сборку за удачу. */
+process.exit(
+  breaches.length > 0 || stepBreaches.length > 0 || zoneBreaches.length > 0 || reachBreached
+    ? 1
+    : 0,
+);
