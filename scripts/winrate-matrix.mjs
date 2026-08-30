@@ -664,6 +664,27 @@ const zoneRuns = Math.max(200, Math.round(RUNS / 20));
  */
 const CALIBRATE = argv.includes('--calibrate');
 
+/**
+ * Сколько СИДОВ РОЛЛОВ снаряжения прогнать по кривой зон.
+ *
+ * Один сид — то, что было всегда, и этого хватало ровно до тех пор,
+ * пока не выяснилось, сколько он весит. Замерено при проверке тиров
+ * сложности: три сида вместо одного увели винрейт восьмого уровня
+ * Пустошей с 84.7% на 71.0%, при том что РАЗНИЦА между тирами
+ * не сдвинулась. То есть абсолютное число — отчасти свойство сида,
+ * а разница — свойство настройки.
+ *
+ * Отсюда вопрос ко всем нашим абсолютным целям: кривая зон 85/75/65/
+ * 55/45 выверена НА ОДНОМ сиде, и неизвестно, насколько она смещена.
+ * Флаг отвечает на это замером, а не рассуждением.
+ *
+ * По умолчанию один — разброс стоит ровно во столько же раз дороже,
+ * во сколько сидов больше, и гонять это в CI на каждый коммит незачем.
+ *
+ *   node scripts/winrate-matrix.mjs --seeds 5
+ */
+const SEEDS = Math.max(1, Number(flag('seeds', 1)));
+
 const zoneCurve = zones.map((zone, index) => {
   const playerLevel = zone.levels[1];
   // Нормальная сложность: уровень игрока −1, зажатый диапазоном зоны.
@@ -683,11 +704,38 @@ const zoneCurve = zones.map((zone, index) => {
      (§4.3), билд ведёт сам (§5.2) — мерить зону одним вариантом значит
      мерить, повезло ли сегодня. Разброс по наклонам, если он велик, —
      находка о балансе школ; он печатается отдельной строкой. */
-  const kits = ['light', 'balanced', 'heavy'].flatMap((weaponClass) =>
-    LEANS.map((lean) =>
-      tierGearedPlayer('forbidden', playerLevel, playerLevel, `tier-${zone.id}`, weaponClass, lean),
-    ),
-  );
+  const kitsFor = (gearSeed) =>
+    ['light', 'balanced', 'heavy'].flatMap((weaponClass) =>
+      LEANS.map((lean) =>
+        tierGearedPlayer('forbidden', playerLevel, playerLevel, gearSeed, weaponClass, lean),
+      ),
+    );
+  const kits = kitsFor(`tier-${zone.id}`);
+
+  /* ТОТ ЖЕ замер на других сидах роллов. Отвечает на вопрос «насколько
+     наша цель — свойство настройки, а насколько свойство сида»: сид
+     фиксирован с самого начала, и до сих пор никто не проверял, куда
+     он смещает число. Считается только по требованию — см. `--seeds`. */
+  const bySeed = [];
+  for (let sd = 1; sd < SEEDS; sd++) {
+    const other = kitsFor(`tier-${zone.id}-s${sd}`);
+    const r =
+      zone.monsters
+        .map((key) => {
+          const rates = other.map(
+            (player, i) =>
+              duel(
+                player,
+                monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
+                `seed${sd}-${zone.id}-${key}-${i}`,
+                zoneRuns,
+              ).rate,
+          );
+          return rates.reduce((a, b) => a + b, 0) / rates.length;
+        })
+        .reduce((a, b) => a + b, 0) / zone.monsters.length;
+    bySeed.push(r);
+  }
 
   /* Тот же комплект, но по одному наклону: разброс между наклонами
      показывает, ровна ли колода. Считается на среднем классе оружия —
@@ -795,6 +843,7 @@ const zoneCurve = zones.map((zone, index) => {
     playerLevel,
     enemyLevel,
     rate,
+    bySeed,
     target,
     within: Math.abs(rate - target) <= ZONE_TOLERANCE,
     perMonster,
@@ -1221,6 +1270,51 @@ if (AS_JSON) {
     );
   }
   console.log('');
+
+  /* РАЗБРОС ПО СИДАМ РОЛЛОВ. Отвечает на вопрос, которого мы себе
+     до сих пор не задавали: насколько цель 85/75/65/55/45 — свойство
+     настройки, а насколько свойство одного зафиксированного сида
+     снаряжения. Пока сид один, отличить нельзя в принципе.
+
+     Цель у этой секции ОДНА — показать число. Она ничего не валит
+     и ничего не подгоняет: если разброс велик, вывод не «поднять
+     допуск», а «целями должны стать разницы, а не абсолютные числа»,
+     и это решение человека, а не скрипта. */
+  if (SEEDS > 1) {
+    console.log(`РАЗБРОС ПО СИДАМ РОЛЛОВ СНАРЯЖЕНИЯ · ${SEEDS} сид(ов)`);
+    console.log(
+      pad('зона', 12) +
+        padL('цель', 8) +
+        padL('сид 0', 9) +
+        padL('мин', 9) +
+        padL('макс', 9) +
+        padL('размах', 9) +
+        padL('среднее', 10) +
+        padL('среднее−цель', 14),
+    );
+    console.log('─'.repeat(86));
+    for (const z of zoneCurve) {
+      const all = [z.rate, ...z.bySeed];
+      const lo = Math.min(...all);
+      const hi = Math.max(...all);
+      const avg = all.reduce((a, b) => a + b, 0) / all.length;
+      console.log(
+        pad(z.id, 12) +
+          padL(pct(z.target), 8) +
+          padL(pct(z.rate), 9) +
+          padL(pct(lo), 9) +
+          padL(pct(hi), 9) +
+          padL(`${((hi - lo) * 100).toFixed(1)} п.п.`, 9) +
+          padL(pct(avg), 10) +
+          padL(`${((avg - z.target) * 100).toFixed(1)} п.п.`, 14),
+      );
+    }
+    console.log('');
+    console.log('Сид 0 — тот, на котором кривая калибровалась. «Среднее−цель»');
+    console.log('показывает, насколько подобранное число смещено сидом подбора.');
+    console.log('');
+  }
+
   /* РАЗБРОС ПО НАКЛОНАМ. Печатается отдельно от усреднённой кривой,
      потому что отвечает на другой вопрос: ровна ли колода. Большая
      разница между наклонами означает, что трудность зоны для игрока

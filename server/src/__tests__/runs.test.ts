@@ -180,6 +180,40 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(body.activeRun).toBeNull();
     });
 
+    it('переросшая зона платит меньше, и карточка это показывает', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+
+      const before = (
+        (await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse
+      ).zones.find((z) => z.id === 'wastes')!.difficulties.nightmare;
+      /* Новичок платит ПОЛНУЮ цену — иначе проверка ниже прошла бы
+         и на игроке, которому урезали всегда, то есть не доказала бы,
+         что урезание связано с уровнем. */
+      expect(before.lootMultiplier).toBe(before.lootMultiplierBase);
+
+      /* Уровень выше потолка Пустошей: уровень врага упирается
+         в диапазон зоны, разница уровней исчезает — с ней обязана уйти
+         и оплата. Это ровно тот фарм первой зоны на сороковом,
+         который §7.3 объявляет бессмысленным. */
+      await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
+
+      const after = (
+        (await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse
+      ).zones.find((z) => z.id === 'wastes')!.difficulties.nightmare;
+
+      // Враг тот же — потолок диапазона его держит.
+      expect(after.enemyLevel).toBe(WASTES.levels[1]);
+      expect(after.lootMultiplier).toBeLessThan(after.lootMultiplierBase);
+      expect(after.lootMultiplier).toBeCloseTo(
+        after.lootMultiplierBase * raid.lootLevelScale.floor,
+        10,
+      );
+      /* Основание не поехало: игроку показывают, ОТ ЧЕГО урезали.
+         Без этого числа урезание читалось бы как поломка. */
+      expect(after.lootMultiplierBase).toBe(before.lootMultiplierBase);
+    });
+
     it('второй забег начать нельзя', async () => {
       const { jar } = await register(ctx);
       await start(jar);

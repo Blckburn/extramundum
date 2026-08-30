@@ -130,6 +130,10 @@ async function render(surface: Surface): Promise<void> {
   function difficultyButtons(zone: ZoneCard): HTMLElement[] {
     return (['normal', 'dangerous', 'nightmare'] as const).map((difficulty) => {
       const rules = zone.difficulties[difficulty];
+      /* Оплата УРЕЗАНА: зона перерослась, уровень врага упёрся
+         в потолок диапазона. Молча урезанная награда читается как
+         поломка, поэтому причина стоит рядом с числом. */
+      const faded = rules.lootMultiplier < rules.lootMultiplierBase;
       const button = el('button', { class: 'button button--small', type: 'button' }, [
         /* Сила тира названа числом. До правки §7.3 тир двигал уровень
            врага, и разницу было видно по нему; теперь уровень одинаков
@@ -139,7 +143,16 @@ async function render(surface: Surface): Promise<void> {
           (rules.power === 1
             ? ''
             : ` · ${t('raid.enemyPower', { value: rules.power.toFixed(2) })}`) +
-          ` · ${t('raid.lootMultiplier', { value: rules.lootMultiplier })}`,
+          ` · ${t('raid.lootMultiplier', { value: rules.lootMultiplier.toFixed(2) })}`,
+        ...(faded
+          ? [
+              el('span', { class: 'zone__faded' }, [
+                t('raid.lootFaded', {
+                  base: rules.lootMultiplierBase.toFixed(2),
+                }),
+              ]),
+            ]
+          : []),
       ]) as HTMLButtonElement;
 
       button.addEventListener('click', () => {
