@@ -3,6 +3,7 @@ import { monsterSpec, zoneSpec } from '@extramundum/data/zones';
 import {
   enemyLevel,
   fighterConfigSchema,
+  lootLevelScale,
   type Difficulty,
   type FighterConfig,
   type MonsterSpec,
@@ -25,6 +26,7 @@ import {
 
 const curve = balanceData.monsters;
 const difficulties = balanceData.raid.difficulty;
+const LOOT_LEVEL_SCALE = balanceData.raid.lootLevelScale;
 
 /**
  * Уровень врага для зоны и сложности. GDD §7.3 со сдвигом, §7.4
@@ -54,6 +56,31 @@ export function monsterLevel(playerLevel: number, zone: ZoneSpec, difficulty: Di
  */
 export function monsterPower(zone: ZoneSpec, difficulty: Difficulty): number {
   return zone.power * difficulties[difficulty].power;
+}
+
+/**
+ * Оплата лутом за бой в этой зоне на этой сложности.
+ *
+ * ЭТО НЕ КОНСТАНТА ТИРА. Множитель тира — только основание; сверху
+ * лежит доля уцелевшей разницы уровней (`lootLevelScale`). Смысл
+ * в том, чтобы платить за ПОНЕСЁННЫЙ риск, а не за заявленный:
+ * как только зажим диапазоном зоны съедает разницу уровней, вместе
+ * с ней уходит и оплата. Иначе переросший игрок фармит первую зону
+ * на «кошмаре» за полную цену — риска там нет ни на грош.
+ *
+ * ОДНА функция на весь сервер, как `monsterLevel` и `monsterPower`:
+ * карточка зоны, панель забега и начисление за бой обязаны показывать
+ * и считать одно число. Разойдись они — экран обещал бы ×2.5, а сумка
+ * получала бы ×0.25, и игрок счёл бы это поломкой. Он был бы прав.
+ */
+export function zoneLootMultiplier(
+  playerLevel: number,
+  zone: ZoneSpec,
+  difficulty: Difficulty,
+): number {
+  const tier = difficulties[difficulty];
+  const scale = lootLevelScale(playerLevel, tier.enemyLevelOffset, zone, LOOT_LEVEL_SCALE);
+  return tier.lootMultiplier * scale;
 }
 
 /**

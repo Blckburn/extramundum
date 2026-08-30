@@ -16,7 +16,13 @@ import { generateItem, matchupMultiplier, maxHp as maxHpOf, resolveBattle } from
 import { randomUUID } from 'node:crypto';
 
 import { combatBalance } from '../battle/setup.ts';
-import { monsterFighter, monsterLevel, monsterPower, requireZone } from '../battle/monsters.ts';
+import {
+  monsterFighter,
+  monsterLevel,
+  monsterPower,
+  requireZone,
+  zoneLootMultiplier,
+} from '../battle/monsters.ts';
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { fighterFromLoadout, toView } from '../items/loadout.ts';
@@ -278,7 +284,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   const won = outcome.winner === 0;
   const nextIndex = row.fightIndex + 1;
 
-  const drops = won ? rollLoot(row, spec, level, nextIndex) : [];
+  const drops = won ? rollLoot(row, zone, profile.level, spec, level, nextIndex) : [];
   const rewards = rewardsFor(spec, level, won);
 
   /* Всё одной транзакцией: исход, HP, XP, золото, лут в сумку
@@ -436,16 +442,21 @@ function rewardsFor(spec: MonsterSpec, level: number, won: boolean): Omit<FightR
  * а дробный остаток разыгрывается броском: иначе ×1.4 и ×1.8
  * округлялись бы в одно и то же, и три решения из четырёх ничего
  * бы не меняли.
+ *
+ * Сложность приходит через `zoneLootMultiplier`, а не константой тира:
+ * оплата затухает вместе с разницей уровней, съеденной зажимом зоны.
  */
 function rollLoot(
   row: RunRow,
+  zone: ZoneSpec,
+  playerLevel: number,
   spec: MonsterSpec,
   level: number,
   nextIndex: number,
 ): readonly Omit<BagItem, 'id'>[] {
   const base = raid.dropsPerFight + (spec.boss ? raid.bossDropBonus : 0);
   const expected =
-    base * lootMultiplierAt(nextIndex) * raid.difficulty[row.difficulty].lootMultiplier;
+    base * lootMultiplierAt(nextIndex) * zoneLootMultiplier(playerLevel, zone, row.difficulty);
 
   const whole = Math.floor(expected);
   const fraction = expected - whole;

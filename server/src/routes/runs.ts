@@ -18,7 +18,7 @@ import { matchupMultiplier } from '@extramundum/sim';
 import { Hono, type Context } from 'hono';
 
 import { requireSession } from '../auth/session.ts';
-import { monsterLevel } from '../battle/monsters.ts';
+import { monsterLevel, zoneLootMultiplier } from '../battle/monsters.ts';
 import { combatBalance } from '../battle/setup.ts';
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
@@ -84,7 +84,12 @@ export function runRoutes(db: Database): Hono<AppEnv> {
           key,
           {
             enemyLevel: monsterLevel(profile.level, zone, key),
-            lootMultiplier: balanceData.raid.difficulty[key].lootMultiplier,
+            /* ДЕЙСТВУЮЩАЯ оплата, а не константа тира: в переросшей
+               зоне уровень врага упирается в потолок, и множитель
+               затухает вместе с разницей уровней. Показать константу
+               значило бы обещать ×2.5 и положить в сумку ×0.25. */
+            lootMultiplier: zoneLootMultiplier(profile.level, zone, key),
+            lootMultiplierBase: balanceData.raid.difficulty[key].lootMultiplier,
             // Множитель тира, а не зоны: игрок сравнивает тиры между
             // собой, и множитель зоны в этом сравнении сократился бы.
             power: balanceData.raid.difficulty[key].power,
