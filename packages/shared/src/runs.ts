@@ -155,7 +155,20 @@ export type ZoneCard = {
   readonly difficulties: Readonly<
     Record<
       z.infer<typeof difficultySchema>,
-      { readonly enemyLevel: number; readonly lootMultiplier: number }
+      {
+        readonly enemyLevel: number;
+        readonly lootMultiplier: number;
+        /**
+         * Насколько тир усиливает врага. GDD §7.3.
+         *
+         * Показывается игроку ВМЕСТО разницы в уровне: тир больше не
+         * двигает уровень врага (он оказался негодной единицей — шаг
+         * стоил то ноль, то шестьдесят восемь пунктов винрейта), и без
+         * этого числа «опасная» отличалась бы от «обычной» только
+         * подписью.
+         */
+        readonly power: number;
+      }
     >
   >;
   /** Ключи монстров зоны — чтобы показать, кого там встретишь. */

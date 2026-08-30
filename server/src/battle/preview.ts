@@ -59,6 +59,15 @@ export type PreviewEstimate = {
   readonly basis: 'sparring-dummy' | 'zone-enemy';
   readonly against?: readonly string[];
   readonly enemyLevel?: number;
+  /**
+   * Насколько тир сложности усиливает врага. GDD §7.3.
+   *
+   * Отдаётся наружу по той же причине, что уровень и матчап: «ничего
+   * не спрятано» (§4.3). После правки §7.3 тир не двигает уровень —
+   * без этого числа игрок не увидел бы разницы между тирами вовсе,
+   * а превью не смогло бы её показать.
+   */
+  readonly enemyPower?: number;
 };
 
 export function estimateWinRate(input: PreviewInput): PreviewEstimate {
@@ -82,6 +91,7 @@ export function estimateWinRate(input: PreviewInput): PreviewEstimate {
     basis: 'zone-enemy',
     against: zone.monsters,
     enemyLevel: level,
+    enemyPower: power,
   };
 }
 

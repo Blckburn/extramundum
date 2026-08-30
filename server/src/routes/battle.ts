@@ -107,6 +107,7 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
       basis: base.basis,
       ...(base.against === undefined ? {} : { against: base.against }),
       ...(base.enemyLevel === undefined ? {} : { enemyLevel: base.enemyLevel }),
+      ...(base.enemyPower === undefined ? {} : { enemyPower: base.enemyPower }),
       ...(hypothetical === null
         ? {}
         : {

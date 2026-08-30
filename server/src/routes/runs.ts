@@ -85,6 +85,9 @@ export function runRoutes(db: Database): Hono<AppEnv> {
           {
             enemyLevel: monsterLevel(profile.level, zone, key),
             lootMultiplier: balanceData.raid.difficulty[key].lootMultiplier,
+            // Множитель тира, а не зоны: игрок сравнивает тиры между
+            // собой, и множитель зоны в этом сравнении сократился бы.
+            power: balanceData.raid.difficulty[key].power,
           },
         ]),
       ) as ZoneCard['difficulties'];

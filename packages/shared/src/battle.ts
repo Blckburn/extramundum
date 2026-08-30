@@ -85,4 +85,6 @@ export type SimulatePreviewResponse = {
   readonly against?: readonly string[];
   /** Уровень противников, посчитанный по §7.3. */
   readonly enemyLevel?: number;
+  /** Множитель силы тира сложности. §7.3: тир не двигает уровень. */
+  readonly enemyPower?: number;
 };

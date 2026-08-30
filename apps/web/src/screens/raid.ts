@@ -131,7 +131,15 @@ async function render(surface: Surface): Promise<void> {
     return (['normal', 'dangerous', 'nightmare'] as const).map((difficulty) => {
       const rules = zone.difficulties[difficulty];
       const button = el('button', { class: 'button button--small', type: 'button' }, [
-        `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })} · ×${rules.lootMultiplier}`,
+        /* Сила тира названа числом. До правки §7.3 тир двигал уровень
+           врага, и разницу было видно по нему; теперь уровень одинаков
+           у всех тиров, и без множителя «Опасная» отличалась бы
+           от «Обычной» только словом. */
+        `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })}` +
+          (rules.power === 1
+            ? ''
+            : ` · ${t('raid.enemyPower', { value: rules.power.toFixed(2) })}`) +
+          ` · ${t('raid.lootMultiplier', { value: rules.lootMultiplier })}`,
       ]) as HTMLButtonElement;
 
       button.addEventListener('click', () => {

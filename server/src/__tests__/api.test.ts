@@ -402,17 +402,23 @@ describe.skipIf(!HAS_DB)('API', () => {
         jar,
       );
 
-      const read = (res: typeof normal) => res.body as { winRate: number; enemyLevel?: number };
+      const read = (res: typeof normal) =>
+        res.body as { winRate: number; enemyLevel?: number; enemyPower?: number };
 
       const easy = read(normal);
       const hard = read(nightmare);
 
-      /* Кошмар даёт противнику +5 уровней, но уровень ещё и КЛАМПИТСЯ
-         диапазоном зоны (§7.3 + §7.4). Проверяется поэтому сам уровень,
-         а не только винрейт: у свежего персонажа обе оценки могут
-         упереться в одно и то же число, и тогда сравнение винрейтов
-         не докажет ничего — ни что сложность работает, ни что нет. */
-      expect(hard.enemyLevel).toBeGreaterThan(easy.enemyLevel ?? 0);
+      /* ПРОВЕРЯЕТСЯ МНОЖИТЕЛЬ, А НЕ УРОВЕНЬ. Раньше кошмар давал +5
+         уровней, и разницу было видно по уровню; после правки §7.3 тир
+         несёт множитель силы, а уровень у всех тиров одинаков.
+
+         Сравнивать одни винрейты по-прежнему нельзя: у свежего
+         персонажа обе оценки могут упереться в одно и то же число,
+         и тогда проверка не докажет ни что сложность работает,
+         ни что нет. Поэтому сперва — жёсткое сравнение того, что
+         сложность точно меняет. */
+      expect(hard.enemyLevel).toBe(easy.enemyLevel);
+      expect(hard.enemyPower ?? 0).toBeGreaterThan(easy.enemyPower ?? 0);
       expect(hard.winRate).toBeLessThanOrEqual(easy.winRate);
     });
 

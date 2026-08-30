@@ -153,9 +153,18 @@ describe.skipIf(!HAS_DB)('забег', () => {
       // Уровень врага СЧИТАЕТ СЕРВЕР по §7.3 с ограничением зоны:
       // клиенту незачем знать формулу, и второго её места быть не должно.
       expect(wastes.difficulties.normal.enemyLevel).toBeGreaterThanOrEqual(wastes.levels[0]);
-      expect(wastes.difficulties.nightmare.enemyLevel).toBeGreaterThan(
-        wastes.difficulties.normal.enemyLevel,
+
+      /* ТИР РАЗЛИЧАЕТСЯ МНОЖИТЕЛЕМ, А НЕ УРОВНЕМ (§7.3 после правки).
+         Раньше здесь стояло «у кошмара уровень выше», и это было верно
+         ровно до тех пор, пока уровень не упирался в потолок диапазона:
+         на верхушке зоны «опасно» и «кошмар» становились одним и тем же
+         боем при разной оплате лутом. Теперь уровень одинаков, а тяжесть
+         несёт множитель — и проверяется именно он. */
+      expect(wastes.difficulties.nightmare.enemyLevel).toBe(wastes.difficulties.normal.enemyLevel);
+      expect(wastes.difficulties.nightmare.power).toBeGreaterThan(
+        wastes.difficulties.dangerous.power,
       );
+      expect(wastes.difficulties.dangerous.power).toBeGreaterThan(wastes.difficulties.normal.power);
       // Множитель матчапа тоже готовым числом (§4.3, «ничего не спрятано»).
       expect(typeof wastes.matchup).toBe('number');
 
@@ -238,15 +247,46 @@ describe.skipIf(!HAS_DB)('забег', () => {
     });
   });
 
+  /**
+   * Провести бои, пока в сумке не окажется добыча.
+   *
+   * СЛОЖНОСТЬ «КОШМАР» ВЗЯТА РАДИ ОПРЕДЕЛЁННОСТИ, а не ради трудности.
+   * После снижения плотности втрое обычный бой роняет предмет реже чем
+   * в половине случаев, и «подраться дважды и ждать лут» стало
+   * проверкой удачи: на нормальной сложности за четыре боя пусто
+   * примерно в одном прогоне из десяти. Красный через раз тест
+   * перезапускают вместо того, чтобы читать.
+   *
+   * На «Кошмаре» множитель добычи ×2.5, и к третьему бою ожидание
+   * переваливает за единицу — то есть предмет выпадает ГАРАНТИРОВАННО,
+   * без броска на дробный остаток.
+   */
+  const fightUntilLoot = async (jar: CookieJar, { minFights = 1, limit = 3 } = {}) => {
+    let result = await fight(jar);
+    // `minFights` нужен эвакуации: уйти можно только после ВТОРОГО боя
+    // (§7.2), и остановиться на первом значило бы проверять эвакуацию
+    // там, где её ещё нет.
+    for (let done = 1; done < limit && (done < minFights || result.run.bag.length === 0); done++) {
+      result = await fight(jar);
+    }
+    expect(result.run.bag.length, 'за отведённые бои не выпало ничего').toBeGreaterThan(0);
+    return result;
+  };
+
   describe('сумка и эвакуация', () => {
     it('лут падает В СУМКУ, а не в инвентарь', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
       const before = await inventory(jar);
-      await start(jar);
+      await start(jar, 'wastes', 'nightmare');
 
-      const result = await fight(jar);
-      expect(result.run.bag.length).toBeGreaterThan(0);
+      /* Одного боя больше не хватает: плотность лута снижена втрое,
+         и обычный бой роняет предмет реже чем в половине случаев.
+         `fightUntilLoot` берёт «Кошмар» ради ОПРЕДЕЛЁННОСТИ — там
+         к третьему бою ожидание переваливает за единицу, и предмет
+         выпадает гарантированно. Проверяется не удача, а то, КУДА
+         попадает добыча. */
+      const result = await fightUntilLoot(jar);
 
       // Инвентарь не изменился: пока забег идёт, предмета в таблице
       // предметов нет вовсе — он лежит в сумке (§7.2).
@@ -270,9 +310,8 @@ describe.skipIf(!HAS_DB)('забег', () => {
     it('эвакуация переносит сумку в инвентарь под теми же номерами', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
-      await start(jar);
-      await fight(jar);
-      const second = await fight(jar);
+      await start(jar, 'wastes', 'nightmare');
+      const second = await fightUntilLoot(jar, { minFights: 2 });
 
       expect(second.run.canExtract).toBe(true);
       const bagged = second.run.bag.map((i) => i.id);
@@ -311,20 +350,26 @@ describe.skipIf(!HAS_DB)('забег', () => {
      * Гарантированная смерть В ОТКРЫТОЙ зоне.
      *
      * Раньше здесь были Чумные ямы на кошмаре — враг 32 уровня против
-     * первого. Теперь зоны заперты по уровню, и этот путь закрыт
-     * сервером, что и правильно: обходить собственное запирание ради
-     * удобства теста значило бы проверять игру, которой нет.
+     * первого. Потом зоны заперли по уровню, и путь закрылся сервером;
+     * заменой стала первая зона на «Кошмаре», где смещение +5 давало
+     * врага шестого уровня против голого первого.
      *
-     * Замена — первая зона на «Кошмаре»: `clamp(1 + 5, 1, 8)` даёт
-     * врага шестого уровня против голого первого. Тоже гарантированно
-     * смертельно, и это ровно тот случай, о котором §7.3 говорит
-     * «враг МОЖЕТ быть сильнее игрока, и это выбор игрока».
+     * ТЕПЕРЬ НЕ РАБОТАЕТ И ЭТО: тир перестал двигать уровень врага
+     * (§7.3 после правки), он несёт множитель силы. Голый первый
+     * уровень против врага первого уровня, пусть и на 24% сильнее,
+     * гарантированно не умирает — а тест на смерть, который убивает
+     * через раз, не проверяет ничего.
      *
-     * Снаряжение НЕ выдаётся намеренно: с комплектом под восьмой
-     * уровень исход перестал бы быть гарантированным.
+     * Поэтому смерть готовится тем же приёмом, что и в `dieWithLoot`:
+     * HP ставится в единицу прямой записью. Это подготовка СОСТОЯНИЯ,
+     * а не обход механики — сам бой и его последствия идут обычным
+     * путём через сервер.
      */
     const suicide = async (jar: CookieJar) => {
+      const playerId = await playerIdOf(jar);
       await start(jar, 'wastes', 'nightmare');
+      await ctx.db.update(players).set({ hpCurrent: 1 }).where(eq(players.id, playerId));
+
       const result = await fight(jar);
       expect(result.run.state, 'бой не убил — тест на смерть ничего не проверит').toBe('wiped');
       return result;
@@ -342,9 +387,8 @@ describe.skipIf(!HAS_DB)('забег', () => {
     const dieWithLoot = async (jar: CookieJar) => {
       await gearUp(jar);
       const playerId = await playerIdOf(jar);
-      await start(jar);
-      await fight(jar);
-      const before = await fight(jar);
+      await start(jar, 'wastes', 'nightmare');
+      const before = await fightUntilLoot(jar, { minFights: 2 });
 
       expect(before.run.state).toBe('active');
       expect(before.run.bag.length, 'сумка пуста — терять нечего').toBeGreaterThan(0);

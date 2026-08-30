@@ -4,6 +4,7 @@ import { api, ApiClientError } from '../api.ts';
 import { clear, el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { renderIcon } from '../ui/icon.ts';
+import { statExplanation } from '../ui/stats.ts';
 
 /**
  * Драфт уровня. GDD §5.2.
@@ -49,6 +50,27 @@ function effectLines(effects: CardEffects): string[] {
       key === 'critBonus' ? `${Math.round(value * 100)}%` : `${value > 0 ? '+' : ''}${value}`;
     out.push(`${shown} ${t(`stat.${key}`)}`);
   }
+  return out;
+}
+
+/**
+ * Объяснения статов, которых касается карта.
+ *
+ * По одному на стат, без повторов: карта «Чтение боя» трогает скорость
+ * и точность, и объяснить надо оба, но каждый один раз.
+ */
+function statHints(effects: CardEffects): HTMLElement[] {
+  const seen = new Set<string>();
+  const out: HTMLElement[] = [];
+
+  for (const key of EFFECT_ORDER) {
+    const value = effects[key];
+    if (value === undefined || value === 0 || seen.has(key)) continue;
+    seen.add(key);
+    const about = statExplanation(key);
+    if (about !== null) out.push(el('span', { class: 'draft__about' }, [about]));
+  }
+
   return out;
 }
 
@@ -198,6 +220,14 @@ async function render(surface: Surface): Promise<void> {
           : effectLines(option.effects).map((line) =>
               el('span', { class: 'draft__effect' }, [line]),
             )),
+        /* ЧТО ЭТОТ СТАТ ДАЁТ В ИСХОДАХ. На живых сессиях карты выбирали
+           наугад: «непонятно, что дают статы». Числа были измерены
+           и записаны в §4.1, но до экрана не доходили.
+
+           Формулировка самой карты не меняется — «+3 ATK», а не
+           «+4% урона»: клиент ничего не считает, объясняется система,
+           а не пересчитывается эффект. */
+        ...(isTrait ? [] : statHints(option.effects)),
       ],
     );
 
