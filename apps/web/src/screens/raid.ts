@@ -3,7 +3,7 @@ import type { RunFightResponse, RunView, ZoneCard } from '@extramundum/shared';
 import { api, ApiClientError } from '../api.ts';
 import { mountBattle } from '../battle/mount.ts';
 import { clear, el } from '../dom.ts';
-import { t } from '../i18n.ts';
+import { plural, t } from '../i18n.ts';
 import { renderIcon } from '../ui/icon.ts';
 
 /**
@@ -283,7 +283,7 @@ async function render(surface: Surface): Promise<void> {
         // терять нечего, и подпись про потерю была бы пугалкой впустую.
         current.bag.length === 0
           ? undefined
-          : t('raid.action.fightHint', { count: current.bag.length }),
+          : t('raid.action.fightHint', { items: plural(current.bag.length, 'unit.items') }),
       );
     }
 
@@ -311,7 +311,7 @@ async function render(surface: Surface): Promise<void> {
           await refresh();
           draw();
         },
-        t('raid.action.extractHint', { count: current.bag.length }),
+        t('raid.action.extractHint', { items: plural(current.bag.length, 'unit.items') }),
       );
     }
 
