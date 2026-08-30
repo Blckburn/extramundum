@@ -3,6 +3,7 @@ import { monsterSpec } from '@extramundum/data/zones';
 import {
   isZoneUnlocked,
   lootBalanceSchema,
+  rarityWeightsFor,
   zoneMinLevel,
   type Difficulty,
   type FightRewards,
@@ -15,7 +16,7 @@ import { generateItem, matchupMultiplier, maxHp as maxHpOf, resolveBattle } from
 import { randomUUID } from 'node:crypto';
 
 import { combatBalance } from '../battle/setup.ts';
-import { monsterFighter, monsterLevel, requireZone } from '../battle/monsters.ts';
+import { monsterFighter, monsterLevel, monsterPower, requireZone } from '../battle/monsters.ts';
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { fighterFromLoadout, toView } from '../items/loadout.ts';
@@ -264,7 +265,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
 
   const spec = enemyFor(zone, row.fightIndex, row.seed);
   const level = monsterLevel(profile.level, zone, row.difficulty);
-  const enemy = monsterFighter(spec, level, zone.power);
+  const enemy = monsterFighter(spec, level, monsterPower(zone, row.difficulty));
 
   /* HP ПЕРЕНОСИТСЯ между боями (§7.2). Боец входит в бой с текущим
      запасом, а не с полным: без этого «восстанавливается на 25%»
@@ -453,9 +454,16 @@ function rollLoot(
 
   const out: Omit<BagItem, 'id'>[] = [];
   for (let i = 0; i < count; i++) {
+    /* РЕДКОСТЬ ОТ СИЛЫ ВРАГА, а не из общей таблицы: чем выше уровень
+       монстра, тем чаще редкое, а эпик роняет только босс. Веса считает
+       общая функция из `shared` — та же, которой пользуется замер
+       плотности, иначе замер мерил бы не то, что получает игрок. */
     const item = generateItem(
       `${row.seed}:loot:${row.fightIndex}:${i}`,
-      { ilvl: Math.max(1, level) },
+      {
+        ilvl: Math.max(1, level),
+        rarityWeights: rarityWeightsFor(level, spec.boss, loot.drop),
+      },
       loot,
       ITEM_BASES,
     );

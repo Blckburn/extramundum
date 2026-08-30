@@ -14,6 +14,7 @@ import { api, ApiClientError } from '../api.ts';
 import { clear, el } from '../dom.ts';
 import { t } from '../i18n.ts';
 import { renderIcon } from '../ui/icon.ts';
+import { statsPanel } from '../ui/stats.ts';
 
 /**
  * Снаряжение: инвентарь, стеш, экипировка. GDD §5.3, §6.3, §6.4.
@@ -46,6 +47,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   const grid = el('div', { class: 'inv__grid' });
   const detail = el('aside', { class: 'inv__detail' });
   const notice = el('p', { class: 'inv__notice', role: 'status' });
+  const charsBox = el('div', { class: 'inv__chars' });
 
   const back = el('button', { class: 'button button--ghost', type: 'button' }, [t('action.back')]);
   back.addEventListener('click', () => {
@@ -62,6 +64,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       el('div', { class: 'inv__worn' }, [portraitCanvas, slotsRow]),
       controls,
       el('div', { class: 'inv__body' }, [grid, detail]),
+      charsBox,
       el('div', { class: 'inv__bar' }, [notice, back]),
     ]),
   );
@@ -118,9 +121,24 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
 
     showWorn();
     drawSlots();
+    drawChars();
     drawControls();
     drawGrid();
     drawDetail();
+  }
+
+  /**
+   * Что делает каждая характеристика и сколько стоит её очко.
+   *
+   * Живёт на экране снаряжения, а не отдельным разделом: игрок приходит
+   * сюда именно тогда, когда сравнивает числа, и объяснение нужно ровно
+   * в этот момент. Порядок — от того, что чаще смотрят.
+   */
+  function drawChars(): void {
+    clear(charsBox);
+    charsBox.append(
+      statsPanel(['atk', 'def', 'agi', 'spd', 'armor', 'accuracy', 'maxHp', 'critBonus']),
+    );
   }
 
   function drawSlots(): void {

@@ -3,7 +3,7 @@ import type { RunFightResponse, RunView, ZoneCard } from '@extramundum/shared';
 import { api, ApiClientError } from '../api.ts';
 import { mountBattle } from '../battle/mount.ts';
 import { clear, el } from '../dom.ts';
-import { t } from '../i18n.ts';
+import { plural, t } from '../i18n.ts';
 import { renderIcon } from '../ui/icon.ts';
 
 /**
@@ -131,7 +131,15 @@ async function render(surface: Surface): Promise<void> {
     return (['normal', 'dangerous', 'nightmare'] as const).map((difficulty) => {
       const rules = zone.difficulties[difficulty];
       const button = el('button', { class: 'button button--small', type: 'button' }, [
-        `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })} · ×${rules.lootMultiplier}`,
+        /* Сила тира названа числом. До правки §7.3 тир двигал уровень
+           врага, и разницу было видно по нему; теперь уровень одинаков
+           у всех тиров, и без множителя «Опасная» отличалась бы
+           от «Обычной» только словом. */
+        `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })}` +
+          (rules.power === 1
+            ? ''
+            : ` · ${t('raid.enemyPower', { value: rules.power.toFixed(2) })}`) +
+          ` · ${t('raid.lootMultiplier', { value: rules.lootMultiplier })}`,
       ]) as HTMLButtonElement;
 
       button.addEventListener('click', () => {
@@ -236,9 +244,21 @@ async function render(surface: Surface): Promise<void> {
   function actions(current: RunView): HTMLElement {
     const row = el('div', { class: 'raid__actions' });
 
-    const add = (label: string, className: string, act: () => Promise<void>): void => {
+    /* У кнопки решения ДВЕ строки: что делаешь и что из этого следует.
+       На живых сессиях эвакуацией не воспользовались ни разу, и причина
+       оказалась не в балансе: игрок считал, что уходя РИСКУЕТ уже
+       выбитым. Правило §7.2 обратное — уносится всё, — но нигде
+       не сказано. Механика не изменена, изменено только то, что о ней
+       написано. */
+    const add = (
+      label: string,
+      className: string,
+      act: () => Promise<void>,
+      hint?: string,
+    ): void => {
       const button = el('button', { class: className, type: 'button' }, [
-        label,
+        el('span', { class: 'raid__actionLabel' }, [label]),
+        ...(hint === undefined ? [] : [el('span', { class: 'raid__actionHint' }, [hint])]),
       ]) as HTMLButtonElement;
       button.addEventListener('click', () => {
         // Кнопка гасится на время запроса: два «в бой» подряд отправили
@@ -252,10 +272,19 @@ async function render(surface: Surface): Promise<void> {
     };
 
     if (current.next !== null) {
-      add(t('raid.action.fight'), 'button', async () => {
-        const result = await api.runFight();
-        await showBattle(result);
-      });
+      add(
+        t('raid.action.fight'),
+        'button',
+        async () => {
+          const result = await api.runFight();
+          await showBattle(result);
+        },
+        // Цена риска называется только когда она есть: с пустой сумкой
+        // терять нечего, и подпись про потерю была бы пугалкой впустую.
+        current.bag.length === 0
+          ? undefined
+          : t('raid.action.fightHint', { items: plural(current.bag.length, 'unit.items') }),
+      );
     }
 
     if (current.potionsLeft > 0 && current.hp < current.maxHp) {
@@ -272,15 +301,17 @@ async function render(surface: Surface): Promise<void> {
 
     if (current.canExtract) {
       // Эвакуация — не «отмена», а решение. Подпись говорит, что именно
-      // игрок забирает, иначе выбор делается вслепую.
+      // игрок забирает и что при этом НИЧЕГО не теряет: без второго
+      // половина решения принималась вслепую.
       add(
-        t('raid.action.extract', { count: current.bag.length }),
+        t('raid.action.extract'),
         'button button--ghost',
         async () => {
           await api.runExtract();
           await refresh();
           draw();
         },
+        t('raid.action.extractHint', { items: plural(current.bag.length, 'unit.items') }),
       );
     }
 
@@ -310,6 +341,22 @@ async function render(surface: Surface): Promise<void> {
       t('raid.action.continue'),
     ]) as HTMLButtonElement;
 
+    /* ИТОГ БОЯ НЕ ПОКАЗЫВАЕТСЯ, ПОКА БОЙ НЕ ДОСМОТРЕН.
+     
+       До этой правки панель наград и кнопка «продолжить» выкладывались
+       ВМЕСТЕ с ареной, то есть «Отряд погиб», добыча и кнопка выхода
+       стояли над боем с первого кадра. Это не мелочь показа: единственная
+       причина смотреть бой — узнать, чем он кончится, — уничтожалась
+       одной кнопкой, и на живых сессиях бой пропускали всегда.
+     
+       Кнопка «сразу итог» остаётся: смотреть пока нечего, две коробки
+       бьют друг друга. Она уходит вместе с работой над зрелищностью,
+       а не раньше. */
+    const outcomeBar = el('div', { class: 'arena__bar' }, [readout]);
+    const reveal = (): void => {
+      if (!outcomeBar.contains(done)) outcomeBar.append(rewardsBlock(result), done);
+    };
+
     host.append(
       el('div', { class: 'arena__stage' }, [canvas, overlay]),
       controls,
@@ -317,7 +364,7 @@ async function render(surface: Surface): Promise<void> {
       // Награды стоят в ПАНЕЛИ, а не отдельной строкой: сетка арены
       // раздаёт области четырём известным детям, и пятый ребёнок
       // попал бы в неявную строку и растянул её за край экрана.
-      el('div', { class: 'arena__bar' }, [readout, rewardsBlock(result), done]),
+      outcomeBar,
     );
 
     const mounted = await mountBattle(
@@ -327,8 +374,14 @@ async function render(surface: Surface): Promise<void> {
         outcome: result.outcome,
         maxHp: result.maxHp,
         enemyLook: result.enemyLook,
+        onFinished: reveal,
       },
     );
+
+    /* Страховка на случай, когда показать бой не удалось (нет WebGL,
+       не загрузился движок): без неё игрок остался бы на экране
+       без единой кнопки. */
+    if (mounted === null) reveal();
 
     done.addEventListener('click', () => {
       mounted?.stop();

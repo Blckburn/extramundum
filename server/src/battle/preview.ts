@@ -4,7 +4,7 @@ import { resolveBattle } from '@extramundum/sim';
 
 import { fighterFromLoadout, type Loadout, type ProgressionBonuses } from '../items/loadout.ts';
 
-import { monsterFighter, monsterLevel } from './monsters.ts';
+import { monsterFighter, monsterLevel, monsterPower } from './monsters.ts';
 import { combatBalance, sparringDummy } from './setup.ts';
 
 /**
@@ -59,6 +59,15 @@ export type PreviewEstimate = {
   readonly basis: 'sparring-dummy' | 'zone-enemy';
   readonly against?: readonly string[];
   readonly enemyLevel?: number;
+  /**
+   * Насколько тир сложности усиливает врага. GDD §7.3.
+   *
+   * Отдаётся наружу по той же причине, что уровень и матчап: «ничего
+   * не спрятано» (§4.3). После правки §7.3 тир не двигает уровень —
+   * без этого числа игрок не увидел бы разницы между тирами вовсе,
+   * а превью не смогло бы её показать.
+   */
+  readonly enemyPower?: number;
 };
 
 export function estimateWinRate(input: PreviewInput): PreviewEstimate {
@@ -74,13 +83,15 @@ export function estimateWinRate(input: PreviewInput): PreviewEstimate {
   }
 
   const level = monsterLevel(input.profile.level, zone, input.difficulty);
-  const enemies = zone.monsters.map((key) => monsterFighter(monsterSpec(key), level, zone.power));
+  const power = monsterPower(zone, input.difficulty);
+  const enemies = zone.monsters.map((key) => monsterFighter(monsterSpec(key), level, power));
 
   return {
     ...duel(input, player, enemies),
     basis: 'zone-enemy',
     against: zone.monsters,
     enemyLevel: level,
+    enemyPower: power,
   };
 }
 
