@@ -29,6 +29,11 @@
       .r { fill: var(--pal-blood, #7d2a25); }
       .g { fill: var(--pal-bile, #5d6b3a); }
       .n { fill: none; }
+      /* Линейный рисунок: заливки нет, видим сам контур. Без этого
+         класса снежинка была невидима — `.n` гасил заливку, а контур
+         оставался цветом `--pal-ink`, то есть почти чёрным на почти
+         чёрном фоне. */
+      .line { fill: none; stroke: var(--pal-bone, #ddd6c4); stroke-linecap: round; }
     </style>
   </defs>
 
@@ -161,7 +166,7 @@
     <path class="r" d="M16 2 L27 16 H21 V30 H11 V16 H5 Z"/>
   </symbol>
   <symbol id="i-st-chill" viewBox="0 0 32 32">
-    <path class="b n" d="M16 2 V30 M4 9 L28 23 M28 9 L4 23"/>
-    <path class="b n" d="M11 5 L16 9 L21 5 M11 27 L16 23 L21 27"/>
+    <path class="line" d="M16 2 V30 M4 9 L28 23 M28 9 L4 23"/>
+    <path class="line" d="M11 5 L16 9 L21 5 M11 27 L16 23 L21 27"/>
   </symbol>
 </svg>
