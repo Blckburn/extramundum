@@ -4,6 +4,7 @@ import {
   isZoneUnlocked,
   lootBalanceSchema,
   rarityWeightsFor,
+  seededRoll,
   zoneMinLevel,
   type Difficulty,
   type FightRewards,
@@ -80,20 +81,20 @@ export function canExtractAt(fightIndex: number): boolean {
 }
 
 /**
- * Бросок, выбирающий монстра для боя.
+ * Бросок, выбирающий монстра для боя, и он же — на дробный остаток лута.
  *
  * Выводится из сида забега и номера боя, а не из общего генератора:
  * тогда «кто следующий» не зависит от того, сколько раз игрок обновил
  * экран, и совпадает с тем, что было показано в превью.
+ *
+ * ХЕШ ОБЩИЙ С ОФФЕРОМ ДРАФТА (`seededRoll` в shared), и это исправление
+ * аварии, а не уборка. Здесь стоял тот же приём, скопированный руками
+ * и БЕЗ ЛАВИНЫ: номера боёв 0..3 различаются последним символом ключа,
+ * поэтому четыре броска были почти одним. Замерено: 96.7% забегов шли
+ * против одного и того же монстра все четыре боя.
  */
 function pickRoll(seed: string, fightIndex: number): number {
-  let hash = 0x811c9dc5;
-  const text = `${seed}:enemy:${fightIndex}`;
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash / 0x100000000;
+  return seededRoll(`${seed}:enemy:${fightIndex}`);
 }
 
 /** Кто ждёт в бою с данным номером. */
