@@ -44,6 +44,14 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   const portraitCanvas = el('canvas', { class: 'inv__portrait' }) as HTMLCanvasElement;
   const slotsRow = el('div', { class: 'inv__slots' });
   const controls = el('div', { class: 'inv__controls' });
+  /* Ряд редкостей живёт ОТДЕЛЬНЫМ элементом, а не внутри строки
+     управления: пять названий рядом с вкладками и сортировкой ломали
+     ряд на три строки, и в них всё выглядело выбранным. */
+  const raritiesRow = el('div', { class: 'inv__rarities', role: 'group' });
+  /* Продажа — ПОСЛЕ ряда редкостей, а не до него: кнопка говорит
+     «выберите редкость», и стоять выше того, что она просит выбрать,
+     она не должна. */
+  const sellRow = el('div', { class: 'inv__sellRow' });
   const grid = el('div', { class: 'inv__grid' });
   const detail = el('aside', { class: 'inv__detail' });
   const notice = el('p', { class: 'inv__notice', role: 'status' });
@@ -63,6 +71,8 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       ]),
       el('div', { class: 'inv__worn' }, [portraitCanvas, slotsRow]),
       controls,
+      raritiesRow,
+      sellRow,
       el('div', { class: 'inv__body' }, [grid, detail]),
       charsBox,
       el('div', { class: 'inv__bar' }, [notice, back]),
@@ -185,23 +195,36 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       controls.append(button);
     }
 
-    controls.append(el('span', { class: 'inv__label' }, [t('inventory.filter.rarity')]));
+    /* РЯД ФИЛЬТРОВ — ОН ЖЕ ЛЕГЕНДА РЕДКОСТИ: имя стоит рядом с цветом.
+       Игрок не обязан знать, что фиолетовый выше синего.
+
+       Отдельным рядом, а не в общей строке управления: пять названий
+       не помещаются рядом с вкладками и сортировкой, и ряд ломался
+       на три строки, в которых всё выглядело выбранным. */
+    clear(raritiesRow);
+    raritiesRow.setAttribute('aria-label', t('inventory.filter.rarity'));
     for (const rarity of RARITIES) {
       const active = rarityFilter.has(rarity);
       const button = el(
         'button',
         {
-          class: `button button--small inv__rarity inv__rarity--${rarity}${active ? ' button--active' : ''}`,
+          class: `button button--small inv__rarity inv__rarity--${rarity}`,
           type: 'button',
+          /* Состояние выбора живёт в `aria-pressed`, а не в классе:
+             им же его читает и вспомогательная техника, и CSS. */
+          'aria-pressed': active ? 'true' : 'false',
         },
-        [t(`rarity.${rarity}`)],
+        [
+          el('span', { class: 'inv__rarity-swatch', 'aria-hidden': 'true' }),
+          el('span', { class: 'inv__rarity-name' }, [t(`rarity.${rarity}`)]),
+        ],
       );
       button.addEventListener('click', () => {
         if (active) rarityFilter.delete(rarity);
         else rarityFilter.add(rarity);
         draw();
       });
-      controls.append(button);
+      raritiesRow.append(button);
     }
 
     const sortSelect = el('select', { class: 'inv__sort', 'aria-label': t('inventory.sort') });
@@ -230,7 +253,8 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     ]) as HTMLButtonElement;
     sell.disabled = rarityFilter.size === 0;
     sell.addEventListener('click', () => void sellSelected());
-    controls.append(sell);
+    clear(sellRow);
+    sellRow.append(sell);
   }
 
   function visibleItems(): readonly ItemView[] {
@@ -475,15 +499,19 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
           : el(
               'ul',
               { class: 'inv__deltas' },
-              keys.map((key) =>
-                el(
-                  'li',
-                  { class: (deltas[key] ?? 0) > 0 ? 'inv__delta--up' : 'inv__delta--down' },
-                  [
-                    `${t(`stat.${key}`)} ${(deltas[key] ?? 0) > 0 ? '+' : ''}${Math.round((deltas[key] ?? 0) * 100) / 100}`,
-                  ],
-                ),
-              ),
+              keys.map((key) => {
+                const value = deltas[key] ?? 0;
+                const up = value > 0;
+                /* СТРЕЛКА И ЗНАК, а не только цвет: зелёное против
+                   красного не различает каждый двенадцатый мужчина,
+                   и для него строка обязана читаться формой. */
+                return el('li', { class: up ? 'inv__delta--up' : 'inv__delta--down' }, [
+                  el('span', { class: 'inv__delta-arrow', 'aria-hidden': 'true' }, [
+                    up ? '▲' : '▼',
+                  ]),
+                  `${t(`stat.${key}`)} ${up ? '+' : '−'}${Math.abs(Math.round(value * 100) / 100)}`,
+                ]);
+              }),
             ),
       );
     } catch {
