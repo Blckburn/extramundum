@@ -35,7 +35,12 @@ const { TRAITS } = await import(fileURLToPath(new URL('packages/sim/dist/traits.
    здесь: колода фильтруется наклоном, и вторая реализация фильтра
    разошлась бы с первой молча — а значит матрица мерила бы билд,
    которого игра не выдаёт. */
-const { offerCards } = await import(fileURLToPath(new URL('packages/shared/dist/index.js', root)));
+/* Бросок и оффер берутся у ПРОИЗВОДСТВЕННЫХ функций: вторая
+   реализация разошлась бы с первой молча, а на этом мы уже
+   поймались — см. `seededRoll`. */
+const { offerCards, seededRoll } = await import(
+  fileURLToPath(new URL('packages/shared/dist/index.js', root))
+);
 
 /* ────────────────────────────── аргументы ───────────────────────────── */
 
@@ -1152,10 +1157,24 @@ function simulateRun(player, zone, seedTag, withPotions) {
       potions--;
     }
 
+    /* ПРОТИВНИК ВЫБИРАЕТСЯ ТАК ЖЕ, КАК В ИГРЕ, а не по кругу.
+       Прежде здесь стояло `fight % pool.length` — ровный перебор,
+       который ГАРАНТИРОВАЛ встречу с каждым монстром зоны, включая
+       худший матчап. Игра бросает, и бросок иногда даёт пройти мимо:
+       при трёх монстрах и четырёх боях шанс не встретить конкретного —
+       (2/3)^4 ≈ 20%. То есть модель была строже игры, и разойтись они
+       могли ровно на эту величину.
+
+       Сама формула — `seededRoll` из shared, та же, что у сервера.
+       Повторить её здесь третьей копией значило бы завести ту самую
+       ошибку, из-за которой этот комментарий и написан. */
     const last = fight === balance.raid.fightsPerRun - 1;
-    const spec = last
-      ? monsterSpecs[zone.boss]
-      : monsterSpecs[zone.monsters[fight % zone.monsters.length]];
+    const pool = zone.monsters;
+    const at = Math.min(
+      pool.length - 1,
+      Math.floor(seededRoll(`${seedTag}:enemy:${fight}`) * pool.length),
+    );
+    const spec = last ? monsterSpecs[zone.boss] : monsterSpecs[pool[at]];
 
     const { outcome } = resolveBattle(
       [{ ...player, startHp: hp }, monsterFighter(spec, enemyLevel, zone.power)],
