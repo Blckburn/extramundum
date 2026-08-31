@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
  * с разными отступами, побеждало нижнее, и половина видимого правила
  * не действовала.
  */
-const css = readFileSync(fileURLToPath(new URL('../styles.css', import.meta.url)), 'utf8');
+import { blocksWith, CSS as css, soleBlocks } from './css.ts';
+
 const ts = (name: string) =>
   readFileSync(fileURLToPath(new URL(`../screens/${name}.ts`, import.meta.url)), 'utf8');
 
@@ -24,39 +25,6 @@ function token(name: string): string {
   const match = new RegExp(`--${name}:\\s*([^;]+);`).exec(css);
   expect(match, `токен --${name} не объявлен`).not.toBeNull();
   return (match?.[1] ?? '').trim();
-}
-
-/**
- * Все правила файла как пары «список селекторов» → «тело».
- *
- * Перед разбором снимаются комментарии и заголовки at-правил
- * (`@media`). Без этого комментарий приклеивается к следующему
- * селектору, а вложенность `@media` рвёт разбор на середине файла —
- * и проверки ниже молча находят ноль правил вместо ста.
- */
-const RULES: { selectors: string[]; body: string }[] = [
-  ...css
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/@[^{]*\{/g, '')
-    .matchAll(/([^{}]+)\{([^{}]*)\}/g),
-].map((m) => ({
-  selectors: (m[1] ?? '')
-    .split(',')
-    .map((x) => x.trim())
-    .filter(Boolean),
-  body: m[2] ?? '',
-}));
-
-/** Правила, где селектор стоит ОДИН, а не в группе. */
-function soleBlocks(selector: string): string[] {
-  return RULES.filter((r) => r.selectors.length === 1 && r.selectors[0] === selector).map(
-    (r) => r.body,
-  );
-}
-
-/** Правила, где селектор упомянут — один или в группе. */
-function blocksWith(selector: string): string[] {
-  return RULES.filter((r) => r.selectors.includes(selector)).map((r) => r.body);
 }
 
 describe('размеры целей нажатия', () => {
