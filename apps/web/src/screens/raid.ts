@@ -255,7 +255,7 @@ async function render(surface: Surface): Promise<void> {
   }
 
   function actions(current: RunView): HTMLElement {
-    const row = el('div', { class: 'raid__actions' });
+    const row = el('div', { class: 'raid__actions screen__actions' });
 
     /* У кнопки решения ДВЕ строки: что делаешь и что из этого следует.
        На живых сессиях эвакуацией не воспользовались ни разу, и причина
