@@ -1,4 +1,4 @@
-import { iconPath } from '@extramundum/data/assets';
+import { iconPath, iconSymbol } from '@extramundum/data/assets';
 
 import { el } from '../dom.ts';
 
@@ -51,6 +51,28 @@ export function renderIcon(key: string, size: IconSize = 128, alt = ''): HTMLEle
       loading: 'lazy',
       decoding: 'async',
     });
+  }
+
+  /* ВТОРОЙ УРОВЕНЬ: векторный силуэт. Он временный — по ART-BIBLE §7
+     его заменят гравюрные растры, — но он уже отвечает на вопрос
+     «что это», чего квадрат с буквой не делает.
+
+     `<use>` ссылается на символ в спрайте, который вкладывается
+     в документ один раз (см. `sprite.ts`). Цвета внутри символов —
+     переменные палитры, поэтому иконка красится темой, а не хранит
+     свои хексы. */
+  const symbol = iconSymbol(key);
+  if (symbol !== null) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'icon icon--symbol');
+    svg.setAttribute('viewBox', '0 0 32 32');
+    svg.setAttribute('role', 'img');
+    svg.setAttribute('aria-label', alt || key);
+    svg.dataset.iconKey = key;
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    use.setAttribute('href', `#${symbol}`);
+    svg.append(use);
+    return svg as unknown as HTMLElement;
   }
 
   const hue = hueOf(key);

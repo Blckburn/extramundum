@@ -6,6 +6,7 @@ import { renderDraft } from './screens/draft.ts';
 import { renderInventory } from './screens/inventory.ts';
 import { renderRaid } from './screens/raid.ts';
 import { renderVillage } from './screens/village.ts';
+import { mountIconSprite } from './ui/sprite.ts';
 
 import type { MeResponse } from '@extramundum/shared';
 
@@ -111,5 +112,9 @@ async function route(): Promise<void> {
     );
   village();
 }
+
+/* Спрайт силуэтов вкладывается один раз и не блокирует первый кадр:
+   ссылка `<use>` живая, и иконки дорисуются сами, когда он доедет. */
+mountIconSprite();
 
 void route();
