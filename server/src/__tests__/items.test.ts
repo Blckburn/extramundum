@@ -623,13 +623,25 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     it('ни один игрок не остался без единого предмета', async () => {
       /* Клинок у ворот §5.1: без оружия изгнанный берёт 0% побед
          в первой же зоне, то есть игра начинается с гарантированной
-         смерти. Это ровно то, во что упёрся живой игрок. */
+         смерти. Это ровно то, во что упёрся живой игрок.
+
+         ОДИН ЗАПРОС, А НЕ ПО ЗАПРОСУ НА ИГРОКА. Прежде здесь стоял цикл
+         с отдельным SELECT на каждую строку, и он краснел через раз
+         по таймауту: игроки копятся от всех тестов файла, поэтому цена
+         росла с длиной прогона, а не с проверяемым свойством. Тест,
+         который красный через раз, перезапускают вместо того, чтобы
+         читать. */
       await withItems([]);
       const rows = await ctx.db.select().from(players);
+      expect(rows.length, 'игроков нет — проверять нечего').toBeGreaterThan(0);
+
+      const owned = await ctx.db.select({ ownerId: items.ownerId }).from(items);
+      const withAnItem = new Set(owned.map((row) => row.ownerId));
 
       for (const row of rows) {
-        const owned = await ctx.db.select().from(items).where(eq(items.ownerId, row.id));
-        expect(owned.length, `у игрока ${row.username} нет ни одного предмета`).toBeGreaterThan(0);
+        expect(withAnItem.has(row.id), `у игрока ${row.username} нет ни одного предмета`).toBe(
+          true,
+        );
       }
     });
 
