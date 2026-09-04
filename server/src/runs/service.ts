@@ -11,6 +11,7 @@ import {
   type FightRewards,
   type MonsterSpec,
   type NextEnemy,
+  type RunSummary,
   type RunView,
   type ZoneSpec,
 } from '@extramundum/shared';
@@ -38,6 +39,7 @@ import {
   findActiveRun,
   insertRun,
   readZoneProgress,
+  runTotals,
   spendPotion,
   type BagItem,
   type RunRow,
@@ -261,6 +263,39 @@ export async function startRun(
   return runView(db, { profile: row.profile, row: row.run });
 }
 
+/**
+ * ИТОГ ЗАБЕГА. GDD §7.2.
+ *
+ * Числа берутся из ЖУРНАЛА БОЁВ, а не складываются по ходу: журнал
+ * пишется каждым боем и так, а вторая копия тех же сумм — второе
+ * место, где они разойдутся.
+ *
+ * Собирается ПОСЛЕ транзакции, но сумка приходит аргументом: в строке
+ * забега её уже нет, а в инвентаре предметы смешались с прежними.
+ */
+async function summaryOf(
+  db: Database,
+  row: RunRow,
+  state: Exclude<RunSummary['state'], never>,
+  hauled: readonly BagItem[],
+): Promise<RunSummary> {
+  const zone = requireZone(row.zone);
+  const totals = await runTotals(db, row.id);
+  return {
+    zone: row.zone,
+    segment: row.segment,
+    segmentLevels: segmentBounds(zone, row.segment),
+    difficulty: row.difficulty,
+    state,
+    fightsCleared: totals.fightsCleared,
+    // Босс — пятый бой, и убит он только если пройдены все пять.
+    bossKilled: totals.fightsCleared >= raid.fightsPerRun,
+    xp: totals.xp,
+    gold: totals.gold,
+    loot: hauled.map((item) => toView(item, null)),
+  };
+}
+
 export type FightResult = {
   readonly battleId: string;
   readonly log: ReturnType<typeof resolveBattle>['log'];
@@ -270,6 +305,7 @@ export type FightResult = {
   readonly enemyLook: { readonly rig: string; readonly recolor?: Readonly<Record<string, string>> };
   readonly rewards: FightRewards;
   readonly run: RunView;
+  readonly summary: RunSummary | null;
 };
 
 /**
@@ -348,8 +384,22 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
 
   const view = await runView(db, { profile: applied.profile, row: applied.run });
 
+  /* Итог собирается ТОЛЬКО когда забег кончился этим боем. Показывать
+     его раньше значило бы объявить исход посреди забега — та же
+     ошибка, что панель наград над ещё не досмотренным боем. */
+  const summary =
+    applied.hauled === null
+      ? null
+      : await summaryOf(
+          db,
+          applied.run,
+          applied.run.state === 'wiped' ? 'wiped' : 'extracted',
+          applied.hauled,
+        );
+
   return {
     battleId: applied.battleId,
+    summary,
     log,
     outcome,
     maxHp: [maxHp, maxHpOf(enemy, combatBalance)],
@@ -413,7 +463,7 @@ export async function drinkPotion(db: Database, profile: PlayerProfile): Promise
 export async function extract(
   db: Database,
   profile: PlayerProfile,
-): Promise<{ run: RunView; recovered: number }> {
+): Promise<{ run: RunView; recovered: number; summary: RunSummary }> {
   const row = await requireActive(db, profile.id);
   if (!canExtractAt(row.fightIndex)) {
     // Уйти можно после боёв 2, 3 и 4 (§7.2). Не после первого — до первой
@@ -426,7 +476,12 @@ export async function extract(
 
   const applied = await extractBag(db, { runId: row.id, playerId: profile.id });
   const view = await runView(db, { profile: applied.profile, row: applied.run });
-  return { run: view, recovered: applied.recovered };
+  return {
+    run: view,
+    recovered: applied.recovered,
+    // Уход — тоже конец забега, и итог у него тот же самый.
+    summary: await summaryOf(db, applied.run, 'extracted', applied.hauled),
+  };
 }
 
 async function requireActive(db: Database, playerId: string): Promise<RunRow> {

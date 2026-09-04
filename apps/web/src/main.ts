@@ -101,7 +101,11 @@ async function route(): Promise<void> {
       root!,
       player,
       () => void route(),
-      () => renderRaid(root!, village),
+      /* Из итога рейда — ПРЯМО в снаряжение, а не через деревню:
+         после рейда игрок идёт одеваться, и вести его туда двумя
+         экранами значит мешать ровно там, где он знает, чего хочет
+         (PLAYTEST 2026-09-04). */
+      () => renderRaid(root!, village, () => renderInventory(root!, village)),
       () => renderInventory(root!, village),
       /* Из драфта возвращаемся ПЕРЕЗАГРУЗКОЙ маршрута, а не в деревню:
          уровень, статы и запас сил изменились на сервере, а `player`

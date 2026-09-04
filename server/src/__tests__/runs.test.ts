@@ -821,6 +821,126 @@ describe.skipIf(!HAS_DB)('забег', () => {
     });
   });
 
+  describe('итог забега', () => {
+    it('ИТОГ ПРИХОДИТ ТОЛЬКО С ПОСЛЕДНИМ БОЕМ, а не с каждым', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      await start(jar);
+
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state !== 'active') break;
+        /* Итог посреди забега объявил бы исход раньше времени — та же
+           ошибка, что панель наград над ещё идущим боем. */
+        expect(last.summary, `бой ${i}: итог показан посреди забега`).toBeNull();
+      }
+
+      expect(last?.run.state).toBe('extracted');
+      const done = last?.summary;
+      expect(done, 'последний бой пришёл без итога').not.toBeNull();
+      if (done === null || done === undefined) return;
+
+      expect(done.state).toBe('extracted');
+      expect(done.fightsCleared).toBe(raid.fightsPerRun);
+      expect(done.bossKilled).toBe(true);
+      expect(done.segment).toBe(0);
+      expect(done.segmentLevels).toEqual(WASTES.segments[0]);
+    });
+
+    it('СУММА ЗА ЗАБЕГ — ЖУРНАЛ БОЁВ, а не последний бой', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      await start(jar);
+
+      const perFight: number[] = [];
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state === 'wiped') break;
+        perFight.push(last.rewards.xp);
+        if (last.run.state !== 'active') break;
+      }
+      const done = last?.summary;
+      if (done === null || done === undefined) throw new Error('итога нет');
+
+      /* Пара к сравнению ниже: сумма совпала бы с последним боем,
+         если бы бой был один. Их обязано быть несколько. */
+      expect(perFight.length).toBeGreaterThan(1);
+      expect(done.xp).toBe(perFight.reduce((a, b) => a + b, 0));
+      expect(done.xp).toBeGreaterThan(perFight[perFight.length - 1] ?? 0);
+    });
+
+    it('ДОБЫЧА В ИТОГЕ — ЗА ВЕСЬ ЗАБЕГ, включая пятый бой', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      const before = await inventory(jar);
+      await start(jar, 'wastes', 'nightmare');
+
+      let last: RunFightResponse | null = null;
+      const seenInBag: string[] = [];
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        for (const item of last.rewards.loot) seenInBag.push(item.id);
+        if (last.run.state !== 'active') break;
+      }
+      const done = last?.summary;
+      if (done === null || done === undefined) throw new Error('итога нет');
+      if (last?.run.state !== 'extracted') return; // погиб — другой тест
+
+      // Пара: сравнение множеств пусто, если ничего не выпало.
+      expect(seenInBag.length, 'за забег не выпало ни одного предмета').toBeGreaterThan(0);
+      expect([...done.loot.map((i) => i.id)].sort()).toEqual([...seenInBag].sort());
+
+      /* И ровно это доехало до инвентаря — под теми же номерами.
+         Итог обязан описывать то, что игрок получил, а не то, что
+         сервер посчитал отдельно. */
+      const after = await inventory(jar);
+      const added = after.items.length - before.items.length;
+      expect(added).toBe(done.loot.length);
+    });
+
+    it('ЭВАКУАЦИЯ ТОЖЕ ДАЁТ ИТОГ, и в нём босс не убит', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      await start(jar);
+      for (let i = 0; i < 2; i++) {
+        const step = await fight(jar);
+        expect(step.run.state).toBe('active');
+      }
+
+      const res = await post(ctx, API_ROUTES.runExtract, {}, jar);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const done = (res.body as unknown as RunExtractResponse).summary;
+
+      expect(done.state).toBe('extracted');
+      expect(done.fightsCleared).toBe(2);
+      // Ушёл до босса — участок не засчитан, и итог обязан это сказать.
+      expect(done.bossKilled).toBe(false);
+    });
+
+    it('ПОГИБШИЙ ПОЛУЧАЕТ ИТОГ С ПУСТОЙ СУМКОЙ, а не пустой экран', async () => {
+      const { jar } = await register(ctx);
+      // Без снаряжения: свежий изгнанный в Пустошах на кошмаре гибнет.
+      await start(jar, 'wastes', 'nightmare');
+
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state !== 'active') break;
+      }
+      /* Пара: проверка ниже пуста, если игрок выжил. Тест обязан
+         убедиться, что смерть в выборке была. */
+      expect(last?.run.state, 'боец выжил — проверка смерти пуста').toBe('wiped');
+
+      const done = last?.summary;
+      if (done === null || done === undefined) throw new Error('погибший остался без итога');
+      expect(done.state).toBe('wiped');
+      expect(done.loot).toHaveLength(0);
+      expect(done.bossKilled).toBe(false);
+    });
+  });
+
   describe('пятый бой заканчивает забег', () => {
     it('выживший после босса получает сумку без отдельной эвакуации', async () => {
       const { jar } = await register(ctx);

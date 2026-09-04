@@ -155,6 +155,15 @@ export type FightOutcomeResult = {
   readonly profile: PlayerProfile;
   /** Что упало ЭТИМ боем, уже с идентификаторами. */
   readonly granted: readonly BagItem[];
+  /**
+   * Сумка НА МОМЕНТ ЗАВЕРШЕНИЯ забега, до того как она уехала
+   * в инвентарь. `null` — забег продолжается.
+   *
+   * Возвращается отсюда, потому что больше её взять негде: после
+   * транзакции в строке забега пусто, а в инвентаре предметы уже
+   * смешались с прежними.
+   */
+  readonly hauled: readonly BagItem[] | null;
 };
 
 /**
@@ -273,6 +282,9 @@ export async function applyFightOutcome(
       run: { ...toRun(row), bag: input.finish === 'extracted' ? [] : bag },
       profile: toProfile(profile),
       granted,
+      // При смерти сумка потеряна целиком — это пустой список, а не
+      // отсутствие данных: пустота и есть итог.
+      hauled: input.finish === null ? null : input.finish === 'wiped' ? [] : bag,
     };
   });
 }
@@ -316,7 +328,12 @@ export async function spendPotion(
 export async function extractBag(
   db: Database,
   input: { runId: string; playerId: string },
-): Promise<{ run: RunRow; profile: PlayerProfile; recovered: number }> {
+): Promise<{
+  run: RunRow;
+  profile: PlayerProfile;
+  recovered: number;
+  hauled: readonly BagItem[];
+}> {
   return db.transaction(async (tx) => {
     const current = await tx
       .select()
@@ -341,6 +358,7 @@ export async function extractBag(
       run: toRun(row),
       profile: await profileById(tx as unknown as Database, input.playerId),
       recovered: bag.length,
+      hauled: bag,
     };
   });
 }
@@ -390,4 +408,46 @@ export async function readZoneProgress(
   const out: Record<string, number> = {};
   for (const row of rows) out[row.zone] = row.cleared;
   return out;
+}
+
+/* ────────────────────────────── итог забега ──────────────────────────── */
+
+export type RunTotals = {
+  readonly xp: number;
+  readonly gold: number;
+  readonly fightsCleared: number;
+};
+
+/**
+ * Сумма всего, что забег дал, ПО ЖУРНАЛУ БОЁВ.
+ *
+ * Считается из `battles`, а не накапливается в строке забега: журнал
+ * и так пишется каждым боем, а вторая копия тех же чисел — это второе
+ * место, где они могут разойтись. Клиент их тоже не складывает: игрок
+ * мог закрыть вкладку посреди забега, и складывать ему было бы нечего.
+ */
+export async function runTotals(db: Database, runId: string): Promise<RunTotals> {
+  const rows = await db
+    .select({ rewards: battles.rewards, result: battles.result })
+    .from(battles)
+    .where(eq(battles.runId, runId));
+
+  let xp = 0;
+  let gold = 0;
+  let fightsCleared = 0;
+  for (const row of rows) {
+    const rewards = row.rewards as Record<string, number>;
+    xp += rewards.xp ?? 0;
+    /* ЗОЛОТО БЕРЁТСЯ ИЗ ЖУРНАЛА КАК ЕСТЬ. В `rewards` записано полное
+       начисление боя, а погибшему выдаётся половина (§7.2) — но
+       проигранный бой в забеге ровно один, последний, и он же
+       завершает забег. Складывать половину здесь значило бы повторить
+       правило второй раз; вместо этого проигранный бой в сумму
+       не входит вовсе, а его половина видна в профиле. */
+    if (row.result === 'win') {
+      gold += rewards.gold ?? 0;
+      fightsCleared += 1;
+    }
+  }
+  return { xp, gold, fightsCleared };
 }

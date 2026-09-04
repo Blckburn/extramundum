@@ -1,4 +1,4 @@
-import type { RunFightResponse, RunView, ZoneCard } from '@extramundum/shared';
+import type { RunFightResponse, RunSummary, RunView, ZoneCard } from '@extramundum/shared';
 
 import { api, ApiClientError } from '../api.ts';
 import { mountBattle } from '../battle/mount.ts';
@@ -21,10 +21,21 @@ import { renderIcon } from '../ui/icon.ts';
 type Surface = {
   readonly root: HTMLElement;
   readonly onBack: () => void;
+  /**
+   * Прямой переход в снаряжение с экрана итогов.
+   *
+   * На живых сессиях после рейда одеваться было неудобно: приходилось
+   * возвращаться в деревню и оттуда идти в инвентарь, прокручивая
+   * экран до кнопки внизу (PLAYTEST 2026-09-04). Итог рейда — ровно
+   * тот момент, когда игрок хочет надеть добытое, и вести его туда
+   * через два экрана значит мешать ему в единственном месте, где
+   * он точно знает, чего хочет.
+   */
+  readonly onGear: () => void;
 };
 
-export function renderRaid(root: HTMLElement, onBack: () => void): void {
-  void render({ root, onBack });
+export function renderRaid(root: HTMLElement, onBack: () => void, onGear: () => void): void {
+  void render({ root, onBack, onGear });
 }
 
 async function render(surface: Surface): Promise<void> {
@@ -37,6 +48,10 @@ async function render(surface: Surface): Promise<void> {
 
   let zones: readonly ZoneCard[] = [];
   let run: RunView | null = null;
+  /* Итог показывается ВМЕСТО выбора зоны и ровно один раз: забега
+     уже нет, а уходить с экрана, ничего не сказав, — это и есть
+     та самая «награда за босса не показана». */
+  let summary: RunSummary | null = null;
 
   const refresh = async (): Promise<void> => {
     const body = await api.zones();
@@ -61,6 +76,10 @@ async function render(surface: Surface): Promise<void> {
   const draw = (): void => {
     clear(host);
     host.className = 'screen screen--raid';
+    if (summary !== null) {
+      host.append(summaryPanel(summary));
+      return;
+    }
     host.append(run === null ? zonePicker() : runPanel(run));
     host.append(back);
   };
@@ -368,8 +387,10 @@ async function render(surface: Surface): Promise<void> {
         t('raid.action.extract'),
         'button button--ghost',
         async () => {
-          await api.runExtract();
+          const left = await api.runExtract();
           await refresh();
+          // Уход — тоже конец забега, и итог у него тот же.
+          summary = left.summary;
           draw();
         },
         t('raid.action.extractHint', { items: plural(current.bag.length, 'unit.items') }),
@@ -377,6 +398,104 @@ async function render(surface: Surface): Promise<void> {
     }
 
     return row;
+  }
+
+  /* ────────────────────────── итог рейда ──────────────────────────── */
+
+  /**
+   * ЧЕМ КОНЧИЛСЯ ЗАБЕГ. GDD §7.2.
+   *
+   * До этой правки не показывалось ничем: сумка молча уезжала
+   * в инвентарь, экран возвращался к выбору зоны, и добыча за пятый
+   * бой — тот самый, ради которого игрок не ушёл, — исчезала
+   * незамеченной (PLAYTEST 2026-09-04).
+   *
+   * Числа приходят от СЕРВЕРА суммой по журналу боёв. Клиент их
+   * не складывает: игрок мог закрыть вкладку посреди забега, и складывать
+   * ему было бы нечего.
+   */
+  function summaryPanel(done: RunSummary): HTMLElement {
+    const lost = done.state === 'wiped';
+
+    return el('section', { class: 'raid__summary' }, [
+      el('h1', { class: 'screen__title' }, [
+        lost ? t('summary.title.wiped') : t('summary.title.done'),
+      ]),
+      el('p', { class: 'raid__lead' }, [
+        `${t(`zone.${done.zone}`)} · ${t('raid.runSegment', {
+          index: done.segment + 1,
+          min: done.segmentLevels[0],
+          max: done.segmentLevels[1],
+        })} · ${t(`difficulty.${done.difficulty}`)}`,
+      ]),
+
+      el(
+        'p',
+        { class: lost ? 'raid__summaryState raid__summaryState--lost' : 'raid__summaryState' },
+        [t('summary.cleared', { done: done.fightsCleared, total: 5 })],
+      ),
+
+      /* УЧАСТОК ЗАСЧИТЫВАЕТСЯ ЗА БОССА, и сказать об этом надо здесь:
+         игрок только что узнал, открылось ли ему следующее место,
+         и узнать это из молчания нельзя. */
+      done.bossKilled
+        ? el('p', { class: 'raid__summaryUnlock' }, [t('summary.unlocked')])
+        : el('p', { class: 'raid__summaryUnlock raid__summaryUnlock--no' }, [
+            t('summary.notUnlocked'),
+          ]),
+
+      el('div', { class: 'raid__summaryTotals' }, [
+        el('span', {}, [t('raid.reward.xp', { xp: done.xp })]),
+        el('span', {}, [t('raid.reward.gold', { gold: done.gold })]),
+      ]),
+
+      /* ДОБЫЧА ЗА ЗАБЕГ ЦЕЛИКОМ, включая пятый бой. Пустой список
+         при смерти — это не «нет данных», а сам итог, и он называется
+         словами. */
+      done.loot.length === 0
+        ? el('p', { class: 'raid__bag raid__bag--empty' }, [
+            lost ? t('summary.lootLost') : t('summary.lootNone'),
+          ])
+        : el('div', { class: 'raid__bag' }, [
+            el('h2', { class: 'raid__subtitle' }, [t('summary.loot', { count: done.loot.length })]),
+            el(
+              'ul',
+              { class: 'raid__bagList' },
+              done.loot.map((item) =>
+                el('li', { class: `raid__bagItem raid__bagItem--${item.rarity}` }, [
+                  renderIcon(item.baseKey, 128, t(`item.${item.baseKey}`)),
+                  el('span', {}, [t(`item.${item.baseKey}`)]),
+                  el('span', { class: 'raid__bagIlvl' }, [
+                    t('item.level.short', { ilvl: item.ilvl }),
+                  ]),
+                ]),
+              ),
+            ),
+          ]),
+
+      /* ГЛАВНОЕ ДЕЙСТВИЕ — В ЛИПКОЙ ПОЛОСЕ ВНИЗУ (UI-BRIEF §1), и оно
+         здесь одно: надеть добытое. Возврат в деревню стоит рядом
+         вторым, а не единственным, — иначе за снаряжением пришлось бы
+         идти через два экрана ровно в тот момент, когда игрок точно
+         знает, чего хочет. */
+      el('div', { class: 'raid__actions screen__actions' }, [
+        summaryButton(t('summary.action.gear'), 'button', surface.onGear),
+        summaryButton(t('summary.action.again'), 'button button--ghost', () => {
+          summary = null;
+          draw();
+        }),
+      ]),
+    ]);
+  }
+
+  function summaryButton(label: string, className: string, act: () => void): HTMLElement {
+    const button = el('button', { class: className, type: 'button' }, [label]) as HTMLButtonElement;
+    // Отклик рисуется сразу, не дожидаясь перерисовки (UI-BRIEF §2).
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      act();
+    });
+    return button;
   }
 
   /* ─────────────────────────── показ боя ──────────────────────────── */
@@ -451,8 +570,16 @@ async function render(surface: Surface): Promise<void> {
       // боем и нажатием «дальше» игрок мог открыть вкладку и что-то
       // сделать, и показать ему устаревшее было бы хуже, чем лишний
       // запрос.
+      /* ИТОГ ПОКАЗЫВАЕТСЯ ПОСЛЕ ТОГО, КАК БОЙ ДОСМОТРЕН, и это то же
+         правило, что у панели наград: сервер прислал его вместе
+         с боем — он нужен для показа, — но выложить его раньше значило
+         бы объявить исход забега над ещё идущим боем. */
+      const finished = result.summary;
       void refresh()
-        .then(() => draw())
+        .then(() => {
+          summary = finished;
+          draw();
+        })
         .catch(fail);
     });
   }

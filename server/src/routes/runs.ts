@@ -193,6 +193,8 @@ export function runRoutes(db: Database): Hono<AppEnv> {
       enemyLook: result.enemyLook,
       rewards: result.rewards,
       run: result.run,
+      // `null`, пока забег идёт: итог существует только у законченного.
+      summary: result.summary,
     };
     return c.json(body);
   });
@@ -208,10 +210,10 @@ export function runRoutes(db: Database): Hono<AppEnv> {
   app.post(API_ROUTES.runExtract, async (c) => {
     const profile = await profileOf(c);
     await parseBody(c, emptyInputSchema);
-    const { run, recovered } = await extract(db, profile);
+    const { run, recovered, summary } = await extract(db, profile);
 
     c.get('log').info('эвакуация', { runId: run.runId, recovered });
-    const body: RunExtractResponse = { run, recovered };
+    const body: RunExtractResponse = { run, recovered, summary };
     return c.json(body);
   });
 

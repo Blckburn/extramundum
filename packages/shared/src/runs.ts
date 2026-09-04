@@ -105,6 +105,39 @@ export type RunView = {
 
 /* ──────────────────────────────── ответы ─────────────────────────────── */
 
+/**
+ * ИТОГ ЗАБЕГА ЦЕЛИКОМ. GDD §7.2.
+ *
+ * Забег кончается тремя способами — убит босс, эвакуация, смерть, —
+ * и до этой правки ни один из них не показывал, чем он кончился:
+ * сумка молча уезжала в инвентарь, а экран возвращался к выбору зоны.
+ * На живых сессиях это читалось как «награда за босса не показана»
+ * (PLAYTEST 2026-09-04).
+ *
+ * ЧИСЛА СЧИТАЕТ СЕРВЕР ПО ЖУРНАЛУ БОЁВ, а не клиент сложением того,
+ * что видел. Игрок мог закрыть вкладку посреди забега и вернуться:
+ * складывать было бы нечего, а журнал на месте.
+ */
+export type RunSummary = {
+  readonly zone: z.infer<typeof zoneIdSchema>;
+  readonly segment: number;
+  readonly segmentLevels: readonly [number, number];
+  readonly difficulty: z.infer<typeof difficultySchema>;
+  /** Чем кончился: `extracted` — унёс, `wiped` — погиб. */
+  readonly state: Exclude<RunState, 'active'>;
+  /** Сколько боёв выиграно из пяти. */
+  readonly fightsCleared: number;
+  /** Убит ли босс — то есть засчитан ли участок. */
+  readonly bossKilled: boolean;
+  readonly xp: number;
+  readonly gold: number;
+  /**
+   * Что доехало до инвентаря. При смерти пусто — и это не отсутствие
+   * данных, а сам итог: сумка потеряна целиком.
+   */
+  readonly loot: readonly ItemView[];
+};
+
 /** Что бой дал игроку. Всё уже применено к профилю. */
 export type FightRewards = {
   readonly xp: number;
@@ -138,6 +171,14 @@ export type RunFightResponse = {
    * не существует.
    */
   readonly run: RunView;
+  /**
+   * Итог забега, если этот бой его закончил. `null` — забег идёт.
+   *
+   * Приходит ВМЕСТЕ с боем, а не отдельным запросом: между боем
+   * и запросом сумка уже уехала бы в инвентарь, и показывать было бы
+   * нечего.
+   */
+  readonly summary: RunSummary | null;
 };
 
 export type RunResponse = { readonly run: RunView | null };
@@ -147,6 +188,8 @@ export type RunExtractResponse = {
   readonly run: RunView;
   /** Сколько предметов доехало до инвентаря. */
   readonly recovered: number;
+  /** Тот же итог, что и после последнего боя: уход — тоже конец забега. */
+  readonly summary: RunSummary;
 };
 
 /* ──────────────────────── доступные зоны на входе ────────────────────── */
