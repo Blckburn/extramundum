@@ -1,9 +1,7 @@
 import { balance as balanceData } from '@extramundum/data';
-import { monsterSpec, zoneSpec } from '@extramundum/data/zones';
+import { zoneSpec } from '@extramundum/data/zones';
 import {
-  enemyLevel,
   fighterConfigSchema,
-  lootLevelScale,
   type Difficulty,
   type FighterConfig,
   type MonsterSpec,
@@ -16,7 +14,7 @@ import {
  *
  * ЗДЕСЬ НЕТ НИ ОДНОГО ИМЕНИ МОНСТРА И НИ ОДНОГО ЕГО ЧИСЛА. Всё приходит
  * из `packages/data`: кривая роста — из `balance.monsters`, наклон
- * конкретного монстра — из его записи, ограничение уровня — из зоны.
+ * конкретного монстра — из его записи, уровень — из участка зоны.
  * Новый монстр не требует правки этого файла.
  *
  * Это то же правило, что у ригов и палитры, и та же причина: контент,
@@ -26,61 +24,41 @@ import {
 
 const curve = balanceData.monsters;
 const difficulties = balanceData.raid.difficulty;
-const LOOT_LEVEL_SCALE = balanceData.raid.lootLevelScale;
-
-/**
- * Уровень врага для зоны и сложности. GDD §7.3 со сдвигом, §7.4
- * с ограничением диапазоном зоны.
- *
- * Формула живёт в `@extramundum/shared`, чтобы бой, превью и экран
- * выбора зоны считали её одинаково. Здесь только подстановка сдвига
- * из коэффициентов.
- */
-export function monsterLevel(playerLevel: number, zone: ZoneSpec, difficulty: Difficulty): number {
-  return enemyLevel(playerLevel, difficulties[difficulty].enemyLevelOffset, zone);
-}
 
 /**
  * Множитель силы врага: зона умножается на тир сложности. GDD §7.3.
  *
- * ОДНА функция на весь сервер, как `monsterLevel`: бой, превью и экран
- * выбора обязаны считать одинаково, а второе место разошлось бы с первым
- * на ближайшей правке.
+ * ОДНА функция на весь сервер: бой, превью и экран выбора обязаны
+ * считать одинаково, а второе место разошлось бы с первым на ближайшей
+ * правке.
  *
- * ТЯЖЕСТЬ ТИРА НЕСЁТ ЭТОТ МНОЖИТЕЛЬ, А НЕ УРОВЕНЬ. Раньше тир задавался
- * только смещением уровня, и уровень оказался негодной единицей: кривая
- * монстров нелинейна, а уровень врага зажат диапазоном зоны, поэтому
- * у основания диапазона тир удваивал врага, а на верхушке схлопывался —
+ * ТЯЖЕСТЬ ТИРА НЕСЁТ ЭТОТ МНОЖИТЕЛЬ, И ТОЛЬКО ОН. Раньше тир задавался
+ * смещением уровня, и уровень оказался негодной единицей: у основания
+ * диапазона зоны тир удваивал врага, а на верхушке схлопывался —
  * «опасно» и «кошмар» становились одним и тем же боем при разной оплате
- * лутом. Множитель действует равномерно по всему диапазону.
+ * лутом. С переходом на участки смещение убрано совсем: уровень врага
+ * приходит из данных участка, и двигать его сложностью значило бы
+ * вернуть ровно ту величину, из-за которой участки и появились.
  */
 export function monsterPower(zone: ZoneSpec, difficulty: Difficulty): number {
   return zone.power * difficulties[difficulty].power;
 }
 
 /**
- * Оплата лутом за бой в этой зоне на этой сложности.
+ * Оплата лутом за бой на этой сложности. GDD §7.3.
  *
- * ЭТО НЕ КОНСТАНТА ТИРА. Множитель тира — только основание; сверху
- * лежит доля уцелевшей разницы уровней (`lootLevelScale`). Смысл
- * в том, чтобы платить за ПОНЕСЁННЫЙ риск, а не за заявленный:
- * как только зажим диапазоном зоны съедает разницу уровней, вместе
- * с ней уходит и оплата. Иначе переросший игрок фармит первую зону
- * на «кошмаре» за полную цену — риска там нет ни на грош.
+ * ЭТО ТЕПЕРЬ КОНСТАНТА ТИРА И НИЧЕГО СВЕРХУ. Раньше на неё умножалась
+ * доля уцелевшей разницы уровней игрока и врага: уровень врага был
+ * зажат диапазоном зоны, и переросший игрок фармил первую зону
+ * на «кошмаре» за полную цену при нулевом риске.
  *
- * ОДНА функция на весь сервер, как `monsterLevel` и `monsterPower`:
- * карточка зоны, панель забега и начисление за бой обязаны показывать
- * и считать одно число. Разойдись они — экран обещал бы ×2.5, а сумка
- * получала бы ×0.25, и игрок счёл бы это поломкой. Он был бы прав.
+ * Разницы уровней больше нет ни в каком виде — уровень врага приходит
+ * из участка, — и множить стало не на что. Функция оставлена одна
+ * на весь сервер по прежней причине: карточка зоны, панель забега
+ * и начисление обязаны показывать одно число.
  */
-export function zoneLootMultiplier(
-  playerLevel: number,
-  zone: ZoneSpec,
-  difficulty: Difficulty,
-): number {
-  const tier = difficulties[difficulty];
-  const scale = lootLevelScale(playerLevel, tier.enemyLevelOffset, zone, LOOT_LEVEL_SCALE);
-  return tier.lootMultiplier * scale;
+export function zoneLootMultiplier(difficulty: Difficulty): number {
+  return difficulties[difficulty].lootMultiplier;
 }
 
 /**
@@ -142,19 +120,13 @@ export function requireZone(id: ZoneId): ZoneSpec {
 }
 
 /**
- * Кто встречает игрока в бою номер `fightIndex` (от нуля).
+ * Пятый бой участка — бой с боссом. GDD §7.5.
  *
- * ПЯТЫЙ БОЙ — БОСС (§7.5). Остальные выбираются из пула зоны броском
- * по сиду забега: клиент не может узнать состав следующего боя заранее,
- * потому что сид ему не отдаётся.
+ * ОДНА функция на весь сервер: от неё зависит и кто выйдет, и какой
+ * у него уровень (босс берёт верх участка), и что засчитывается
+ * прохождением участка. Три места, считающие «последний ли это бой»,
+ * разошлись бы на первой правке длины забега.
  */
-export function monsterForFight(zone: ZoneSpec, fightIndex: number, roll: number): MonsterSpec {
-  const last = balanceData.raid.fightsPerRun - 1;
-  if (fightIndex >= last) return monsterSpec(zone.boss);
-
-  const pool = zone.monsters;
-  const at = Math.min(pool.length - 1, Math.max(0, Math.floor(roll * pool.length)));
-  const key = pool[at];
-  if (key === undefined) throw new Error(`пустой пул монстров у зоны «${zone.id}»`);
-  return monsterSpec(key);
+export function isBossFight(fightIndex: number): boolean {
+  return fightIndex >= balanceData.raid.fightsPerRun - 1;
 }

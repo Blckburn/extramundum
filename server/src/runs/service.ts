@@ -1,11 +1,12 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
-import { monsterSpec } from '@extramundum/data/zones';
+import { monsterSpec, ZONES } from '@extramundum/data/zones';
 import {
-  isZoneUnlocked,
+  enemyLevel,
+  isSegmentUnlocked,
   lootBalanceSchema,
   rarityWeightsFor,
   seededRoll,
-  zoneMinLevel,
+  segmentBounds,
   type Difficulty,
   type FightRewards,
   type MonsterSpec,
@@ -18,8 +19,8 @@ import { randomUUID } from 'node:crypto';
 
 import { combatBalance } from '../battle/setup.ts';
 import {
+  isBossFight,
   monsterFighter,
-  monsterLevel,
   monsterPower,
   requireZone,
   zoneLootMultiplier,
@@ -36,6 +37,7 @@ import {
   extractBag,
   findActiveRun,
   insertRun,
+  readZoneProgress,
   spendPotion,
   type BagItem,
   type RunRow,
@@ -97,10 +99,36 @@ function pickRoll(seed: string, fightIndex: number): number {
   return seededRoll(`${seed}:enemy:${fightIndex}`);
 }
 
+/**
+ * Уровень врага в бою с данным номером. ОТ УЧАСТКА, не от игрока.
+ *
+ * Внутри участка уровень разыгрывается СВОИМ броском, а не тем же,
+ * что выбирает монстра: один бросок связал бы «кто вышел» с «какого
+ * он уровня», и половина монстров зоны встречалась бы только на своём
+ * конце диапазона. Это та же ошибка, что общий бросок на уклонение
+ * и блок (пункт 5 аудита v1.0), только в другом месте.
+ *
+ * Ключ отличается словом, а не цифрой: `seededRoll` лавинный, но
+ * различать потоки соседним символом — привычка, которая однажды уже
+ * стоила аварии.
+ */
+export function levelFor(
+  zone: ZoneSpec,
+  fightIndex: number,
+  segment: number,
+  seed: string,
+): number {
+  return enemyLevel(
+    zone,
+    segment,
+    seededRoll(`${seed}:level:${fightIndex}`),
+    isBossFight(fightIndex),
+  );
+}
+
 /** Кто ждёт в бою с данным номером. */
 export function enemyFor(zone: ZoneSpec, fightIndex: number, seed: string): MonsterSpec {
-  const last = raid.fightsPerRun - 1;
-  if (fightIndex >= last) return monsterSpec(zone.boss);
+  if (isBossFight(fightIndex)) return monsterSpec(zone.boss);
 
   const pool = zone.monsters;
   const at = Math.min(pool.length - 1, Math.floor(pickRoll(seed, fightIndex) * pool.length));
@@ -132,7 +160,7 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
   const maxHp = maxHpOf(player, combatBalance);
 
   const finished = row.state !== 'active' || row.fightIndex >= raid.fightsPerRun;
-  const next = finished ? null : nextEnemy(zone, row, profile, player.weapon.class);
+  const next = finished ? null : nextEnemy(zone, row, player.weapon.class);
 
   // Сумка показывается целиком: «содержимое сумки игроку известно,
   // он видел, как падал лут» (§7.2). Предметы в ней уже с номерами —
@@ -142,6 +170,8 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
   return {
     runId: row.id,
     zone: row.zone,
+    segment: row.segment,
+    segmentLevels: segmentBounds(zone, row.segment),
     difficulty: row.difficulty,
     state: row.state,
     fightIndex: row.fightIndex,
@@ -157,16 +187,11 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
   };
 }
 
-function nextEnemy(
-  zone: ZoneSpec,
-  row: RunRow,
-  profile: PlayerProfile,
-  playerWeapon: NextEnemy['weaponClass'],
-): NextEnemy {
+function nextEnemy(zone: ZoneSpec, row: RunRow, playerWeapon: NextEnemy['weaponClass']): NextEnemy {
   const spec = enemyFor(zone, row.fightIndex, row.seed);
   return {
     key: spec.key,
-    level: monsterLevel(profile.level, zone, row.difficulty),
+    level: levelFor(zone, row.fightIndex, row.segment, row.seed),
     armorClass: spec.armorClass,
     weaponClass: spec.weaponClass,
     boss: spec.boss,
@@ -182,25 +207,28 @@ function nextEnemy(
 export async function startRun(
   db: Database,
   profile: PlayerProfile,
-  input: { zone: RunRow['zone']; difficulty: Difficulty },
+  input: { zone: RunRow['zone']; segment: number; difficulty: Difficulty },
 ): Promise<RunView> {
   // Зона, которой ещё нет (`rift` отложен до M4), — отказ, а не бой
   // без противника.
   const zone = requireZone(input.zone);
 
-  /* ЗАПЕРТАЯ ЗОНА — ОТКАЗ, и это не декорация.
+  /* ЗАПЕРТЫЙ УЧАСТОК — ОТКАЗ, и отказывает СЕРВЕР.
 
-     Уровень врага зажат диапазоном зоны (§7.3 плюс §7.4), поэтому
-     в зоне выше своего уровня игрок видит ОДНОГО И ТОГО ЖЕ врага
-     на всех трёх сложностях, а множители добычи там ×1 / ×1.6 / ×2.5.
-     То есть «Кошмар» в переросшей зоне — бесплатное умножение добычи;
-     сейчас оно ничего не даёт только потому, что там убивают. Как
-     только снаряжение позволит выжить, это стало бы лучшей стратегией
-     в игре, и чинить пришлось бы уже с накопленной добычей на руках. */
-  if (!isZoneUnlocked(profile.level, zone)) {
+     Замок на карточке обходится одним запросом мимо интерфейса,
+     поэтому `isSegmentUnlocked` стоит и там, и здесь — одна функция
+     на оба места, как всё остальное про уровень.
+
+     Проверка теперь смотрит на ПРОХОЖДЕНИЕ, а не на уровень игрока.
+     Прежний замок по уровню существовал затем, чтобы переросший игрок
+     не фармил «Кошмар» в первой зоне за полную цену: уровень врага
+     ехал за игроком и упирался в потолок зоны. Он больше не едет,
+     и замок по уровню остался бы без причины. */
+  const progress = await readZoneProgress(db, profile.id);
+  if (!isSegmentUnlocked(ZONES, progress, zone.id, input.segment)) {
     throw new AppError('forbidden', {
-      messageKey: 'error.run.zoneLocked',
-      message: `зона «${zone.id}» открывается с уровня ${zoneMinLevel(zone)}`,
+      messageKey: 'error.run.segmentLocked',
+      message: `участок ${input.segment + 1} зоны «${zone.id}» ещё не открыт`,
     });
   }
 
@@ -223,6 +251,7 @@ export async function startRun(
   const row = await insertRun(db, {
     playerId: profile.id,
     zone: zone.id,
+    segment: input.segment,
     difficulty: input.difficulty,
     seed: randomUUID(),
     potionsLeft: raid.potionChargesPerRun,
@@ -271,7 +300,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   const maxHp = maxHpOf(player, combatBalance);
 
   const spec = enemyFor(zone, row.fightIndex, row.seed);
-  const level = monsterLevel(profile.level, zone, row.difficulty);
+  const level = levelFor(zone, row.fightIndex, row.segment, row.seed);
   const enemy = monsterFighter(spec, level, monsterPower(zone, row.difficulty));
 
   /* HP ПЕРЕНОСИТСЯ между боями (§7.2). Боец входит в бой с текущим
@@ -285,7 +314,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   const won = outcome.winner === 0;
   const nextIndex = row.fightIndex + 1;
 
-  const drops = won ? rollLoot(row, zone, profile.level, spec, level, nextIndex) : [];
+  const drops = won ? rollLoot(row, spec, level, nextIndex) : [];
   const rewards = rewardsFor(spec, level, won);
 
   /* Всё одной транзакцией: исход, HP, XP, золото, лут в сумку
@@ -311,6 +340,10 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     log,
     result: won ? 'win' : 'loss',
     rewardsJson: { xp: rewards.xp, gold: rewards.gold, drops: drops.length },
+    /* УЧАСТОК ЗАСЧИТЫВАЕТСЯ ЗА УБИТОГО БОССА, то есть за пятый бой.
+       Не за эвакуацию: уйти с добычей — это отказ от риска, и открывать
+       им следующий участок значило бы платить продвижением за отказ. */
+    clears: won && isBossFight(row.fightIndex) ? { zone: zone.id, segment: row.segment } : null,
   });
 
   const view = await runView(db, { profile: applied.profile, row: applied.run });
@@ -444,20 +477,19 @@ function rewardsFor(spec: MonsterSpec, level: number, won: boolean): Omit<FightR
  * округлялись бы в одно и то же, и три решения из четырёх ничего
  * бы не меняли.
  *
- * Сложность приходит через `zoneLootMultiplier`, а не константой тира:
- * оплата затухает вместе с разницей уровней, съеденной зажимом зоны.
+ * УРОВНЯ ИГРОКА ЗДЕСЬ БОЛЬШЕ НЕТ. Прежде оплата тира умножалась на долю
+ * уцелевшей разницы уровней игрока и врага — компенсация того, что
+ * уровень врага упирался в потолок зоны. Уровень врага приходит
+ * из участка и от игрока не зависит, так что компенсировать нечего.
  */
 function rollLoot(
   row: RunRow,
-  zone: ZoneSpec,
-  playerLevel: number,
   spec: MonsterSpec,
   level: number,
   nextIndex: number,
 ): readonly Omit<BagItem, 'id'>[] {
   const base = raid.dropsPerFight + (spec.boss ? raid.bossDropBonus : 0);
-  const expected =
-    base * lootMultiplierAt(nextIndex) * zoneLootMultiplier(playerLevel, zone, row.difficulty);
+  const expected = base * lootMultiplierAt(nextIndex) * zoneLootMultiplier(row.difficulty);
 
   const whole = Math.floor(expected);
   const fraction = expected - whole;

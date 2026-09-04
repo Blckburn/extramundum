@@ -215,6 +215,7 @@ select,
 .inv__controls,
 .inv__grid,
 .zone__difficulties,
+.zone__segments,
 .raid__actions,
 .screen__actions {
   gap: var(--tap-gap);
@@ -1471,6 +1472,42 @@ button[disabled],
 .zone__difficulties {
   display: flex;
   flex-wrap: wrap;
+}
+
+/* ── выбор участка ──
+   Две оси решения стоят РАЗНЫМИ рядами: участок задаёт уровень добычи,
+   сложность — её редкость. В одном ряду из двенадцати кнопок это
+   разделение пропало бы ровно там, где игрок выбирает. */
+.zone__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tap-gap);
+}
+
+.zone__segments {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+/* Выбранное отличается не только цветом (UI-BRIEF §2): рамка толще
+   и подложка другая. Цветом закодирована редкость, и занимать его
+   ещё и состоянием кнопки значило бы перегрузить один сигнал. */
+.zone__segment[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Пройденный помечается, потому что именно он открыл следующий:
+   без пометки непонятно, за что дали доступ. */
+.zone__segment--cleared::after {
+  content: '✓';
+  margin-left: 0.35rem;
+  color: var(--accent);
+}
+
+.zone__segment:disabled {
+  opacity: 0.45;
 }
 
 /* ── панель забега ── */

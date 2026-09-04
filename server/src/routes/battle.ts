@@ -77,6 +77,7 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
       estimateWinRate({
         profile,
         zone: input.zone,
+        segment: input.segment,
         difficulty: input.difficulty,
         runs: input.runs,
         loadout,
@@ -106,7 +107,7 @@ export function battleRoutes(db: Database): Hono<AppEnv> {
       runs,
       basis: base.basis,
       ...(base.against === undefined ? {} : { against: base.against }),
-      ...(base.enemyLevel === undefined ? {} : { enemyLevel: base.enemyLevel }),
+      ...(base.enemyLevels === undefined ? {} : { enemyLevels: base.enemyLevels }),
       ...(base.enemyPower === undefined ? {} : { enemyPower: base.enemyPower }),
       ...(hypothetical === null
         ? {}

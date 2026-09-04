@@ -1,4 +1,12 @@
-import { ALL_TRAIT_IDS, ARMOR_CLASSES, WEAPON_CLASSES, ZONE_IDS } from '@extramundum/shared';
+import {
+  ALL_TRAIT_IDS,
+  ARMOR_CLASSES,
+  WEAPON_CLASSES,
+  ZONE_IDS,
+  enemyLevel,
+  isSegmentUnlocked,
+  segmentBounds,
+} from '@extramundum/shared';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
@@ -95,6 +103,127 @@ describe('зоны', () => {
     // и вся таблица §4.3 становится украшением.
     const distinct = new Set(ZONES.map((z) => z.armorClass));
     expect(distinct.size).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('участки', () => {
+  it('у каждой зоны ровно четыре участка, и они покрывают её диапазон', () => {
+    for (const zone of ZONES) {
+      expect(zone.segments, zone.id).toHaveLength(4);
+      expect(zone.segments[0]?.[0], `${zone.id}: первый участок не с начала зоны`).toBe(
+        zone.levels[0],
+      );
+      expect(zone.segments[3]?.[1], `${zone.id}: последний участок не до конца зоны`).toBe(
+        zone.levels[1],
+      );
+    }
+  });
+
+  it('участки идут по возрастанию и не оставляют дыр', () => {
+    /* Дыра означала бы уровень, недоступный ни на одном участке,
+       то есть ilvl, за которым некуда идти. Пересечение на границе
+       (8-10, 10-12) — не дыра и допустимо: у Пустошей участки
+       не пересекаются, у остальных зон делят границу, и это данные,
+       а не формула. */
+    for (const zone of ZONES) {
+      for (let i = 0; i < zone.segments.length; i++) {
+        const [lo, hi] = zone.segments[i] ?? [0, 0];
+        expect(lo, `${zone.id}#${i}`).toBeLessThanOrEqual(hi);
+        const previous = zone.segments[i - 1];
+        if (previous === undefined) continue;
+        expect(lo, `${zone.id}#${i}: участок начинается раньше предыдущего`).toBeGreaterThanOrEqual(
+          previous[0],
+        );
+        expect(lo, `${zone.id}#${i}: между участками дыра`).toBeLessThanOrEqual(previous[1] + 1);
+      }
+    }
+  });
+
+  it('УРОВЕНЬ ВРАГА НЕ ЗАВИСИТ ОТ ИГРОКА — подпись это гарантирует', () => {
+    /* Проверка на класс ошибки, а не на значение: прежняя формула
+       принимала уровень игрока аргументом, и вернуть её значило бы
+       вернуть тупик. Аргументов у `enemyLevel` четыре, и уровня игрока
+       среди них нет — это видно по числу параметров. */
+    expect(enemyLevel.length).toBe(4);
+  });
+
+  it('уровень разыгрывается ВНУТРИ участка, а босс берёт верхнюю границу', () => {
+    const wastes = ZONES[0];
+    if (wastes === undefined) throw new Error('нет первой зоны');
+
+    for (let segment = 0; segment < 4; segment++) {
+      const [lo, hi] = wastes.segments[segment] ?? [0, 0];
+      const seen = new Set<number>();
+      for (let i = 0; i < 200; i++) {
+        const level = enemyLevel(wastes, segment, i / 200, false);
+        expect(level).toBeGreaterThanOrEqual(lo);
+        expect(level).toBeLessThanOrEqual(hi);
+        seen.add(level);
+      }
+      /* Пара к проверке диапазона: «в границах» верно и для броска,
+         который всегда даёт одно и то же. Участок обязан ронять ВСЕ
+         свои уровни, иначе ilvl 1 не существовал бы вовсе. */
+      expect(seen.size, `участок ${segment} выдал один уровень`).toBe(hi - lo + 1);
+
+      // Босс — последний бой участка, слабее рядового ему быть не с чего.
+      expect(enemyLevel(wastes, segment, 0, true)).toBe(hi);
+      expect(enemyLevel(wastes, segment, 0.999, true)).toBe(hi);
+    }
+  });
+
+  it('крайние броски не выходят за участок', () => {
+    const wastes = ZONES[0];
+    if (wastes === undefined) throw new Error('нет первой зоны');
+    const [lo, hi] = wastes.segments[3] ?? [0, 0];
+    expect(enemyLevel(wastes, 3, 0, false)).toBe(lo);
+    expect(enemyLevel(wastes, 3, 1, false)).toBe(hi);
+    // Бросок вне [0,1) не должен пробивать границу ни в какую сторону.
+    expect(enemyLevel(wastes, 3, -5, false)).toBe(lo);
+    expect(enemyLevel(wastes, 3, 5, false)).toBe(hi);
+  });
+
+  it('несуществующий участок — отказ, а не тихий первый', () => {
+    const wastes = ZONES[0];
+    if (wastes === undefined) throw new Error('нет первой зоны');
+    expect(() => segmentBounds(wastes, 4)).toThrow();
+    expect(() => segmentBounds(wastes, -1)).toThrow();
+  });
+});
+
+describe('отпирание участков', () => {
+  const first = ZONES[0]?.id ?? '';
+  const second = ZONES[1]?.id ?? '';
+
+  it('первый участок первой зоны открыт всегда', () => {
+    expect(isSegmentUnlocked(ZONES, {}, first, 0)).toBe(true);
+    // И только он: без прохождения дальше хода нет.
+    expect(isSegmentUnlocked(ZONES, {}, first, 1)).toBe(false);
+    expect(isSegmentUnlocked(ZONES, {}, second, 0)).toBe(false);
+  });
+
+  it('пройденный участок открывает следующий, и ровно один', () => {
+    expect(isSegmentUnlocked(ZONES, { [first]: 1 }, first, 1)).toBe(true);
+    expect(isSegmentUnlocked(ZONES, { [first]: 1 }, first, 2)).toBe(false);
+  });
+
+  it('пройденная зона целиком открывает первый участок следующей', () => {
+    expect(isSegmentUnlocked(ZONES, { [first]: 3 }, second, 0)).toBe(false);
+    expect(isSegmentUnlocked(ZONES, { [first]: 4 }, second, 0)).toBe(true);
+    // Через одну зону не перепрыгнуть.
+    expect(isSegmentUnlocked(ZONES, { [first]: 4 }, ZONES[2]?.id ?? '', 0)).toBe(false);
+  });
+
+  it('УРОВЕНЬ ИГРОКА В ОТПИРАНИИ НЕ УЧАСТВУЕТ', () => {
+    /* Прежний замок считался от `players.level`. Аргумента для него
+       здесь нет вовсе — это то же свойство подписи, что у `enemyLevel`,
+       и проверяется так же. */
+    expect(isSegmentUnlocked.length).toBe(4);
+  });
+
+  it('номер вне 0..3 закрыт, а не открыт по умолчанию', () => {
+    expect(isSegmentUnlocked(ZONES, { [first]: 4 }, first, 4)).toBe(false);
+    expect(isSegmentUnlocked(ZONES, { [first]: 4 }, first, -1)).toBe(false);
+    expect(isSegmentUnlocked(ZONES, { [first]: 4 }, 'такой-зоны-нет', 0)).toBe(false);
   });
 });
 

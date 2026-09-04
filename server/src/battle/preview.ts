@@ -1,10 +1,16 @@
 import { monsterSpec, zoneSpec } from '@extramundum/data/zones';
-import type { BattleSetup, Difficulty, PlayerProfile, ZoneId } from '@extramundum/shared';
+import {
+  segmentBounds,
+  type BattleSetup,
+  type Difficulty,
+  type PlayerProfile,
+  type ZoneId,
+} from '@extramundum/shared';
 import { resolveBattle } from '@extramundum/sim';
 
 import { fighterFromLoadout, type Loadout, type ProgressionBonuses } from '../items/loadout.ts';
 
-import { monsterFighter, monsterLevel, monsterPower } from './monsters.ts';
+import { monsterFighter, monsterPower } from './monsters.ts';
 import { combatBalance, sparringDummy } from './setup.ts';
 
 /**
@@ -36,13 +42,21 @@ import { combatBalance, sparringDummy } from './setup.ts';
  * и тот же предмет, увидит два разных числа и перестанет верить обоим.
  * Это же делает результат кэшируемым (GDD §6.4).
  */
-function runSeed(playerId: string, zone: ZoneId, difficulty: Difficulty, index: number): string {
-  return `${playerId}:${zone}:${difficulty}:${index}`;
+function runSeed(
+  playerId: string,
+  zone: ZoneId,
+  segment: number,
+  difficulty: Difficulty,
+  index: number,
+): string {
+  return `${playerId}:${zone}:${segment}:${difficulty}:${index}`;
 }
 
 export type PreviewInput = {
   readonly profile: PlayerProfile;
   readonly zone: ZoneId;
+  /** Участок зоны: он и задаёт уровень противников. */
+  readonly segment: number;
   readonly difficulty: Difficulty;
   readonly runs: number;
   /** Набор, ПО КОТОРОМУ считать. Гипотетический — тоже сюда. */
@@ -58,7 +72,16 @@ export type PreviewEstimate = {
   readonly runs: number;
   readonly basis: 'sparring-dummy' | 'zone-enemy';
   readonly against?: readonly string[];
-  readonly enemyLevel?: number;
+  /**
+   * Границы уровней участка, а не одно число.
+   *
+   * Внутри участка уровень разыгрывается броском, поэтому одно число
+   * описывало бы половину боёв неверно. Прогоны раскладываются
+   * по ВСЕМ парам «монстр × уровень» — по той же причине, по которой
+   * они раскладываются по монстрам: место — это набор случаев,
+   * и оценка обязана учитывать их все.
+   */
+  readonly enemyLevels?: readonly [number, number];
   /**
    * Насколько тир сложности усиливает врага. GDD §7.3.
    *
@@ -82,15 +105,20 @@ export function estimateWinRate(input: PreviewInput): PreviewEstimate {
     return { ...duel(input, player, [enemy]), basis: 'sparring-dummy' };
   }
 
-  const level = monsterLevel(input.profile.level, zone, input.difficulty);
+  const [lo, hi] = segmentBounds(zone, input.segment);
   const power = monsterPower(zone, input.difficulty);
-  const enemies = zone.monsters.map((key) => monsterFighter(monsterSpec(key), level, power));
+  const enemies = zone.monsters.flatMap((key) => {
+    const spec = monsterSpec(key);
+    const out = [];
+    for (let level = lo; level <= hi; level++) out.push(monsterFighter(spec, level, power));
+    return out;
+  });
 
   return {
     ...duel(input, player, enemies),
     basis: 'zone-enemy',
     against: zone.monsters,
-    enemyLevel: level,
+    enemyLevels: [lo, hi],
     enemyPower: power,
   };
 }
@@ -113,7 +141,7 @@ function duel(
     if (enemy === undefined) throw new Error('пустой набор противников для превью');
 
     const setup: BattleSetup = [player, enemy];
-    const seed = runSeed(input.profile.id, input.zone, input.difficulty, i);
+    const seed = runSeed(input.profile.id, input.zone, input.segment, input.difficulty, i);
     const { outcome } = resolveBattle(setup, combatBalance, seed);
     // Ничья (упёрлись в лимит тиков) победой не считается.
     if (outcome.winner === 0) wins++;

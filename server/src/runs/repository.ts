@@ -4,7 +4,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.ts';
 import { players } from '../db/schema/game.ts';
 import { items } from '../db/schema/items.ts';
-import { battles, runs } from '../db/schema/runs.ts';
+import { battles, runs, zoneProgress } from '../db/schema/runs.ts';
 import { toProfile } from '../players/repository.ts';
 
 /**
@@ -28,6 +28,7 @@ export type RunRow = {
   readonly id: string;
   readonly playerId: string;
   readonly zone: ZoneId;
+  readonly segment: number;
   readonly difficulty: Difficulty;
   readonly fightIndex: number;
   readonly seed: string;
@@ -41,6 +42,7 @@ function toRun(row: typeof runs.$inferSelect): RunRow {
     id: row.id,
     playerId: row.playerId,
     zone: row.zone,
+    segment: row.segment,
     difficulty: row.difficulty,
     fightIndex: row.fightIndex,
     seed: row.seed,
@@ -80,6 +82,7 @@ export async function insertRun(
   input: {
     playerId: string;
     zone: ZoneId;
+    segment: number;
     difficulty: Difficulty;
     seed: string;
     potionsLeft: number;
@@ -93,6 +96,7 @@ export async function insertRun(
       .values({
         playerId: input.playerId,
         zone: input.zone,
+        segment: input.segment,
         difficulty: input.difficulty,
         seed: input.seed,
         potionsLeft: input.potionsLeft,
@@ -134,6 +138,15 @@ export type FightOutcomeInput = {
   readonly log: BattleLog;
   readonly result: 'win' | 'loss';
   readonly rewardsJson: Record<string, number>;
+  /**
+   * Участок, который этот бой закрывает. `null` — не закрывает.
+   *
+   * Записывается ТОЙ ЖЕ транзакцией, что и сам бой. Отдельным запросом
+   * нельзя по той же причине, по которой нельзя стирать сумку: между
+   * двумя запросами игрок успел бы уйти, и участок засчитался бы
+   * за бой, награду за который он не получил.
+   */
+  readonly clears: { readonly zone: ZoneId; readonly segment: number } | null;
 };
 
 export type FightOutcomeResult = {
@@ -231,6 +244,21 @@ export async function applyFightOutcome(
       .returning();
 
     if (profile === undefined) throw new Error('профиль не найден');
+
+    /* УЧАСТОК ЗАСЧИТЫВАЕТСЯ ТУТ ЖЕ. Хранится максимум достигнутого,
+       поэтому повторное прохождение того же участка ничего не меняет,
+       а `greatest` не даёт откатить прогресс назад более ранним
+       участком — при повторе первого после четвёртого. */
+    if (input.clears !== null) {
+      const reached = input.clears.segment + 1;
+      await tx
+        .insert(zoneProgress)
+        .values({ playerId: input.playerId, zone: input.clears.zone, cleared: reached })
+        .onConflictDoUpdate({
+          target: [zoneProgress.playerId, zoneProgress.zone],
+          set: { cleared: sql`greatest(${zoneProgress.cleared}, ${reached})` },
+        });
+    }
 
     /* Забег закончился ПОБЕДОЙ в пятом бою — сумка едет в инвентарь
        той же транзакцией. Отдельным запросом это было бы окном, в котором
@@ -338,4 +366,28 @@ async function insertBag(
       container: 'inv' as const,
     })),
   );
+}
+
+/* ───────────────────────── прогресс по участкам ──────────────────────── */
+
+/**
+ * Сколько участков пройдено в каждой зоне.
+ *
+ * Отдаётся картой «зона → число», а не строками: потребителю нужен
+ * ответ «открыт ли участок», и этой формы для него достаточно.
+ * Незаписанная зона — ноль, а не отсутствие: отсутствие пришлось бы
+ * обрабатывать в каждом месте отдельно.
+ */
+export async function readZoneProgress(
+  db: Database,
+  playerId: string,
+): Promise<Readonly<Record<string, number>>> {
+  const rows = await db
+    .select({ zone: zoneProgress.zone, cleared: zoneProgress.cleared })
+    .from(zoneProgress)
+    .where(eq(zoneProgress.playerId, playerId));
+
+  const out: Record<string, number> = {};
+  for (const row of rows) out[row.zone] = row.cleared;
+  return out;
 }

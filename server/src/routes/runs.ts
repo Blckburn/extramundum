@@ -11,14 +11,13 @@ import {
   type RunView,
   type ZoneCard,
   type ZonesResponse,
-  isZoneUnlocked,
-  zoneMinLevel,
+  isSegmentUnlocked,
 } from '@extramundum/shared';
 import { matchupMultiplier } from '@extramundum/sim';
 import { Hono, type Context } from 'hono';
 
 import { requireSession } from '../auth/session.ts';
-import { monsterLevel, zoneLootMultiplier } from '../battle/monsters.ts';
+import { zoneLootMultiplier } from '../battle/monsters.ts';
 import { combatBalance } from '../battle/setup.ts';
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
@@ -26,7 +25,7 @@ import { fighterFromLoadout } from '../items/loadout.ts';
 import { loadoutOf } from '../items/repository.ts';
 import { findPlayerByUserId } from '../players/repository.ts';
 import { progressionOf } from '../progression/service.ts';
-import { findActiveRun } from '../runs/repository.ts';
+import { findActiveRun, readZoneProgress } from '../runs/repository.ts';
 import {
   drinkPotion,
   extract,
@@ -77,19 +76,19 @@ export function runRoutes(db: Database): Hono<AppEnv> {
     const loadout = await loadoutOf(db, profile.id);
     const weapon = fighterFromLoadout(profile, loadout, await progressionOf(db, profile)).weapon
       .class;
+    /* Прогресс читается ОДИН раз на все зоны: замок каждого участка
+       выводится из него той же функцией, которой откажет старт забега. */
+    const progress = await readZoneProgress(db, profile.id);
 
     const zones: ZoneCard[] = ZONES.map((zone) => {
       const difficulties = Object.fromEntries(
         DIFFICULTIES.map((key) => [
           key,
           {
-            enemyLevel: monsterLevel(profile.level, zone, key),
-            /* ДЕЙСТВУЮЩАЯ оплата, а не константа тира: в переросшей
-               зоне уровень врага упирается в потолок, и множитель
-               затухает вместе с разницей уровней. Показать константу
-               значило бы обещать ×2.5 и положить в сумку ×0.25. */
-            lootMultiplier: zoneLootMultiplier(profile.level, zone, key),
-            lootMultiplierBase: balanceData.raid.difficulty[key].lootMultiplier,
+            /* Константа тира и ничего сверху. Затухание по разнице
+               уровней снято вместе с самой разницей: уровень врага
+               приходит из участка и от игрока не зависит. */
+            lootMultiplier: zoneLootMultiplier(key),
             // Множитель тира, а не зоны: игрок сравнивает тиры между
             // собой, и множитель зоны в этом сравнении сократился бы.
             power: balanceData.raid.difficulty[key].power,
@@ -97,10 +96,24 @@ export function runRoutes(db: Database): Hono<AppEnv> {
         ]),
       ) as ZoneCard['difficulties'];
 
+      /* Уровень врага показывается ПО УЧАСТКАМ, а не по сложности:
+         сложность его больше не двигает вовсе, а участок задаёт целиком. */
+      const cleared = progress[zone.id] ?? 0;
+      const segments = zone.segments.map((levels, index) => ({
+        index,
+        levels,
+        // Замок считает та же функция, что откажет в старте забега:
+        // второе место означало бы экран, обещающий то, чего сервер
+        // не даст.
+        unlocked: isSegmentUnlocked(ZONES, progress, zone.id, index),
+        cleared: index < cleared,
+      }));
+
       return {
         id: zone.id,
         levels: zone.levels,
         armorClass: zone.armorClass,
+        segments,
         difficulties,
         monsters: zone.monsters,
         boss: zone.boss,
@@ -110,11 +123,8 @@ export function runRoutes(db: Database): Hono<AppEnv> {
           zone.armorClass === 'mixed'
             ? null
             : matchupMultiplier(weapon, zone.armorClass, combatBalance),
-        // Замок считает та же функция, что откажет в старте забега:
-        // второе место означало бы экран, обещающий то, чего сервер
-        // не даст.
-        unlocked: isZoneUnlocked(profile.level, zone),
-        minLevel: zoneMinLevel(zone),
+        // Зона открыта, если открыт её первый участок.
+        unlocked: segments[0]?.unlocked ?? false,
         hpRestore: restoreFractionOf(zone),
       };
     });

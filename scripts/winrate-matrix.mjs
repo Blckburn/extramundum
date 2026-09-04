@@ -803,13 +803,25 @@ function median(values) {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/**
+ * ЗОНА МЕРИТСЯ НА ЧЕТВЁРТОМ УЧАСТКЕ — той же точке, что и раньше.
+ *
+ * Прежде эталон стоял «на верхнем уровне диапазона зоны»; после
+ * перехода на участки это ровно верх четвёртого участка. Точка та же,
+ * поэтому числа сравнимы с прежними записями, а не начинают новую
+ * историю.
+ *
+ * Уровень врага усредняется по ВСЕМ уровням участка: внутри участка
+ * он разыгрывается броском, и мерить по одному значило бы мерить
+ * половину боёв. Прогоны делятся между уровнями, а не добавляются
+ * к ним, — иначе секция подорожала бы вдвое-втрое без нового знания.
+ */
 const zoneCurve = zones.map((zone, index) => {
-  const playerLevel = zone.levels[1];
-  // Нормальная сложность: уровень игрока −1, зажатый диапазоном зоны.
-  const enemyLevel = Math.min(
-    zone.levels[1],
-    Math.max(zone.levels[0], playerLevel + balance.raid.difficulty.normal.enemyLevelOffset),
-  );
+  const segment = zone.segments[zone.segments.length - 1];
+  const playerLevel = segment[1];
+  const enemyLevels = [];
+  for (let lv = segment[0]; lv <= segment[1]; lv++) enemyLevels.push(lv);
+  const levelRuns = Math.max(20, Math.round(zoneRuns / enemyLevels.length));
 
   /* Носитель ОДИН на все зоны и сложности — `forbidden`, самый ровный
      из четырёх. Разный носитель по зонам смешал бы трудность зоны
@@ -840,14 +852,16 @@ const zoneCurve = zones.map((zone, index) => {
     return (
       zone.monsters
         .map((key) => {
-          const rates = players.map(
-            (player, i) =>
-              duel(
-                player,
-                monsterFighter(monsterSpecs[key], enemyLevel, power),
-                `seed${sd}-${zone.id}-${key}-${i}-${power.toFixed(3)}`,
-                zoneRuns,
-              ).rate,
+          const rates = players.flatMap((player, i) =>
+            enemyLevels.map(
+              (lv) =>
+                duel(
+                  player,
+                  monsterFighter(monsterSpecs[key], lv, power),
+                  `seed${sd}-${zone.id}-${key}-${i}-lv${lv}-${power.toFixed(3)}`,
+                  levelRuns,
+                ).rate,
+            ),
           );
           return rates.reduce((a, b) => a + b, 0) / rates.length;
         })
@@ -878,12 +892,33 @@ const zoneCurve = zones.map((zone, index) => {
   const byLean = byLeanOn(0);
 
   const across = (spec, tag) => {
-    const rates = kits.map(
-      (player, i) =>
-        duel(player, monsterFighter(spec, enemyLevel, zone.power), `${tag}-${i}`, zoneRuns).rate,
+    const rates = kits.flatMap((player, i) =>
+      enemyLevels.map(
+        (lv) =>
+          duel(player, monsterFighter(spec, lv, zone.power), `${tag}-${i}-lv${lv}`, levelRuns).rate,
+      ),
     );
     return rates.reduce((a, b) => a + b, 0) / rates.length;
   };
+
+  /** Винрейт бойца против пула зоны, усреднённый по уровням участка. */
+  const versusPool = (fighter, tag) =>
+    zone.monsters
+      .map(
+        (key) =>
+          enemyLevels
+            .map(
+              (lv) =>
+                duel(
+                  fighter,
+                  monsterFighter(monsterSpecs[key], lv, zone.power),
+                  `${tag}-${key}-lv${lv}`,
+                  levelRuns,
+                ).rate,
+            )
+            .reduce((a, b) => a + b, 0) / enemyLevels.length,
+      )
+      .reduce((a, b) => a + b, 0) / zone.monsters.length;
 
   const perMonster = zone.monsters.map((key) => ({
     key,
@@ -898,34 +933,15 @@ const zoneCurve = zones.map((zone, index) => {
      от трейтов. */
   const cardsOnly = byLean.map(({ lean, kit }) => ({
     lean,
-    rate:
-      zone.monsters
-        .map(
-          (key) =>
-            duel(
-              { ...kit, traits: [balance.archetypes.forbidden.trait] },
-              monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-              `cards-${zone.id}-${lean}-${key}`,
-              zoneRuns,
-            ).rate,
-        )
-        .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    rate: versusPool(
+      { ...kit, traits: [balance.archetypes.forbidden.trait] },
+      `cards-${zone.id}-${lean}`,
+    ),
   }));
 
   const leanRates = byLean.map(({ lean, kit }) => ({
     lean,
-    rate:
-      zone.monsters
-        .map(
-          (key) =>
-            duel(
-              kit,
-              monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-              `lean-${zone.id}-${lean}-${key}`,
-              zoneRuns,
-            ).rate,
-        )
-        .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    rate: versusPool(kit, `lean-${zone.id}-${lean}`),
   }));
 
   /* РАЗМАХ ПО НАКЛОНАМ ТОЖЕ МЕРИТСЯ ПО МЕДИАНЕ СИДОВ, и по той же
@@ -933,19 +949,11 @@ const zoneCurve = zones.map((zone, index) => {
      Печатаются оба — сид 0 для сравнимости с прежними записями
      и медиана как настоящее число. */
   const spreadOn = (sd, bare) => {
-    const rates = byLeanOn(sd).map(
-      ({ lean, kit }) =>
-        zone.monsters
-          .map(
-            (key) =>
-              duel(
-                bare ? { ...kit, traits: [balance.archetypes.forbidden.trait] } : kit,
-                monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-                `${bare ? 'cards' : 'lean'}-s${sd}-${zone.id}-${lean}-${key}`,
-                zoneRuns,
-              ).rate,
-          )
-          .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    const rates = byLeanOn(sd).map(({ lean, kit }) =>
+      versusPool(
+        bare ? { ...kit, traits: [balance.archetypes.forbidden.trait] } : kit,
+        `${bare ? 'cards' : 'lean'}-s${sd}-${zone.id}-${lean}`,
+      ),
     );
     return Math.max(...rates) - Math.min(...rates);
   };
@@ -992,7 +1000,7 @@ const zoneCurve = zones.map((zone, index) => {
     id: zone.id,
     power: zone.power,
     playerLevel,
-    enemyLevel,
+    enemyLevels,
     rate,
     bySeed,
     seedRates,
@@ -1136,13 +1144,10 @@ function restoreFractionOf(zone) {
  * который ими пользуется. Числа расходятся, и показывать одно значило бы
  * выбрать за человека, какой вопрос он задал.
  */
-function simulateRun(player, zone, seedTag, withPotions) {
+function simulateRun(player, zone, segment, seedTag, withPotions) {
   const maxHp = maxHpOf(player, balance);
   const restore = restoreFractionOf(zone);
-  const enemyLevel = Math.min(
-    zone.levels[1],
-    Math.max(zone.levels[0], player.level + balance.raid.difficulty.normal.enemyLevelOffset),
-  );
+  const bounds = zone.segments[segment];
 
   let hp = maxHp;
   let potions = withPotions ? balance.raid.potionChargesPerRun : 0;
@@ -1176,8 +1181,17 @@ function simulateRun(player, zone, seedTag, withPotions) {
     );
     const spec = last ? monsterSpecs[zone.boss] : monsterSpecs[pool[at]];
 
+    /* УРОВЕНЬ ТОЖЕ БРОСАЕТСЯ, и СВОИМ броском, как на сервере: один
+       бросок на «кто вышел» и «какого он уровня» связал бы их, и часть
+       монстров встречалась бы только на своём конце диапазона. Босс
+       берёт верхнюю границу участка. */
+    const [lo, hi] = bounds;
+    const level = last
+      ? hi
+      : Math.min(hi, lo + Math.floor(seededRoll(`${seedTag}:level:${fight}`) * (hi - lo + 1)));
+
     const { outcome } = resolveBattle(
-      [{ ...player, startHp: hp }, monsterFighter(spec, enemyLevel, zone.power)],
+      [{ ...player, startHp: hp }, monsterFighter(spec, level, zone.power)],
       balance,
       `${seedTag}-f${fight}`,
     );
@@ -1190,7 +1204,11 @@ function simulateRun(player, zone, seedTag, withPotions) {
   return cleared;
 }
 
-/** Доходимость меряется на ПЕРВОЙ зоне: первая сессия идёт туда. */
+/**
+ * Доходимость меряется на ПЕРВОМ УЧАСТКЕ первой зоны: первая сессия
+ * идёт туда, и туда же теперь пускают — уровень игрока доступа
+ * не открывает, открывает прохождение.
+ */
 const REACH_ZONE = zones[0];
 
 /**
@@ -1218,7 +1236,7 @@ const reach = ARCHETYPES.map((archetype) => {
   const tally = (withPotions) => {
     const counts = [0, 0, 0, 0, 0, 0];
     for (let i = 0; i < reachRuns; i++) {
-      counts[simulateRun(player, REACH_ZONE, `reach-${archetype}-${i}`, withPotions)]++;
+      counts[simulateRun(player, REACH_ZONE, 0, `reach-${archetype}-${i}`, withPotions)]++;
     }
     // Доля забегов, в которых пройдено НЕ МЕНЬШЕ n боёв.
     const atLeast = (n) => counts.slice(n).reduce((a, b) => a + b, 0) / reachRuns;
@@ -1249,11 +1267,27 @@ const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) 
  */
 const REACH_LEVELS = [1, 10, 20];
 
-const zoneForLevel = (level) =>
-  zones.find((z) => level >= z.levels[0] && level <= z.levels[1]) ?? zones[zones.length - 1];
+/**
+ * УЧАСТОК, СООТВЕТСТВУЮЩИЙ УРОВНЮ ИГРОКА.
+ *
+ * Прежде здесь была зона: доходимость мерилась «игрок уровня L в зоне,
+ * куда его пускают». Зон пять, участков двадцать, и вопрос теперь
+ * точнее — какой участок игрок этого уровня способен пройти. Берётся
+ * первый, чей верх не ниже уровня: это и есть место, куда он дошёл бы,
+ * двигаясь по лестнице.
+ */
+const segmentForLevel = (level) => {
+  for (const zone of zones) {
+    for (let i = 0; i < zone.segments.length; i++) {
+      if (level <= zone.segments[i][1]) return { zone, segment: i };
+    }
+  }
+  const last = zones[zones.length - 1];
+  return { zone: last, segment: last.segments.length - 1 };
+};
 
 const reachByLevel = REACH_LEVELS.map((level) => {
-  const zone = zoneForLevel(level);
+  const { zone, segment } = segmentForLevel(level);
   // На первом уровне усредняем по архетипам, дальше — по наклонам
   // драфта: с уровня выбор игрока начинает значить больше, чем причина
   // изгнания.
@@ -1279,7 +1313,9 @@ const reachByLevel = REACH_LEVELS.map((level) => {
     for (const [n, player] of players.entries()) {
       const counts = [0, 0, 0, 0, 0, 0];
       for (let i = 0; i < reachRuns; i++) {
-        counts[simulateRun(player, zone, `reachlv-${level}-s${sd}-${n}-${i}`, withPotions)]++;
+        counts[
+          simulateRun(player, zone, segment, `reachlv-${level}-s${sd}-${n}-${i}`, withPotions)
+        ]++;
       }
       const atLeast = (k) => counts.slice(k).reduce((a, b) => a + b, 0) / reachRuns;
       totals.first += atLeast(2) / players.length;
@@ -1484,14 +1520,14 @@ if (AS_JSON) {
   );
   console.log('');
   console.log(
-    `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('медиана', 9)}${padL('шаг', 8)}${padL('сид 0', 8)}${padL('ориентир', 10)}${padL('босс', 8)}   по монстрам`,
+    `${pad('зона', 12)}${padL('ур.', 8)}${padL('power', 8)}${padL('медиана', 9)}${padL('шаг', 8)}${padL('сид 0', 8)}${padL('ориентир', 10)}${padL('босс', 8)}   по монстрам`,
   );
   console.log('─'.repeat(86));
   for (const [i, z] of zoneCurve.entries()) {
     const st = i === 0 ? null : zoneSteps[i - 1];
     console.log(
       pad(z.id, 12) +
-        padL(`${z.playerLevel}/${z.enemyLevel}`, 5) +
+        padL(`${z.playerLevel}/${z.enemyLevels[0]}-${z.enemyLevels[z.enemyLevels.length - 1]}`, 8) +
         padL(z.power.toFixed(2), 8) +
         padL(pct(z.medianRate), 9) +
         padL(st === null ? '—' : `${(st.step * 100).toFixed(1)}`, 8) +

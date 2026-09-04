@@ -118,47 +118,91 @@ async function render(surface: Surface): Promise<void> {
           ),
         ),
       ),
-      // Запертая зона показывает ЗАМОК И УРОВЕНЬ, а не пустое место:
+      // Запертая зона показывает ЗАМОК И ПРИЧИНУ, а не пустое место:
       // «сюда нельзя» без «а когда можно» — это тупик, а не правило.
-      zone.unlocked
-        ? el('div', { class: 'zone__difficulties' }, difficultyButtons(zone))
-        : el('p', { class: 'zone__locked' }, [t('zone.locked', { level: zone.minLevel })]),
+      zone.unlocked ? segmentPicker(zone) : el('p', { class: 'zone__locked' }, [t('zone.locked')]),
     ]);
     return card;
   }
 
-  function difficultyButtons(zone: ZoneCard): HTMLElement[] {
+  /**
+   * Выбор участка, затем сложности. GDD §7.4 в редакции после тупика.
+   *
+   * ДВЕ ОСИ, И КАЖДАЯ ОТВЕЧАЕТ ЗА СВОЁ: участок задаёт уровень добычи,
+   * сложность — её редкость. Сложить их в один список из двенадцати
+   * кнопок значило бы спрятать это разделение ровно там, где игрок
+   * принимает решение.
+   *
+   * По умолчанию выбран САМЫЙ ГЛУБОКИЙ открытый участок: он и есть
+   * то место, ради которого игрок сюда пришёл. Нижние остаются
+   * доступны — в этом вся правка.
+   */
+  function segmentPicker(zone: ZoneCard): HTMLElement {
+    const open = zone.segments.filter((segment) => segment.unlocked);
+    let chosen = open[open.length - 1]?.index ?? 0;
+
+    const tiers = el('div', { class: 'zone__difficulties' }, []);
+    const row = el('div', { class: 'zone__segments' }, []);
+
+    const paint = (): void => {
+      clear(row);
+      row.append(
+        ...zone.segments.map((segment) => {
+          const button = el('button', {
+            class:
+              'button button--small zone__segment' +
+              (segment.index === chosen ? ' zone__segment--active' : '') +
+              (segment.cleared ? ' zone__segment--cleared' : ''),
+            type: 'button',
+            /* Выбранное отличается не только цветом (бриф, п. 2):
+               `aria-pressed` даёт и рамку через CSS, и голос экранному
+               диктору. */
+            'aria-pressed': segment.index === chosen ? 'true' : 'false',
+          }) as HTMLButtonElement;
+          button.textContent = t('raid.segment', {
+            index: segment.index + 1,
+            min: segment.levels[0],
+            max: segment.levels[1],
+          });
+          if (!segment.unlocked) {
+            button.disabled = true;
+            // Отключённое ОБЪЯСНЯЕТ причину (бриф, п. 2).
+            button.title = t('raid.segmentLocked');
+          }
+          button.addEventListener('click', () => {
+            chosen = segment.index;
+            paint();
+          });
+          return button;
+        }),
+      );
+
+      clear(tiers);
+      tiers.append(...difficultyButtons(zone, chosen));
+    };
+
+    paint();
+    return el('div', { class: 'zone__pick' }, [row, tiers]);
+  }
+
+  function difficultyButtons(zone: ZoneCard, segment: number): HTMLElement[] {
     return (['normal', 'dangerous', 'nightmare'] as const).map((difficulty) => {
       const rules = zone.difficulties[difficulty];
-      /* Оплата УРЕЗАНА: зона перерослась, уровень врага упёрся
-         в потолок диапазона. Молча урезанная награда читается как
-         поломка, поэтому причина стоит рядом с числом. */
-      const faded = rules.lootMultiplier < rules.lootMultiplierBase;
       const button = el('button', { class: 'button button--small', type: 'button' }, [
-        /* Сила тира названа числом. До правки §7.3 тир двигал уровень
-           врага, и разницу было видно по нему; теперь уровень одинаков
-           у всех тиров, и без множителя «Опасная» отличалась бы
-           от «Обычной» только словом. */
-        `${t(`difficulty.${difficulty}`)} · ${t('raid.enemyLevel', { level: rules.enemyLevel })}` +
+        /* Сила тира названа числом. Тир НЕ ДВИГАЕТ УРОВЕНЬ врага —
+           уровень целиком приходит из участка, — поэтому без множителя
+           «Опасная» отличалась бы от «Обычной» только словом. */
+        `${t(`difficulty.${difficulty}`)}` +
           (rules.power === 1
             ? ''
             : ` · ${t('raid.enemyPower', { value: rules.power.toFixed(2) })}`) +
           ` · ${t('raid.lootMultiplier', { value: rules.lootMultiplier.toFixed(2) })}`,
-        ...(faded
-          ? [
-              el('span', { class: 'zone__faded' }, [
-                t('raid.lootFaded', {
-                  base: rules.lootMultiplierBase.toFixed(2),
-                }),
-              ]),
-            ]
-          : []),
       ]) as HTMLButtonElement;
 
       button.addEventListener('click', () => {
         button.disabled = true;
         void api
-          .startRun({ zone: zone.id, difficulty })
+          .startRun({ zone: zone.id, segment, difficulty })
           .then(async () => {
             await refresh();
             draw();
@@ -188,7 +232,11 @@ async function render(surface: Surface): Promise<void> {
     const panel = el('section', { class: 'raid__run' }, [
       el('h1', { class: 'screen__title' }, [t(`zone.${current.zone}`)]),
       el('p', { class: 'raid__lead' }, [
-        `${t(`difficulty.${current.difficulty}`)} · ${t('raid.progress', {
+        `${t('raid.runSegment', {
+          index: current.segment + 1,
+          min: current.segmentLevels[0],
+          max: current.segmentLevels[1],
+        })} · ${t(`difficulty.${current.difficulty}`)} · ${t('raid.progress', {
           done: current.fightIndex,
           total: current.fightsTotal,
         })} · ${t('raid.lootMultiplier', { value: current.lootMultiplier })} · ${t('zone.restore', {

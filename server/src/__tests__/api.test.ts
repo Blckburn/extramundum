@@ -343,7 +343,12 @@ describe.skipIf(!HAS_DB)('API', () => {
    * и что клиент не может подсунуть свои статы.
    */
   describe('simulate/preview', () => {
-    const body = { zone: 'wastes', difficulty: 'normal', loadoutHash: LOADOUT } as const;
+    const body = {
+      zone: 'wastes',
+      segment: 0,
+      difficulty: 'normal',
+      loadoutHash: LOADOUT,
+    } as const;
 
     it('без сессии — 401', async () => {
       expect((await post(ctx, API_ROUTES.simulatePreview, body)).status).toBe(401);
@@ -359,7 +364,7 @@ describe.skipIf(!HAS_DB)('API', () => {
         runs: number;
         basis: string;
         against?: string[];
-        enemyLevel?: number;
+        enemyLevels?: [number, number];
       };
 
       expect(payload.runs).toBe(100);
@@ -372,7 +377,11 @@ describe.skipIf(!HAS_DB)('API', () => {
          не проверить. */
       expect(payload.basis).toBe('zone-enemy');
       expect(payload.against?.length ?? 0).toBeGreaterThan(0);
-      expect(payload.enemyLevel).toBeGreaterThanOrEqual(1);
+      /* Уровни приходят ДИАПАЗОНОМ участка, а не одним числом: внутри
+         участка уровень разыгрывается броском, и превью раскладывает
+         прогоны по всем парам «монстр × уровень». */
+      expect(payload.enemyLevels?.[0]).toBeGreaterThanOrEqual(1);
+      expect(payload.enemyLevels?.[1]).toBeGreaterThanOrEqual(payload.enemyLevels?.[0] ?? 0);
     });
 
     it('одинаковый запрос даёт одинаковый ответ', async () => {

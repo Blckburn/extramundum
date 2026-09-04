@@ -32,24 +32,24 @@ import {
 export const combatBalance: CombatBalance = combatBalanceSchema.parse(balanceData);
 
 const sparring = balanceData.sparring;
-const difficulties = balanceData.raid.difficulty;
 
 /**
  * Спарринг-манекен.
  *
- * Это НЕ противник из зоны: генерация врагов, их снаряжение и лут —
- * M3 (GDD §11). Манекен — набор чисел, отмасштабированный от уровня
- * игрока со сдвигом по сложности, и ничего кроме. У него нет ни имени,
- * ни поведения, ни наград.
+ * Это НЕ противник из зоны: настоящий враг приходит из участка, и его
+ * уровень от игрока не зависит вовсе. Манекен — набор чисел
+ * от уровня ИГРОКА, и ничего кроме. У него нет ни имени, ни поведения,
+ * ни наград.
  *
- * Зона на его силу пока не влияет, и это осознанно: подобрать «примерно
- * правдоподобную» силу для каждой зоны значило бы придумать баланс зон
- * раньше, чем появятся сами зоны. Ответ эндпоинта помечен `basis`,
- * чтобы клиент не выдавал это число за оценку по зоне.
+ * СЛОЖНОСТЬ НА НЕГО НЕ ВЛИЯЕТ, и это следствие правки, а не упущение:
+ * тир несёт множитель силы ЗОНЫ, а зоны у манекена нет. Прежде тир
+ * двигал его уровень — но тем же сдвигом, что и у настоящего врага,
+ * а сдвиг был одинаков у всех трёх тиров и потому ничего не значил.
+ * Ответ эндпоинта помечен `basis`, чтобы клиент не выдавал это число
+ * за оценку по зоне.
  */
-export function sparringDummy(playerLevel: number, difficulty: Difficulty): FighterConfig {
-  const offset = difficulties[difficulty].enemyLevelOffset;
-  const level = Math.max(1, playerLevel + offset);
+export function sparringDummy(playerLevel: number, _difficulty: Difficulty): FighterConfig {
+  const level = Math.max(1, playerLevel);
   const stat = Math.round(level * sparring.statPerLevel);
 
   return fighterConfigSchema.parse({
