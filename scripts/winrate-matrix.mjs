@@ -1022,6 +1022,200 @@ const zoneCurve = zones.map((zone, index) => {
 
 const zoneBreaches = zoneCurve.filter((z) => !z.within);
 
+/* ──────────────── ЛЕСТНИЦА УЧАСТКОВ · GDD §7.4 ─────────────────
+ *
+ * ЗАЧЕМ ДВАДЦАТЬ ТОЧЕК, А НЕ ПЯТЬ. Кривая зон меряет по одной точке
+ * на зону — четвёртый участок, — и этого хватало, пока внутри зоны
+ * ничего не происходило: уровень врага там был один. Теперь внутри
+ * зоны четыре ступени, и трудность на них РАЗНАЯ: кривая монстров
+ * `baseStat + statPerLevel × уровень` растёт линейно, а снаряжение
+ * игрока — через `1 + ilvl × ilvlScale` в каждом аффиксе. Это разные
+ * наклоны, и расходятся они внутри зоны так же, как между зонами.
+ * Замерять только верх зоны значило бы не видеть три ступени из
+ * четырёх — ровно тот наклон, который однажды уже уехал
+ * (`balance.monsters.$slope`).
+ *
+ * ПОЧЕМУ ШАГ МЕЖДУ УЧАСТКАМИ НЕ ПРОВЕРЯЕТСЯ ЦЕЛЬЮ. Цель кривой —
+ * 10 п.п. между зонами; между участками это ~2.5 п.п., что ниже шума
+ * замера (ширина 10-90 процентиля шага на 25 сидах — единицы пунктов).
+ * Проверять цель на такой величине значило бы проверять шум. Поэтому
+ * у лестницы проверяется только УБЫВАНИЕ, и с допуском: ступень вверх
+ * означает, что участок легче предыдущего, а это перевёрнутая
+ * прогрессия при любом допуске.
+ *
+ * ЭТАЛОН ЗДЕСЬ ДЕШЕВЛЕ, ЧЕМ У КРИВОЙ ЗОН: три класса оружия вместо
+ * двенадцати комплектов. Три обязательны — с одним классом число
+ * мерило бы матчап, а не трудность места. Наклоны драфта сняты:
+ * их разброс меряется отдельной секцией, и платить за него
+ * двадцатикратно незачем.
+ */
+const ladderRuns = Math.max(30, Math.round(zoneRuns / 2));
+
+const ladder = zones.flatMap((zone) =>
+  zone.segments.map((bounds, segment) => {
+    const [lo, hi] = bounds;
+    const levels = [];
+    for (let lv = lo; lv <= hi; lv++) levels.push(lv);
+
+    /* Игрок берётся уровнем и снаряжением ПО УЧАСТКУ: это тот, кто
+       дошёл сюда по лестнице, а не тот, кто перерос. Перерастание
+       больше не помогает — в этом вся правка. */
+    const kitsFor = (sd) =>
+      ['light', 'balanced', 'heavy'].map((weaponClass) =>
+        tierGearedPlayer(
+          'forbidden',
+          hi,
+          hi,
+          gearSeedTag(`${zone.id}-${segment}`, sd),
+          weaponClass,
+          'def',
+        ),
+      );
+
+    const rateOnSeed = (sd) => {
+      const players = kitsFor(sd);
+      return (
+        zone.monsters
+          .map((key) => {
+            const rates = players.flatMap((player, i) =>
+              levels.map(
+                (lv) =>
+                  duel(
+                    player,
+                    monsterFighter(monsterSpecs[key], lv, zone.power),
+                    `seg${sd}-${zone.id}-${segment}-${key}-${i}-lv${lv}`,
+                    ladderRuns,
+                  ).rate,
+              ),
+            );
+            return rates.reduce((a, b) => a + b, 0) / rates.length;
+          })
+          .reduce((a, b) => a + b, 0) / zone.monsters.length
+      );
+    };
+
+    const seedRates = [];
+    for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd));
+
+    return {
+      zone: zone.id,
+      segment,
+      levels: bounds,
+      medianRate: median(seedRates),
+      seedRates,
+    };
+  }),
+);
+
+/**
+ * Ступени лестницы. Нарушением считается ступень ВВЕРХ: участок легче
+ * предыдущего — это перевёрнутая прогрессия, и допуском она
+ * не покрывается.
+ *
+ * Допуск нужен на шум: медиана 25 сидов имеет собственную ширину,
+ * и требовать строгого убывания значило бы валить прогон на разнице
+ * в один пункт, которой в игре нет.
+ */
+const LADDER_RISE_TOLERANCE = 0.03;
+
+const ladderSteps = ladder.slice(1).map((point, i) => {
+  const prev = ladder[i];
+  const step = prev.medianRate - point.medianRate;
+  return {
+    from: `${prev.zone}#${prev.segment + 1}`,
+    to: `${point.zone}#${point.segment + 1}`,
+    step,
+    /* Граница зоны — не то же самое, что ступень внутри зоны: там
+       меняется и множитель силы зоны, и ожидаемый шаг вчетверо
+       больше. Помечается, чтобы в выводе было видно, где что. */
+    crossesZone: prev.zone !== point.zone,
+    rises: step < -LADDER_RISE_TOLERANCE,
+  };
+});
+const ladderBreaches = ladderSteps.filter((s) => s.rises);
+
+/* ──────────── ТУПИК НЕВОСПРОИЗВОДИМ · PLAYTEST 2026-09-04 ────────────
+ *
+ * Главная проверка этой правки, и она отвечает не на «сбалансировано
+ * ли», а на «есть ли выход». Прежде уровень врага считался как
+ * `clamp(уровень игрока + сдвиг, мин зоны, макс зоны)`: игрок рос, зона
+ * росла с ним, а снаряжение оставалось того уровня, на котором добыто.
+ * Игрок в эпиках ilvl 2 к шестому уровню не мог пройти первую зону
+ * и не мог добыть ничего лучше — выхода средствами игры не было.
+ *
+ * СВОЙСТВО, КОТОРОЕ ОБЯЗАНО ДЕРЖАТЬСЯ: пройденный участок остаётся
+ * проходимым НАВСЕГДА. Формально — винрейт на участке не падает
+ * с ростом уровня игрока. Меряется на первом участке первой зоны:
+ * он и есть то место, куда игрок возвращается.
+ *
+ * ЭТО ТЕСТ НА ОТСУТСТВИЕ ПЛОХОГО ПОВЕДЕНИЯ, поэтому рядом стоит пара:
+ * уровень игрока в выборке обязан РЕАЛЬНО меняться и что-то менять,
+ * иначе «не падает» верно и для замера, который меряет одно и то же
+ * число четыре раза.
+ */
+const DEADLOCK_LEVELS = [2, 6, 12, 24, 40];
+const deadlockZone = zones[0];
+const deadlockSegment = 0;
+
+const deadlock = DEADLOCK_LEVELS.map((level) => {
+  const [lo, hi] = deadlockZone.segments[deadlockSegment];
+  const levels = [];
+  for (let lv = lo; lv <= hi; lv++) levels.push(lv);
+
+  const rateOnSeed = (sd) => {
+    const players = ['light', 'balanced', 'heavy'].map((weaponClass) =>
+      /* Снаряжение ПО УРОВНЮ ИГРОКА, а не по участку: моделируется
+         тот, кто вырос и вернулся. Именно он и упирался в тупик. */
+      tierGearedPlayer(
+        'forbidden',
+        level,
+        level,
+        gearSeedTag(`dead-${level}`, sd),
+        weaponClass,
+        'def',
+      ),
+    );
+    return (
+      deadlockZone.monsters
+        .map((key) => {
+          const rates = players.flatMap((player, i) =>
+            levels.map(
+              (lv) =>
+                duel(
+                  player,
+                  monsterFighter(monsterSpecs[key], lv, deadlockZone.power),
+                  `dead-${level}-s${sd}-${key}-${i}-lv${lv}`,
+                  ladderRuns,
+                ).rate,
+            ),
+          );
+          return rates.reduce((a, b) => a + b, 0) / rates.length;
+        })
+        .reduce((a, b) => a + b, 0) / deadlockZone.monsters.length
+    );
+  };
+
+  const seedRates = [];
+  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd));
+  return { level, medianRate: median(seedRates) };
+});
+
+/* Допуск на шум медианы: падение в пределах него — не тупик,
+   а разброс замера. Настоящий тупик выглядел иначе — десятки пунктов. */
+const DEADLOCK_TOLERANCE = 0.05;
+
+const deadlockBreaches = deadlock.slice(1).filter((point, i) => {
+  const prev = deadlock[i];
+  return point.medianRate < prev.medianRate - DEADLOCK_TOLERANCE;
+});
+
+/* ПАРА К ПРОВЕРКЕ ВЫШЕ. «Не падает» верно и для замера, где уровень
+   игрока не меняет вообще ничего, — а именно так выглядела бы
+   поломка, вернувшая уровень игрока в расчёт врага наоборот.
+   Рост обязан быть виден. */
+const deadlockFlat =
+  deadlock[deadlock.length - 1].medianRate - deadlock[0].medianRate < DEADLOCK_TOLERANCE;
+
 /**
  * ФОРМА КРИВОЙ — шаги между соседними зонами, по медиане сидов.
  *
@@ -1376,6 +1570,11 @@ const report = () => ({
   reach,
   breaches,
   breachesShape: stepBreaches,
+  ladder,
+  ladderSteps,
+  breachesLadder: ladderBreaches,
+  deadlock,
+  breachesDeadlock: deadlockBreaches,
   zoneBreaches,
 });
 
@@ -1727,6 +1926,50 @@ if (AS_JSON) {
     console.log('`--calibrate` теперь ищет её, а не попадание одного сида.');
   }
 
+  /* ЛЕСТНИЦА УЧАСТКОВ — двадцать точек вместо пяти. Кривая зон меряет
+     четвёртый участок каждой зоны; здесь видно, что происходит внутри,
+     а внутри теперь происходит: уровень врага растёт по ступеням. */
+  console.log('\nЛЕСТНИЦА УЧАСТКОВ · медиана по сидам, ступень к предыдущему');
+  console.log('─'.repeat(66));
+  console.log(
+    `${pad('участок', 18)}${padL('уровни', 9)}${padL('медиана', 10)}${padL('ступень', 10)}`,
+  );
+  for (const [i, point] of ladder.entries()) {
+    const st = i === 0 ? null : ladderSteps[i - 1];
+    const mark = st === null ? '' : st.crossesZone ? '  ← граница зоны' : '';
+    console.log(
+      pad(`${point.zone} #${point.segment + 1}`, 18) +
+        padL(`${point.levels[0]}-${point.levels[1]}`, 9) +
+        padL(pct(point.medianRate), 10) +
+        padL(st === null ? '—' : `${(st.step * 100).toFixed(1)}`, 10) +
+        mark,
+    );
+  }
+
+  /* ТУПИК: пройденный участок обязан остаться проходимым навсегда. */
+  console.log('\nТУПИК НЕВОСПРОИЗВОДИМ · первый участок Пустошей, игрок разных уровней');
+  console.log('─'.repeat(66));
+  console.log('  ' + deadlock.map((d) => `ур.${d.level} ${pct(d.medianRate)}`).join(' · '));
+  if (deadlockBreaches.length > 0) {
+    console.log('ТУПИК ВЕРНУЛСЯ: с ростом уровня участок стал ТРУДНЕЕ.');
+    for (const d of deadlockBreaches) console.log(`  на ур. ${d.level}: ${pct(d.medianRate)}`);
+  } else if (deadlockFlat) {
+    console.log('ЗАМЕР НИЧЕГО НЕ МЕРИТ: уровень игрока не меняет исход вовсе.');
+  } else {
+    console.log('Участок остаётся проходимым: с ростом уровня только легче.');
+  }
+
+  if (ladderBreaches.length > 0) {
+    console.log(`\nЛЕСТНИЦА ИДЁТ ВВЕРХ в ${ladderBreaches.length} ступен(ях):`);
+    for (const st of ladderBreaches) {
+      console.log(
+        `  ${st.from} → ${st.to}: ${(st.step * 100).toFixed(1)} п.п. — участок ЛЕГЧЕ предыдущего`,
+      );
+    }
+    console.log('Цель 10 п.п. здесь не проверяется: между участками это ~2.5,');
+    console.log('то есть ниже шума замера. Проверяется только убывание.');
+  }
+
   if (zoneBreaches.length > 0) {
     console.log(`\nВЫСОТА КРИВОЙ УШЛА в ${zoneBreaches.length} зон(ах):`);
     for (const z of zoneBreaches) {
@@ -1757,7 +2000,13 @@ if (AS_JSON) {
    позже: те мерили сид роллов наравне с настройкой, и держать их
    красной линией значило бы валить сборку за удачу. */
 process.exit(
-  breaches.length > 0 || stepBreaches.length > 0 || zoneBreaches.length > 0 || reachBreached
+  breaches.length > 0 ||
+    stepBreaches.length > 0 ||
+    zoneBreaches.length > 0 ||
+    ladderBreaches.length > 0 ||
+    deadlockBreaches.length > 0 ||
+    deadlockFlat ||
+    reachBreached
     ? 1
     : 0,
 );
