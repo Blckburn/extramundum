@@ -1,63 +1,131 @@
 import { describe, expect, it } from 'vitest';
 
+import { RARITIES, type Rarity } from '../items.js';
 import { rarityWeightsFor, type LootBalance } from '../loot.js';
 
 /**
- * Редкость приходит от СИЛЫ ВРАГА. GDD §6.2.
+ * РЕДКОСТЬ ПРИХОДИТ ОТ СЛОЖНОСТИ, а уровень предмета — от участка.
+ * GDD §6.2, §7.3 в редакции после тупика.
  *
  * Числа взяты из требования, а не из balance.json: тест обязан ловить
  * расхождение данных с правилом, а сверка данных с ними же его
  * не поймала бы.
+ *
+ * Потолок каждого тира:
+ *   обычная  — редкий, эпика нет нигде;
+ *   опасная  — эпик, и только с босса;
+ *   кошмар   — эпик с босса гарантированно, плюс шанс легендарки.
  */
 const drop = {
-  rarityByLevel: {
-    common: { base: 62, perLevel: -1.2 },
-    magic: { base: 30, perLevel: 0 },
-    rare: { base: 8, perLevel: 1.2 },
-    epic: { base: 0, perLevel: 0 },
-    legendary: { base: 0, perLevel: 0 },
+  rarityByDifficulty: {
+    normal: {
+      monster: { common: 62, magic: 30, rare: 8, epic: 0, legendary: 0 },
+      boss: { common: 40, magic: 38, rare: 22, epic: 0, legendary: 0 },
+    },
+    dangerous: {
+      monster: { common: 45, magic: 34, rare: 21, epic: 0, legendary: 0 },
+      boss: { common: 0, magic: 30, rare: 45, epic: 25, legendary: 0 },
+    },
+    nightmare: {
+      monster: { common: 28, magic: 36, rare: 32, epic: 4, legendary: 0 },
+      boss: { common: 0, magic: 0, rare: 0, epic: 100, legendary: 0 },
+    },
   },
-  bossRarityBonus: { common: 0, magic: 0, rare: 0, epic: 25, legendary: 0 },
 } as unknown as LootBalance['drop'];
 
-const share = (level: number, isBoss: boolean, rarity: 'common' | 'rare' | 'epic'): number => {
-  const w = rarityWeightsFor(level, isBoss, drop);
+const DIFFICULTIES = ['normal', 'dangerous', 'nightmare'] as const;
+
+const share = (
+  difficulty: (typeof DIFFICULTIES)[number],
+  isBoss: boolean,
+  rarity: Rarity,
+): number => {
+  const w = rarityWeightsFor(difficulty, isBoss, drop);
   const total = Object.values(w).reduce((a, b) => a + b, 0);
   return (w[rarity] ?? 0) / total;
 };
 
-describe('редкость зависит от уровня монстра', () => {
-  it('чем сильнее враг, тем чаще редкое и реже обычное', () => {
-    expect(share(24, false, 'rare')).toBeGreaterThan(share(8, false, 'rare'));
-    expect(share(24, false, 'common')).toBeLessThan(share(8, false, 'common'));
+/** Самая высокая редкость с ненулевым весом. */
+const ceilingOf = (difficulty: (typeof DIFFICULTIES)[number]): Rarity | null => {
+  let out: Rarity | null = null;
+  for (const isBoss of [false, true]) {
+    const w = rarityWeightsFor(difficulty, isBoss, drop);
+    for (const rarity of RARITIES) if ((w[rarity] ?? 0) > 0) out = rarity;
+  }
+  return out;
+};
+
+describe('редкость зависит от сложности', () => {
+  it('ПОТОЛОК КАЖДОГО ТИРА — тот, что объявлен', () => {
+    expect(ceilingOf('normal')).toBe('rare');
+    expect(ceilingOf('dangerous')).toBe('epic');
+    // Легендарка выключена нулём, поэтому фактический потолок кошмара
+    // сейчас эпик. Что она выключена ИМЕННО нулём — проверка ниже.
+    expect(ceilingOf('nightmare')).toBe('epic');
   });
 
-  it('вес не уходит в минус на глубоких зонах', () => {
-    // common: 62 − 1.2 × 40 = 14 на сороковом, но на «сотом» ушёл бы
-    // в минус, а минус во взвешенном выборе — это не «реже», а сдвиг
-    // всей выборки.
-    const w = rarityWeightsFor(100, false, drop);
-    for (const [rarity, weight] of Object.entries(w)) {
-      expect(weight, rarity).toBeGreaterThanOrEqual(0);
+  it('чем выше сложность, тем чаще редкое и реже обычное', () => {
+    expect(share('nightmare', false, 'rare')).toBeGreaterThan(share('normal', false, 'rare'));
+    expect(share('dangerous', false, 'rare')).toBeGreaterThan(share('normal', false, 'rare'));
+    expect(share('nightmare', false, 'common')).toBeLessThan(share('normal', false, 'common'));
+  });
+
+  it('УРОВЕНЬ НА РЕДКОСТЬ НЕ ВЛИЯЕТ — подпись это гарантирует', () => {
+    /* Проверка на класс ошибки, а не на значение: пока редкость
+       считалась от уровня монстра, обе оси были одной, и игрок
+       в эпиках ilvl 2 не мог получить эпик ilvl 8. Вернуть уровень
+       аргументом значило бы вернуть тупик. */
+    expect(rarityWeightsFor.length).toBe(3);
+  });
+
+  it('веса неотрицательны и не пусты', () => {
+    for (const difficulty of DIFFICULTIES) {
+      for (const isBoss of [false, true]) {
+        const w = rarityWeightsFor(difficulty, isBoss, drop);
+        const total = Object.values(w).reduce((a, b) => a + b, 0);
+        expect(total, `${difficulty}/${isBoss}`).toBeGreaterThan(0);
+        for (const [rarity, weight] of Object.entries(w)) {
+          expect(weight, `${difficulty}/${rarity}`).toBeGreaterThanOrEqual(0);
+        }
+      }
     }
+  });
+
+  it('неизвестная сложность — отказ, а не тихая таблица по умолчанию', () => {
+    expect(() =>
+      rarityWeightsFor('такой-сложности-нет' as (typeof DIFFICULTIES)[number], false, drop),
+    ).toThrow();
   });
 });
 
-describe('эпик только с босса', () => {
-  it('обычный монстр не роняет эпик НИ НА КАКОМ уровне', () => {
-    for (const level of [1, 8, 16, 24, 32, 40]) {
-      expect(rarityWeightsFor(level, false, drop).epic, `уровень ${level}`).toBe(0);
+describe('эпик только с босса, и только выше обычной сложности', () => {
+  it('на обычной эпика нет ни у кого', () => {
+    expect(rarityWeightsFor('normal', false, drop).epic).toBe(0);
+    expect(rarityWeightsFor('normal', true, drop).epic).toBe(0);
+  });
+
+  it('на опасной эпик роняет ТОЛЬКО босс', () => {
+    expect(rarityWeightsFor('dangerous', false, drop).epic).toBe(0);
+    /* ПАРА К ПРОВЕРКЕ ВЫШЕ. Без неё «эпика нет у рядового» прошло бы
+       и на таблице, где эпика нет вообще ни у кого, — то есть
+       на сломанной механике. */
+    expect(share('dangerous', true, 'epic')).toBeGreaterThan(0.1);
+  });
+
+  it('на кошмаре босс роняет эпик ГАРАНТИРОВАННО', () => {
+    // Это и есть причина возвращаться на пройденный участок: за эпиком
+    // нужного уровня идут не глубже, а на ту же глубину и сложнее.
+    expect(share('nightmare', true, 'epic')).toBe(1);
+  });
+
+  it('легендарка выключена нулём ВЕЗДЕ — включение правкой одного числа', () => {
+    for (const difficulty of DIFFICULTIES) {
+      for (const isBoss of [false, true]) {
+        expect(
+          rarityWeightsFor(difficulty, isBoss, drop).legendary,
+          `${difficulty}/${isBoss}`,
+        ).toBe(0);
+      }
     }
-  });
-
-  it('а босс роняет — и это видно', () => {
-    // ПАРА К ПРОВЕРКЕ ВЫШЕ. Без неё «эпика нет» прошло бы и на таблице,
-    // где эпика нет вообще ни у кого, — то есть на сломанной механике.
-    expect(share(8, true, 'epic')).toBeGreaterThan(0.1);
-  });
-
-  it('легендарка выключена нулём у всех, включая босса', () => {
-    expect(rarityWeightsFor(40, true, drop).legendary).toBe(0);
-    expect(rarityWeightsFor(40, false, drop).legendary).toBe(0);
   });
 });

@@ -498,15 +498,19 @@ function rollLoot(
 
   const out: Omit<BagItem, 'id'>[] = [];
   for (let i = 0; i < count; i++) {
-    /* РЕДКОСТЬ ОТ СИЛЫ ВРАГА, а не из общей таблицы: чем выше уровень
-       монстра, тем чаще редкое, а эпик роняет только босс. Веса считает
-       общая функция из `shared` — та же, которой пользуется замер
-       плотности, иначе замер мерил бы не то, что получает игрок. */
+    /* ДВЕ ОСИ: УРОВЕНЬ ОТ УЧАСТКА, РЕДКОСТЬ ОТ СЛОЖНОСТИ. Участок
+       решает, какого уровня вещь; сложность — какого она сорта. Пока
+       это была одна ось, игрок в эпиках ilvl 2 не мог ни получить эпик
+       ilvl 8, ни захотеть обычный ilvl 8 (PLAYTEST 2026-09-04).
+
+       Веса считает общая функция из `shared` — та же, которой
+       пользуется замер плотности, иначе замер мерил бы не то, что
+       получает игрок. */
     const item = generateItem(
       `${row.seed}:loot:${row.fightIndex}:${i}`,
       {
         ilvl: Math.max(1, level),
-        rarityWeights: rarityWeightsFor(level, spec.boss, loot.drop),
+        rarityWeights: rarityWeightsFor(row.difficulty, spec.boss, loot.drop),
       },
       loot,
       ITEM_BASES,

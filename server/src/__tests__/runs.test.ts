@@ -393,6 +393,76 @@ describe.skipIf(!HAS_DB)('забег', () => {
       }
     });
 
+    it('РЕДКОСТЬ ОТ СЛОЖНОСТИ: на обычной эпика нет, на кошмаре босс его даёт', async () => {
+      /* Это вторая ось правки тупика, и мерится она на живом сервере,
+         а не на функции: между таблицей и сумкой лежит генератор,
+         который однажды уже брал веса не оттуда.
+
+         Прогоняется много забегов, потому что редкость — распределение,
+         а не значение. Уровень участка везде один и тот же: проверяется
+         ровно то, что редкость от него НЕ зависит, а от сложности
+         зависит. */
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+      await gearUp(jar);
+
+      const harvest = async (difficulty: 'normal' | 'nightmare'): Promise<Set<string>> => {
+        const seen = new Set<string>();
+        for (let attempt = 0; attempt < 6; attempt++) {
+          await ctx.db.delete(runs).where(eq(runs.playerId, playerId));
+          await start(jar, 'wastes', difficulty);
+          for (let i = 0; i < raid.fightsPerRun; i++) {
+            const step = await fight(jar);
+            for (const item of step.rewards.loot) seen.add(item.rarity);
+            if (step.run.state !== 'active') break;
+          }
+        }
+        return seen;
+      };
+
+      const onNormal = await harvest('normal');
+      const onNightmare = await harvest('nightmare');
+
+      /* ПАРА К ПРОВЕРКЕ НИЖЕ: «эпика не выпало» верно и тогда, когда
+         не выпало вообще ничего. Лут обязан идти в обеих выборках. */
+      expect(onNormal.size, 'на обычной не выпало ни одного предмета').toBeGreaterThan(0);
+      expect(onNightmare.size, 'на кошмаре не выпало ни одного предмета').toBeGreaterThan(0);
+
+      expect([...onNormal], 'эпик выпал на обычной сложности').not.toContain('epic');
+      expect([...onNightmare], 'эпик не выпал на кошмаре').toContain('epic');
+      // Легендарка выключена нулём — ни на одной сложности.
+      expect([...onNormal, ...onNightmare]).not.toContain('legendary');
+    });
+
+    it('ILVL ДОБЫЧИ — ИЗ УЧАСТКА, а не из уровня игрока', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+      await gearUp(jar);
+      /* Сороковой уровень в первой зоне. Прежде ilvl добычи ехал
+         за игроком до потолка зоны; теперь он ограничен участком,
+         и участок 1-2 роняет ilvl 1-2 сколько его ни фарми. Это
+         и есть «фарм переросшего участка даёт мусор». */
+      await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
+
+      const [lo, hi] = WASTES.segments[0] ?? [1, 1];
+      let seen = 0;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await ctx.db.delete(runs).where(eq(runs.playerId, playerId));
+        await start(jar, 'wastes', 'nightmare');
+        for (let i = 0; i < raid.fightsPerRun; i++) {
+          const step = await fight(jar);
+          for (const item of step.rewards.loot) {
+            expect(item.ilvl, `${item.baseKey}: ilvl вне участка`).toBeGreaterThanOrEqual(lo);
+            expect(item.ilvl, `${item.baseKey}: ilvl вне участка`).toBeLessThanOrEqual(hi);
+            seen++;
+          }
+          if (step.run.state !== 'active') break;
+        }
+      }
+      // Пара: диапазон соблюдён и на пустой выборке.
+      expect(seen, 'ни одного предмета не выпало — проверка пуста').toBeGreaterThan(0);
+    });
+
     it('эвакуация раньше второго боя запрещена', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
