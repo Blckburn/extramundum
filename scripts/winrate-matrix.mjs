@@ -803,6 +803,49 @@ function median(values) {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/* ─────────── ПРИБОР НА ИЗВЕСТНОМ ОТВЕТЕ · CLAUDE.md ────────────
+ *
+ * Новый замер сначала проверяется на случае с ЗАРАНЕЕ ИЗВЕСТНЫМ
+ * ответом, и только потом — на том, ради которого он писался. Правило
+ * появилось после четырёх подряд ошибок в приборе, а не в игре: каждый
+ * раз он печатал правдоподобные числа, и правдоподобие сходило
+ * за правильность.
+ *
+ * Здесь известных ответов два, и они ловят разное.
+ *
+ * ПЕРВЫЙ: боец против самого себя даёт ровно половину. Ловит перекос
+ * в самой дуэли — если первый ход, порядок инициативы или сид дают
+ * кому-то фору, число уедет от 50% и всё остальное, что напечатает
+ * матрица, будет смещено на ту же величину.
+ *
+ * ВТОРОЙ: множитель силы ОБЯЗАН менять исход. Ловит прибор, который
+ * меряет не ту величину: если `power` до бойца не доезжает, все двадцать
+ * подобранных чисел будут одинаково бессмысленны, а таблица — гладкой
+ * и убедительной.
+ */
+{
+  const probe = tierGearedPlayer('forbidden', 20, 20, 'known-answer', 'balanced', 'def');
+  const mirror = duel(probe, probe, 'known-answer-mirror', 2000).rate;
+  if (Math.abs(mirror - 0.5) > 0.03) {
+    console.error(
+      `ПРИБОР НЕВЕРЕН: боец против самого себя даёт ${(mirror * 100).toFixed(1)}%, ` +
+        'а обязан давать 50%. Всё остальное в этом прогоне смещено на ту же величину.',
+    );
+    process.exit(2);
+  }
+
+  const enemy = monsterSpecs[zones[0].monsters[0]];
+  const weak = duel(probe, monsterFighter(enemy, 8, 0.5), 'known-answer-weak', 400).rate;
+  const strong = duel(probe, monsterFighter(enemy, 8, 3), 'known-answer-strong', 400).rate;
+  if (!(weak > strong + 0.2)) {
+    console.error(
+      `ПРИБОР НЕВЕРЕН: множитель силы не меняет исход (${(weak * 100).toFixed(1)}% против ` +
+        `${(strong * 100).toFixed(1)}%). Подбор множителей в таком прогоне бессмыслен.`,
+    );
+    process.exit(2);
+  }
+}
+
 /**
  * ЗОНА МЕРИТСЯ НА ЧЕТВЁРТОМ УЧАСТКЕ — той же точке, что и раньше.
  *
@@ -1162,9 +1205,14 @@ const ladderBreaches = ladderSteps.filter((s) => s.rises);
 const ladderSuggested = CALIBRATE
   ? ladder.map((point, index) => {
       const target = ladderTarget(index);
-      let lo = 0.15;
-      let hi = 6;
-      for (let step = 0; step < 11; step++) {
+      /* Границы поиска ШИРОКИЕ намеренно. Узкие давали бы упёршийся
+         в край ответ, а он выглядит как настоящий: число печатается,
+         в файл ложится, и только замер потом показывает, что цели
+         оно не даёт. Упирание в край видно по повторяющемуся числу
+         в столбце. */
+      let lo = 0.05;
+      let hi = 8;
+      for (let step = 0; step < 13; step++) {
         const mid = (lo + hi) / 2;
         const probes = [];
         for (let sd = 0; sd < SEEDS; sd++) probes.push(point.rateOnSeed(sd, mid));
