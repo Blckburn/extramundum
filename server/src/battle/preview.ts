@@ -106,7 +106,7 @@ export function estimateWinRate(input: PreviewInput): PreviewEstimate {
   }
 
   const [lo, hi] = segmentBounds(zone, input.segment);
-  const power = monsterPower(zone, input.difficulty);
+  const power = monsterPower(zone, input.segment, input.difficulty);
   const enemies = zone.monsters.flatMap((key) => {
     const spec = monsterSpec(key);
     const out = [];

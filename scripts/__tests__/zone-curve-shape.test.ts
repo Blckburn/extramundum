@@ -59,10 +59,20 @@ describe('кривая зон проверяется по форме и по м�
   it('подбор ищет МЕДИАНУ, а не попадание одного сида', () => {
     /* Прежний подбор двигал множитель, пока на сиде 0 не выйдет цель, —
        отчего сид 0 и оказался с краю распределения во всех зонах разом. */
-    const block = source.slice(source.indexOf('if (CALIBRATE)'));
-    const body = block.slice(0, block.indexOf('suggested = Math.round'));
+    const block = source.slice(source.indexOf('const ladderSuggested'));
+    const body = block.slice(0, block.indexOf('power: Math.round'));
     expect(body).toMatch(/median\(probes\)/);
     expect(body).toMatch(/for \(let sd = 0; sd < SEEDS; sd\+\+\)/);
+  });
+
+  it('ПОДБОР ИДЁТ ПО УЧАСТКАМ, а не по зонам', () => {
+    /* Одно число на четыре ступени не выражает того, что внутри зоны
+       трудность идёт не туда: замер лестницы показал падение на 44 п.п.
+       в Пустошах и РОСТ в Катакомбах и Кузне. */
+    expect(source).toMatch(/const ladderSuggested\s*=/);
+    expect(source).toMatch(/function ladderTarget\(/);
+    // Второго подбора рядом быть не должно: он считал бы то же самое.
+    expect(source).not.toMatch(/suggested = Math\.round/);
   });
 
   it('абсолютный ориентир не убран совсем', () => {
@@ -89,7 +99,7 @@ describe('кривая зон проверяется по форме и по м�
 describe('лестница участков и тупик', () => {
   it('лестница меряется по ВСЕМ участкам, а не по одному на зону', () => {
     expect(source).toMatch(/const ladder = zones\.flatMap/);
-    expect(source).toMatch(/zone\.segments\.map\(\(bounds, segment\)/);
+    expect(source).toMatch(/zone\.segments\.map\(\(spec, segment\)/);
   });
 
   it('ступень ВВЕРХ валит прогон', () => {

@@ -818,9 +818,10 @@ function median(values) {
  */
 const zoneCurve = zones.map((zone, index) => {
   const segment = zone.segments[zone.segments.length - 1];
-  const playerLevel = segment[1];
+  const playerLevel = segment.levels[1];
   const enemyLevels = [];
-  for (let lv = segment[0]; lv <= segment[1]; lv++) enemyLevels.push(lv);
+  for (let lv = segment.levels[0]; lv <= segment.levels[1]; lv++) enemyLevels.push(lv);
+  const zonePower = segment.power;
   const levelRuns = Math.max(20, Math.round(zoneRuns / enemyLevels.length));
 
   /* Носитель ОДИН на все зоны и сложности — `forbidden`, самый ровный
@@ -870,7 +871,7 @@ const zoneCurve = zones.map((zone, index) => {
   };
 
   const seedRates = [];
-  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, zone.power));
+  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, zonePower));
   const bySeed = seedRates.slice(1);
   const medianRate = median(seedRates);
 
@@ -895,7 +896,7 @@ const zoneCurve = zones.map((zone, index) => {
     const rates = kits.flatMap((player, i) =>
       enemyLevels.map(
         (lv) =>
-          duel(player, monsterFighter(spec, lv, zone.power), `${tag}-${i}-lv${lv}`, levelRuns).rate,
+          duel(player, monsterFighter(spec, lv, zonePower), `${tag}-${i}-lv${lv}`, levelRuns).rate,
       ),
     );
     return rates.reduce((a, b) => a + b, 0) / rates.length;
@@ -911,7 +912,7 @@ const zoneCurve = zones.map((zone, index) => {
               (lv) =>
                 duel(
                   fighter,
-                  monsterFighter(monsterSpecs[key], lv, zone.power),
+                  monsterFighter(monsterSpecs[key], lv, zonePower),
                   `${tag}-${key}-lv${lv}`,
                   levelRuns,
                 ).rate,
@@ -969,36 +970,16 @@ const zoneCurve = zones.map((zone, index) => {
   const rate = perMonster.reduce((sum, m) => sum + m.rate, 0) / perMonster.length;
   const target = ZONE_TARGETS[index] ?? 0;
 
-  /* ПОДБОР ИДЁТ ПО МЕДИАНЕ СИДОВ, а не по одному сиду, и это вся
-     разница между прежней калибровкой и нынешней. Прежняя двигала
-     множитель, пока НА СИДЕ 0 не выйдет цель, — отчего сид 0 и оказался
-     с краю распределения во всех зонах разом. Медиана такого сделать
-     не даёт: сдвинуть её означает сдвинуть больше половины сидов.
-
-     Цель по-прежнему берётся из `ZONE_TARGETS`, и это не возврат
-     к абсолютным числам: лестница 85/75/65/55/45 арифметическая
-     с шагом ровно `ZONE_STEP`, поэтому попадание каждой зоны в свою
-     цель ПО МЕДИАНЕ и есть требуемая форма плюс якорь первой зоны.
-
-     Печатается предложение, файл не трогается — числа баланса правит
-     человек, увидев их. */
-  let suggested = null;
-  if (CALIBRATE) {
-    let lo = 0.15;
-    let hi = 4;
-    for (let step = 0; step < 11; step++) {
-      const mid = (lo + hi) / 2;
-      const probes = [];
-      for (let sd = 0; sd < SEEDS; sd++) probes.push(rateOnSeed(sd, mid));
-      if (median(probes) > target) lo = mid;
-      else hi = mid;
-    }
-    suggested = Math.round(((lo + hi) / 2) * 100) / 100;
-  }
+  /* ПОДБОР ЖИВЁТ У ЛЕСТНИЦЫ, А НЕ ЗДЕСЬ. Прежде множитель подбирался
+     по одной точке на зону — этой самой. Замер лестницы показал, что
+     одного числа на четыре участка мало: внутри зоны трудность идёт
+     не туда. Двадцать точек подбираются в секции лестницы, и четвёртый
+     участок каждой зоны — одна из них, то есть эта точка тоже. Второй
+     подбор здесь считал бы то же самое за ту же цену. */
 
   return {
     id: zone.id,
-    power: zone.power,
+    power: zonePower,
     playerLevel,
     enemyLevels,
     rate,
@@ -1016,7 +997,6 @@ const zoneCurve = zones.map((zone, index) => {
     medianLeanSpread: median(leanSpreadSeeds),
     medianCardsSpread: median(cardsSpreadSeeds),
     boss: bossRate,
-    suggested,
   };
 });
 
@@ -1052,8 +1032,8 @@ const zoneBreaches = zoneCurve.filter((z) => !z.within);
 const ladderRuns = Math.max(30, Math.round(zoneRuns / 2));
 
 const ladder = zones.flatMap((zone) =>
-  zone.segments.map((bounds, segment) => {
-    const [lo, hi] = bounds;
+  zone.segments.map((spec, segment) => {
+    const [lo, hi] = spec.levels;
     const levels = [];
     for (let lv = lo; lv <= hi; lv++) levels.push(lv);
 
@@ -1072,7 +1052,7 @@ const ladder = zones.flatMap((zone) =>
         ),
       );
 
-    const rateOnSeed = (sd) => {
+    const rateOnSeed = (sd, power) => {
       const players = kitsFor(sd);
       return (
         zone.monsters
@@ -1082,8 +1062,8 @@ const ladder = zones.flatMap((zone) =>
                 (lv) =>
                   duel(
                     player,
-                    monsterFighter(monsterSpecs[key], lv, zone.power),
-                    `seg${sd}-${zone.id}-${segment}-${key}-${i}-lv${lv}`,
+                    monsterFighter(monsterSpecs[key], lv, power),
+                    `seg${sd}-${zone.id}-${segment}-${key}-${i}-lv${lv}-${power.toFixed(3)}`,
                     ladderRuns,
                   ).rate,
               ),
@@ -1095,17 +1075,51 @@ const ladder = zones.flatMap((zone) =>
     };
 
     const seedRates = [];
-    for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd));
+    for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, spec.power));
 
     return {
       zone: zone.id,
       segment,
-      levels: bounds,
+      levels: spec.levels,
+      power: spec.power,
       medianRate: median(seedRates),
       seedRates,
+      rateOnSeed,
     };
   }),
 );
+
+/**
+ * ЦЕЛЬ ЛЕСТНИЦЫ — интерполяция между якорями зон.
+ *
+ * Якоря те же 85/75/65/55/45 и стоят там же, где стояли: на четвёртом
+ * участке каждой зоны. Между ними цель идёт линейно, а перед первым
+ * якорем — от `LADDER_START`: самый первый участок обязан быть почти
+ * свободным, туда приходит изгнанный с одним подобранным клинком.
+ *
+ * Ступень внутри зоны выходит ~2.5 п.п. Проверять её этой целью нельзя
+ * (ниже шума медианы), но ПОДБИРАТЬ по ней можно и нужно: подбор
+ * двигает медиану, а не попадает в неё одним сидом.
+ */
+const LADDER_START = 0.95;
+
+/** Участков в зоне. Совпадает с `SEGMENTS_PER_ZONE` в shared по построению. */
+const SEGMENTS_PER_ZONE = 4;
+
+function ladderTarget(index) {
+  const anchors = [{ at: -1, value: LADDER_START }];
+  for (const [i, value] of ZONE_TARGETS.entries()) {
+    anchors.push({ at: i * SEGMENTS_PER_ZONE + (SEGMENTS_PER_ZONE - 1), value });
+  }
+  for (let i = 1; i < anchors.length; i++) {
+    const a = anchors[i - 1];
+    const b = anchors[i];
+    if (index <= b.at) {
+      return a.value + ((b.value - a.value) * (index - a.at)) / (b.at - a.at);
+    }
+  }
+  return anchors[anchors.length - 1].value;
+}
 
 /**
  * Ступени лестницы. Нарушением считается ступень ВВЕРХ: участок легче
@@ -1134,6 +1148,38 @@ const ladderSteps = ladder.slice(1).map((point, i) => {
 });
 const ladderBreaches = ladderSteps.filter((s) => s.rises);
 
+/**
+ * ПОДБОР МНОЖИТЕЛЕЙ ПО УЧАСТКАМ.
+ *
+ * Раньше подбирался один множитель на зону — по той точке, где кривая
+ * и мерилась. Замер лестницы показал, что этого мало: внутри зоны
+ * трудность идёт не туда, и одно число на четыре ступени этого
+ * не выражает. Теперь подбирается двадцать чисел, по одному
+ * на участок, и каждое — ПО МЕДИАНЕ сидов, как и прежде.
+ *
+ * Файл не трогается: числа баланса правит человек, увидев их.
+ */
+const ladderSuggested = CALIBRATE
+  ? ladder.map((point, index) => {
+      const target = ladderTarget(index);
+      let lo = 0.15;
+      let hi = 6;
+      for (let step = 0; step < 11; step++) {
+        const mid = (lo + hi) / 2;
+        const probes = [];
+        for (let sd = 0; sd < SEEDS; sd++) probes.push(point.rateOnSeed(sd, mid));
+        if (median(probes) > target) lo = mid;
+        else hi = mid;
+      }
+      return {
+        zone: point.zone,
+        segment: point.segment,
+        target,
+        power: Math.round(((lo + hi) / 2) * 100) / 100,
+      };
+    })
+  : null;
+
 /* ──────────── ТУПИК НЕВОСПРОИЗВОДИМ · PLAYTEST 2026-09-04 ────────────
  *
  * Главная проверка этой правки, и она отвечает не на «сбалансировано
@@ -1158,7 +1204,10 @@ const deadlockZone = zones[0];
 const deadlockSegment = 0;
 
 const deadlock = DEADLOCK_LEVELS.map((level) => {
-  const [lo, hi] = deadlockZone.segments[deadlockSegment];
+  const {
+    levels: [lo, hi],
+    power: deadlockPower,
+  } = deadlockZone.segments[deadlockSegment];
   const levels = [];
   for (let lv = lo; lv <= hi; lv++) levels.push(lv);
 
@@ -1183,7 +1232,7 @@ const deadlock = DEADLOCK_LEVELS.map((level) => {
               (lv) =>
                 duel(
                   player,
-                  monsterFighter(monsterSpecs[key], lv, deadlockZone.power),
+                  monsterFighter(monsterSpecs[key], lv, deadlockPower),
                   `dead-${level}-s${sd}-${key}-${i}-lv${lv}`,
                   ladderRuns,
                 ).rate,
@@ -1341,7 +1390,8 @@ function restoreFractionOf(zone) {
 function simulateRun(player, zone, segment, seedTag, withPotions) {
   const maxHp = maxHpOf(player, balance);
   const restore = restoreFractionOf(zone);
-  const bounds = zone.segments[segment];
+  const spec = zone.segments[segment];
+  const bounds = spec.levels;
 
   let hp = maxHp;
   let potions = withPotions ? balance.raid.potionChargesPerRun : 0;
@@ -1373,7 +1423,7 @@ function simulateRun(player, zone, segment, seedTag, withPotions) {
       pool.length - 1,
       Math.floor(seededRoll(`${seedTag}:enemy:${fight}`) * pool.length),
     );
-    const spec = last ? monsterSpecs[zone.boss] : monsterSpecs[pool[at]];
+    const who = last ? monsterSpecs[zone.boss] : monsterSpecs[pool[at]];
 
     /* УРОВЕНЬ ТОЖЕ БРОСАЕТСЯ, и СВОИМ броском, как на сервере: один
        бросок на «кто вышел» и «какого он уровня» связал бы их, и часть
@@ -1385,7 +1435,7 @@ function simulateRun(player, zone, segment, seedTag, withPotions) {
       : Math.min(hi, lo + Math.floor(seededRoll(`${seedTag}:level:${fight}`) * (hi - lo + 1)));
 
     const { outcome } = resolveBattle(
-      [{ ...player, startHp: hp }, monsterFighter(spec, level, zone.power)],
+      [{ ...player, startHp: hp }, monsterFighter(who, level, spec.power)],
       balance,
       `${seedTag}-f${fight}`,
     );
@@ -1473,7 +1523,7 @@ const REACH_LEVELS = [1, 10, 20];
 const segmentForLevel = (level) => {
   for (const zone of zones) {
     for (let i = 0; i < zone.segments.length; i++) {
-      if (level <= zone.segments[i][1]) return { zone, segment: i };
+      if (level <= zone.segments[i].levels[1]) return { zone, segment: i };
     }
   }
   const last = zones[zones.length - 1];
@@ -1907,9 +1957,14 @@ if (AS_JSON) {
   console.log('а не типичный противник зоны. Смешать их значило бы занижать');
   console.log('оценку первых четырёх боёв.');
 
-  if (CALIBRATE) {
-    console.log('ПОДБОР МНОЖИТЕЛЕЙ (файл не тронут — числа правит человек):');
-    for (const z of zoneCurve) console.log(`  ${pad(z.id, 12)} power ${z.suggested}`);
+  if (CALIBRATE && ladderSuggested !== null) {
+    console.log('ПОДБОР МНОЖИТЕЛЕЙ ПО УЧАСТКАМ (файл не тронут — правит человек):');
+    for (const p of ladderSuggested) {
+      console.log(
+        `  ${pad(`${p.zone} #${p.segment + 1}`, 18)} power ${String(p.power).padStart(5)}` +
+          `   цель ${pct(p.target)}`,
+      );
+    }
     console.log('');
   }
 

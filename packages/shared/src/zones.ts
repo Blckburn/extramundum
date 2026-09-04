@@ -42,7 +42,29 @@ export const zoneSpecSchema = z.object({
    * остаётся проходимым навсегда, а за высоким ilvl надо идти дальше,
    * а не перерастать место, где стоишь.
    */
-  segments: z.array(z.tuple([z.int().min(1), z.int().min(1)])).length(4),
+  segments: z
+    .array(
+      z.object({
+        /** Границы уровней участка, [мин, макс]. */
+        levels: z.tuple([z.int().min(1), z.int().min(1)]),
+        /**
+         * Множитель силы врагов ЭТОГО участка. ОТДЕЛЬНО от уровня.
+         *
+         * Живёт у участка, а не у зоны, и это следствие замера.
+         * С одним числом на зону трудность внутри неё шла не туда:
+         * в Пустошах падала на 44 п.п. за две ступени, а в Катакомбах
+         * и Кузне РОСЛА — четвёртый участок был легче первого. Причина
+         * не в числе, а в его размерности: кривая монстров и снаряжение
+         * игрока растут с разными наклонами, и одно число на четыре
+         * ступени этого не выражает.
+         *
+         * Второго такого числа у зоны НЕТ намеренно: две копии одной
+         * величины — это место, где они разойдутся.
+         */
+        power: z.number().positive(),
+      }),
+    )
+    .length(4),
   /**
    * Преобладающий класс брони врагов. GDD §7.4.
    *
@@ -60,15 +82,6 @@ export const zoneSpecSchema = z.object({
    * «смешанные» врало бы в другую сторону.
    */
   armorClass: z.union([armorClassSchema, z.literal('mixed')]),
-  /**
-   * Множитель силы врагов зоны. ОТДЕЛЬНО от уровня.
-   *
-   * Уровень один не даёт кривой 85/75/65/55/45% из §4.6: игрок приходит
-   * в зону уровнем по ней, и без этого множителя пятая зона была бы
-   * ровно так же трудна, как первая. Число ИЗМЕРЯЕТСЯ матрицей,
-   * а не назначается на глаз.
-   */
-  power: z.number().positive(),
   /** Ключи обычных монстров. Бой выбирает из них броском. */
   monsters: z.array(z.string().min(1)).min(1),
   /** Ключ босса — пятый бой зоны. GDD §7.5. */
@@ -159,13 +172,21 @@ export const SEGMENTS_PER_ZONE = 4;
  * и те же числа. Второе место разошлось бы с первым на ближайшей
  * правке данных.
  */
+export function segmentAt(
+  zone: Pick<ZoneSpec, 'segments'>,
+  segment: number,
+): ZoneSpec['segments'][number] {
+  const found = zone.segments[segment];
+  if (found === undefined) throw new Error(`у зоны нет участка ${segment}`);
+  return found;
+}
+
+/** Границы уровней участка, [мин, макс]. */
 export function segmentBounds(
   zone: Pick<ZoneSpec, 'segments'>,
   segment: number,
 ): readonly [number, number] {
-  const bounds = zone.segments[segment];
-  if (bounds === undefined) throw new Error(`у зоны нет участка ${segment}`);
-  return bounds;
+  return segmentAt(zone, segment).levels;
 }
 
 /**

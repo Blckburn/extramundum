@@ -154,7 +154,7 @@ describe.skipIf(!HAS_DB)('забег', () => {
       // Уровень врага СЧИТАЕТ СЕРВЕР и отдаёт ПО УЧАСТКАМ: клиенту
       // незачем знать формулу, и второго её места быть не должно.
       expect(wastes.segments).toHaveLength(4);
-      expect(wastes.segments[0]?.levels).toEqual(WASTES.segments[0]);
+      expect(wastes.segments[0]?.levels).toEqual(WASTES.segments[0]?.levels);
       expect(wastes.segments[3]?.levels[1]).toBe(wastes.levels[1]);
 
       /* ТИР РАЗЛИЧАЕТСЯ МНОЖИТЕЛЕМ, А НЕ УРОВНЕМ (§7.3 после правки).
@@ -444,7 +444,7 @@ describe.skipIf(!HAS_DB)('забег', () => {
          и есть «фарм переросшего участка даёт мусор». */
       await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
 
-      const [lo, hi] = WASTES.segments[0] ?? [1, 1];
+      const [lo, hi] = WASTES.segments[0]?.levels ?? [1, 1];
       let seen = 0;
       for (let attempt = 0; attempt < 4; attempt++) {
         await ctx.db.delete(runs).where(eq(runs.playerId, playerId));
@@ -845,7 +845,7 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(done.fightsCleared).toBe(raid.fightsPerRun);
       expect(done.bossKilled).toBe(true);
       expect(done.segment).toBe(0);
-      expect(done.segmentLevels).toEqual(WASTES.segments[0]);
+      expect(done.segmentLevels).toEqual(WASTES.segments[0]?.levels);
     });
 
     it('СУММА ЗА ЗАБЕГ — ЖУРНАЛ БОЁВ, а не последний бой', async () => {

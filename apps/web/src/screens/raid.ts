@@ -178,11 +178,16 @@ async function render(surface: Surface): Promise<void> {
                диктору. */
             'aria-pressed': segment.index === chosen ? 'true' : 'false',
           }) as HTMLButtonElement;
-          button.textContent = t('raid.segment', {
-            index: segment.index + 1,
-            min: segment.levels[0],
-            max: segment.levels[1],
-          });
+          /* Уровни И МНОЖИТЕЛЬ: это две половины ответа на «насколько
+             тут трудно». Уровень говорит, как глубоко, множитель —
+             насколько тяжело само место. Показать один без другого
+             значило бы дать половину основания для выбора. */
+          button.textContent =
+            t('raid.segment', {
+              index: segment.index + 1,
+              min: segment.levels[0],
+              max: segment.levels[1],
+            }) + ` · ×${segment.power.toFixed(2)}`;
           if (!segment.unlocked) {
             button.disabled = true;
             // Отключённое ОБЪЯСНЯЕТ причину (бриф, п. 2).

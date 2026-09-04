@@ -337,7 +337,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
 
   const spec = enemyFor(zone, row.fightIndex, row.seed);
   const level = levelFor(zone, row.fightIndex, row.segment, row.seed);
-  const enemy = monsterFighter(spec, level, monsterPower(zone, row.difficulty));
+  const enemy = monsterFighter(spec, level, monsterPower(zone, row.segment, row.difficulty));
 
   /* HP ПЕРЕНОСИТСЯ между боями (§7.2). Боец входит в бой с текущим
      запасом, а не с полным: без этого «восстанавливается на 25%»

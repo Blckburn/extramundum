@@ -2,6 +2,7 @@ import { balance as balanceData } from '@extramundum/data';
 import { zoneSpec } from '@extramundum/data/zones';
 import {
   fighterConfigSchema,
+  segmentAt,
   type Difficulty,
   type FighterConfig,
   type MonsterSpec,
@@ -26,7 +27,11 @@ const curve = balanceData.monsters;
 const difficulties = balanceData.raid.difficulty;
 
 /**
- * Множитель силы врага: зона умножается на тир сложности. GDD §7.3.
+ * Множитель силы врага: УЧАСТОК умножается на тир сложности. GDD §7.3.
+ *
+ * Множитель живёт у участка, а не у зоны: с одним числом на зону
+ * трудность внутри неё шла не туда (замер лестницы — в $calibration
+ * у zones.json).
  *
  * ОДНА функция на весь сервер: бой, превью и экран выбора обязаны
  * считать одинаково, а второе место разошлось бы с первым на ближайшей
@@ -40,8 +45,8 @@ const difficulties = balanceData.raid.difficulty;
  * приходит из данных участка, и двигать его сложностью значило бы
  * вернуть ровно ту величину, из-за которой участки и появились.
  */
-export function monsterPower(zone: ZoneSpec, difficulty: Difficulty): number {
-  return zone.power * difficulties[difficulty].power;
+export function monsterPower(zone: ZoneSpec, segment: number, difficulty: Difficulty): number {
+  return segmentAt(zone, segment).power * difficulties[difficulty].power;
 }
 
 /**
@@ -64,11 +69,11 @@ export function zoneLootMultiplier(difficulty: Difficulty): number {
 /**
  * Боец из записи монстра.
  *
- * Статы монстра — множители к общей кривой, а множитель зоны стоит
+ * Статы монстра — множители к общей кривой, а множитель УЧАСТКА стоит
  * СВЕРХУ них. Разделение существенно: наклон монстра говорит, кто он
- * такой (быстрый, бронированный, бьющий), а множитель зоны — насколько
- * глубоко игрок забрался. Свести их в одно число значило бы, что
- * калибровка кривой зон меняет характеры монстров.
+ * такой (быстрый, бронированный, бьющий), а множитель участка —
+ * насколько трудно это место. Свести их в одно число значило бы, что
+ * калибровка кривой меняет характеры монстров.
  */
 export function monsterFighter(spec: MonsterSpec, level: number, power: number): FighterConfig {
   const stat = curve.baseStat + (level - 1) * curve.statPerLevel;
