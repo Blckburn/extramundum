@@ -41,127 +41,222 @@
   "zones": [
     {
       "id": "wastes",
-      "levels": [1, 8],
+      "levels": [
+        1,
+        8
+      ],
       "segments": [
         {
-          "levels": [1, 2],
-          "power": 1.04
+          "levels": [
+            1,
+            2
+          ],
+          "power": 1.53
         },
         {
-          "levels": [3, 4],
-          "power": 1.04
+          "levels": [
+            3,
+            4
+          ],
+          "power": 1.08
         },
         {
-          "levels": [5, 6],
-          "power": 1.04
+          "levels": [
+            5,
+            6
+          ],
+          "power": 0.86
         },
         {
-          "levels": [7, 8],
-          "power": 1.04
+          "levels": [
+            7,
+            8
+          ],
+          "power": 0.88
         }
       ],
       "armorClass": "light",
-      "monsters": ["wastes.scavenger", "wastes.carrionCrows", "wastes.footpad"],
+      "monsters": [
+        "wastes.scavenger",
+        "wastes.carrionCrows",
+        "wastes.footpad"
+      ],
       "boss": "wastes.tollman"
     },
     {
       "id": "warcamp",
-      "levels": [8, 16],
+      "levels": [
+        8,
+        16
+      ],
       "segments": [
         {
-          "levels": [8, 10],
+          "levels": [
+            8,
+            10
+          ],
+          "power": 0.91
+        },
+        {
+          "levels": [
+            10,
+            12
+          ],
           "power": 0.85
         },
         {
-          "levels": [10, 12],
-          "power": 0.85
+          "levels": [
+            12,
+            14
+          ],
+          "power": 0.83
         },
         {
-          "levels": [12, 14],
-          "power": 0.85
-        },
-        {
-          "levels": [14, 16],
-          "power": 0.85
+          "levels": [
+            14,
+            16
+          ],
+          "power": 0.81
         }
       ],
       "armorClass": "medium",
-      "monsters": ["warcamp.picket", "warcamp.mercenary", "warcamp.shieldman"],
+      "monsters": [
+        "warcamp.picket",
+        "warcamp.mercenary",
+        "warcamp.shieldman"
+      ],
       "boss": "warcamp.serjeant"
     },
     {
       "id": "catacombs",
-      "levels": [16, 24],
+      "levels": [
+        16,
+        24
+      ],
       "segments": [
         {
-          "levels": [16, 18],
-          "power": 1.04
+          "levels": [
+            16,
+            18
+          ],
+          "power": 0.95
         },
         {
-          "levels": [18, 20],
-          "power": 1.04
+          "levels": [
+            18,
+            20
+          ],
+          "power": 0.97
         },
         {
-          "levels": [20, 22],
-          "power": 1.04
+          "levels": [
+            20,
+            22
+          ],
+          "power": 1.02
         },
         {
-          "levels": [22, 24],
-          "power": 1.04
+          "levels": [
+            22,
+            24
+          ],
+          "power": 1.03
         }
       ],
       "armorClass": "cloth",
-      "monsters": ["catacombs.plaguebearer", "catacombs.corpsehandler", "catacombs.emberkeeper"],
+      "monsters": [
+        "catacombs.plaguebearer",
+        "catacombs.corpsehandler",
+        "catacombs.emberkeeper"
+      ],
       "boss": "catacombs.quarantineWarden"
     },
     {
       "id": "forge",
-      "levels": [24, 32],
+      "levels": [
+        24,
+        32
+      ],
       "segments": [
         {
-          "levels": [24, 26],
-          "power": 1.15
+          "levels": [
+            24,
+            26
+          ],
+          "power": 0.87
         },
         {
-          "levels": [26, 28],
-          "power": 1.15
+          "levels": [
+            26,
+            28
+          ],
+          "power": 0.89
         },
         {
-          "levels": [28, 30],
-          "power": 1.15
+          "levels": [
+            28,
+            30
+          ],
+          "power": 0.98
         },
         {
-          "levels": [30, 32],
-          "power": 1.15
+          "levels": [
+            30,
+            32
+          ],
+          "power": 1.07
         }
       ],
       "armorClass": "heavy",
-      "monsters": ["forge.hammerhand", "forge.slagWalker", "forge.cinderCrawler"],
+      "monsters": [
+        "forge.hammerhand",
+        "forge.slagWalker",
+        "forge.cinderCrawler"
+      ],
       "boss": "forge.masterSmith"
     },
     {
       "id": "abyss",
-      "levels": [32, 40],
+      "levels": [
+        32,
+        40
+      ],
       "segments": [
         {
-          "levels": [32, 34],
-          "power": 1.6
+          "levels": [
+            32,
+            34
+          ],
+          "power": 1.25
         },
         {
-          "levels": [34, 36],
-          "power": 1.6
+          "levels": [
+            34,
+            36
+          ],
+          "power": 1.29
         },
         {
-          "levels": [36, 38],
-          "power": 1.6
+          "levels": [
+            36,
+            38
+          ],
+          "power": 1.29
         },
         {
-          "levels": [38, 40],
-          "power": 1.6
+          "levels": [
+            38,
+            40
+          ],
+          "power": 1.35
         }
       ],
       "armorClass": "mixed",
-      "monsters": ["abyss.pitCrawler", "abyss.boneStacker", "abyss.lastCarter"],
+      "monsters": [
+        "abyss.pitCrawler",
+        "abyss.boneStacker",
+        "abyss.lastCarter"
+      ],
       "boss": "abyss.firstExile"
     }
   ],
