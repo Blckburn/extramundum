@@ -437,6 +437,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         API_ROUTES.simulatePreview,
         {
           zone: 'wastes',
+          segment: 0,
           difficulty: 'normal',
           loadoutHash: 'a'.repeat(64),
           runs: 50,
@@ -463,7 +464,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
       const res = await post(
         ctx,
         API_ROUTES.simulatePreview,
-        { zone: 'wastes', difficulty: 'normal', loadoutHash: 'a'.repeat(64), runs: 50 },
+        { zone: 'wastes', segment: 0, difficulty: 'normal', loadoutHash: 'a'.repeat(64), runs: 50 },
         jar,
       );
 

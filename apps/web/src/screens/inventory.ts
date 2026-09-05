@@ -479,6 +479,11 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     try {
       const result = await api.preview({
         zone: 'wastes',
+        /* Первый участок первой зоны: превью инвентаря отвечает
+           на вопрос «стало ли лучше», а не «где я смогу выжить»,
+           и мерить его надо в одном и том же месте — иначе два
+           предмета сравнивались бы против разных противников. */
+        segment: 0,
         difficulty: 'normal',
         loadoutHash: '0'.repeat(64),
         runs: 300,

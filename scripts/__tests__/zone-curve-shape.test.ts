@@ -59,10 +59,20 @@ describe('кривая зон проверяется по форме и по м�
   it('подбор ищет МЕДИАНУ, а не попадание одного сида', () => {
     /* Прежний подбор двигал множитель, пока на сиде 0 не выйдет цель, —
        отчего сид 0 и оказался с краю распределения во всех зонах разом. */
-    const block = source.slice(source.indexOf('if (CALIBRATE)'));
-    const body = block.slice(0, block.indexOf('suggested = Math.round'));
+    const block = source.slice(source.indexOf('const ladderSuggested'));
+    const body = block.slice(0, block.indexOf('power: Math.round'));
     expect(body).toMatch(/median\(probes\)/);
     expect(body).toMatch(/for \(let sd = 0; sd < SEEDS; sd\+\+\)/);
+  });
+
+  it('ПОДБОР ИДЁТ ПО УЧАСТКАМ, а не по зонам', () => {
+    /* Одно число на четыре ступени не выражает того, что внутри зоны
+       трудность идёт не туда: замер лестницы показал падение на 44 п.п.
+       в Пустошах и РОСТ в Катакомбах и Кузне. */
+    expect(source).toMatch(/const ladderSuggested\s*=/);
+    expect(source).toMatch(/function ladderTarget\(/);
+    // Второго подбора рядом быть не должно: он считал бы то же самое.
+    expect(source).not.toMatch(/suggested = Math\.round/);
   });
 
   it('абсолютный ориентир не убран совсем', () => {
@@ -71,5 +81,65 @@ describe('кривая зон проверяется по форме и по м�
     expect(source).toMatch(/const ZONE_TARGETS = /);
     expect(source).toMatch(/const ZONE_ANCHOR_TOLERANCE = /);
     expect(source).toMatch(/Math\.abs\(medianRate - target\) <= ZONE_ANCHOR_TOLERANCE/);
+  });
+});
+
+/**
+ * ЛЕСТНИЦА УЧАСТКОВ И ПРОВЕРКА НА ТУПИК.
+ *
+ * Обе появились вместе с участками (PLAYTEST 2026-09-04). Кривая зон
+ * меряет одну точку на зону — четвёртый участок; внутри зоны теперь
+ * четыре ступени, и мерить только верх значило бы не видеть три
+ * из четырёх.
+ *
+ * Проверяется по исходнику по той же причине, что и кривая: сам замер
+ * — это тысячи боёв, место им в скрипте. Здесь стоят свойства, потеря
+ * которых сделала бы прогон зелёным на сломанной игре.
+ */
+describe('лестница участков и тупик', () => {
+  it('лестница меряется по ВСЕМ участкам, а не по одному на зону', () => {
+    expect(source).toMatch(/const ladder = zones\.flatMap/);
+    expect(source).toMatch(/zone\.segments\.map\(\(spec, segment\)/);
+  });
+
+  it('ступень ВВЕРХ валит прогон', () => {
+    /* Участок легче предыдущего — перевёрнутая прогрессия. Проверка,
+       которая это печатает и не роняет сборку, — комментарий,
+       а не проверка. */
+    expect(source).toMatch(/const ladderBreaches = ladderSteps\.filter/);
+    expect(source).toMatch(/ladderBreaches\.length > 0 \|\|/);
+  });
+
+  it('цель 10 п.п. к ступеням участков НЕ применяется', () => {
+    /* Между участками ожидаемый шаг ~2.5 п.п., то есть ниже шума
+       медианы 25 сидов. Проверять цель на такой величине значило бы
+       проверять шум и валить прогон за разброс. */
+    expect(source).toMatch(/const LADDER_RISE_TOLERANCE\s*=/);
+    expect(source).not.toMatch(/ladderStep[^s].*ZONE_STEP/);
+  });
+
+  it('ТУПИК ПРОВЕРЯЕТСЯ, и его возврат валит прогон', () => {
+    /* Главное свойство правки: пройденный участок остаётся проходимым
+       навсегда, то есть винрейт на нём не падает с ростом уровня
+       игрока. */
+    expect(source).toMatch(/const DEADLOCK_LEVELS\s*=/);
+    expect(source).toMatch(/const deadlockBreaches\s*=/);
+    expect(source).toMatch(/deadlockBreaches\.length > 0 \|\|/);
+  });
+
+  it('у проверки на тупик есть ПАРА: уровень игрока обязан что-то менять', () => {
+    /* «Винрейт не падает» верно и для замера, где уровень игрока
+       не меняет вообще ничего, — а это ровно та поломка, которую
+       проверка обязана ловить. Рост обязан быть виден. */
+    expect(source).toMatch(/const deadlockFlat\s*=/);
+    expect(source).toMatch(/deadlockFlat \|\|/);
+  });
+
+  it('УРОВЕНЬ ИГРОКА НЕ ВХОДИТ в расчёт уровня врага', () => {
+    /* Тупик был свойством формулы `clamp(уровень игрока + сдвиг, мин,
+       макс)`. Вернуть уровень игрока в этот расчёт — значит вернуть
+       тупик, и никакая калибровка чисел от него не спасёт. */
+    expect(source).not.toMatch(/player\.level \+ balance\.raid\.difficulty/);
+    expect(source).not.toMatch(/enemyLevelOffset/);
   });
 });

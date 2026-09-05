@@ -16,7 +16,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { players } from '../db/schema/game.ts';
-import { runs } from '../db/schema/runs.ts';
+import { runs, zoneProgress } from '../db/schema/runs.ts';
 import { grantItems } from '../items/repository.ts';
 import { healBetweenFights, restoreFractionOf } from '../runs/service.ts';
 
@@ -95,8 +95,9 @@ describe.skipIf(!HAS_DB)('забег', () => {
     jar: CookieJar,
     zone = 'wastes',
     difficulty = 'normal',
+    segment = 0,
   ): Promise<RunView> => {
-    const res = await post(ctx, API_ROUTES.runStart, { zone, difficulty }, jar);
+    const res = await post(ctx, API_ROUTES.runStart, { zone, segment, difficulty }, jar);
     expect(res.status, JSON.stringify(res.body)).toBe(200);
     const run = (res.body as unknown as RunResponse).run;
     expect(run).not.toBeNull();
@@ -129,7 +130,7 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect((await get(ctx, API_ROUTES.zones)).status).toBe(401);
       expect((await get(ctx, API_ROUTES.run)).status).toBe(401);
       for (const [path, body] of [
-        [API_ROUTES.runStart, { zone: 'wastes', difficulty: 'normal' }],
+        [API_ROUTES.runStart, { zone: 'wastes', segment: 0, difficulty: 'normal' }],
         [API_ROUTES.runFight, {}],
         [API_ROUTES.runPotion, {}],
         [API_ROUTES.runExtract, {}],
@@ -150,17 +151,18 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(wastes).toBeDefined();
       if (wastes === undefined) return;
 
-      // Уровень врага СЧИТАЕТ СЕРВЕР по §7.3 с ограничением зоны:
-      // клиенту незачем знать формулу, и второго её места быть не должно.
-      expect(wastes.difficulties.normal.enemyLevel).toBeGreaterThanOrEqual(wastes.levels[0]);
+      // Уровень врага СЧИТАЕТ СЕРВЕР и отдаёт ПО УЧАСТКАМ: клиенту
+      // незачем знать формулу, и второго её места быть не должно.
+      expect(wastes.segments).toHaveLength(4);
+      expect(wastes.segments[0]?.levels).toEqual(WASTES.segments[0]?.levels);
+      expect(wastes.segments[3]?.levels[1]).toBe(wastes.levels[1]);
 
       /* ТИР РАЗЛИЧАЕТСЯ МНОЖИТЕЛЕМ, А НЕ УРОВНЕМ (§7.3 после правки).
          Раньше здесь стояло «у кошмара уровень выше», и это было верно
          ровно до тех пор, пока уровень не упирался в потолок диапазона:
          на верхушке зоны «опасно» и «кошмар» становились одним и тем же
-         боем при разной оплате лутом. Теперь уровень одинаков, а тяжесть
-         несёт множитель — и проверяется именно он. */
-      expect(wastes.difficulties.nightmare.enemyLevel).toBe(wastes.difficulties.normal.enemyLevel);
+         боем при разной оплате лутом. Теперь уровень приходит
+         из участка, а тяжесть несёт множитель — и проверяется он. */
       expect(wastes.difficulties.nightmare.power).toBeGreaterThan(
         wastes.difficulties.dangerous.power,
       );
@@ -180,38 +182,53 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(body.activeRun).toBeNull();
     });
 
-    it('переросшая зона платит меньше, и карточка это показывает', async () => {
+    it('УРОВЕНЬ ВРАГА НЕ ЗАВИСИТ ОТ УРОВНЯ ИГРОКА — тупик невоспроизводим', async () => {
       const { jar } = await register(ctx);
       const playerId = await playerIdOf(jar);
 
-      const before = (
-        (await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse
-      ).zones.find((z) => z.id === 'wastes')!.difficulties.nightmare;
-      /* Новичок платит ПОЛНУЮ цену — иначе проверка ниже прошла бы
-         и на игроке, которому урезали всегда, то есть не доказала бы,
-         что урезание связано с уровнем. */
-      expect(before.lootMultiplier).toBe(before.lootMultiplierBase);
+      const segmentsAt = async (): Promise<unknown> =>
+        ((await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse).zones
+          .find((z) => z.id === 'wastes')
+          ?.segments.map((s) => s.levels);
 
-      /* Уровень выше потолка Пустошей: уровень врага упирается
-         в диапазон зоны, разница уровней исчезает — с ней обязана уйти
-         и оплата. Это ровно тот фарм первой зоны на сороковом,
-         который §7.3 объявляет бессмысленным. */
+      const atLevelOne = await segmentsAt();
+
+      /* ЭТО И ЕСТЬ ПРОВЕРКА НА ТУПИК из PLAYTEST 2026-09-04. Прежде
+         уровень врага считался как `clamp(уровень игрока + сдвиг, мин,
+         макс)`: игрок рос, зона росла с ним, снаряжение оставалось
+         того уровня, на котором добыто, и выхода средствами игры
+         не было. Уровень обязан быть тем же самым на любом уровне
+         игрока — иначе пройденный участок перестаёт быть пройденным. */
       await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
+      expect(await segmentsAt(), 'участки поехали за уровнем игрока').toEqual(atLevelOne);
 
-      const after = (
-        (await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse
-      ).zones.find((z) => z.id === 'wastes')!.difficulties.nightmare;
+      /* Пара к проверке выше: сравнение «одинаково» проходит и тогда,
+         когда сравнивать нечего. Уровни обязаны быть непустыми
+         и РАЗНЫМИ между участками — иначе участки не значат ничего. */
+      const levels = (atLevelOne as [number, number][]) ?? [];
+      expect(levels).toHaveLength(4);
+      expect(levels[0]?.[0]).toBeLessThan(levels[3]?.[1] ?? 0);
+    });
 
-      // Враг тот же — потолок диапазона его держит.
-      expect(after.enemyLevel).toBe(WASTES.levels[1]);
-      expect(after.lootMultiplier).toBeLessThan(after.lootMultiplierBase);
-      expect(after.lootMultiplier).toBeCloseTo(
-        after.lootMultiplierBase * raid.lootLevelScale.floor,
-        10,
-      );
-      /* Основание не поехало: игроку показывают, ОТ ЧЕГО урезали.
-         Без этого числа урезание читалось бы как поломка. */
-      expect(after.lootMultiplierBase).toBe(before.lootMultiplierBase);
+    it('ОПЛАТА ЛУТОМ — КОНСТАНТА ТИРА, а не функция уровня игрока', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+
+      const payAt = async (): Promise<number | undefined> =>
+        ((await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse).zones.find(
+          (z) => z.id === 'wastes',
+        )?.difficulties.nightmare.lootMultiplier;
+
+      const before = await payAt();
+      expect(before).toBe(raid.difficulty.nightmare.lootMultiplier);
+
+      /* Затухание по разнице уровней снято вместе с самой разницей.
+         Раньше сороковой уровень в Пустошах получал ×0.25 вместо ×2.5:
+         уровень врага упирался в потолок зоны, риск исчезал, и оплата
+         уходила за ним. Уровень врага больше не едет за игроком —
+         компенсировать нечего. */
+      await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
+      expect(await payAt(), 'оплата всё ещё зависит от уровня игрока').toBe(before);
     });
 
     it('второй забег начать нельзя', async () => {
@@ -220,7 +237,7 @@ describe.skipIf(!HAS_DB)('забег', () => {
       const second = await post(
         ctx,
         API_ROUTES.runStart,
-        { zone: 'wastes', difficulty: 'normal' },
+        { zone: 'wastes', segment: 0, difficulty: 'normal' },
         jar,
       );
       // Два забега сразу — это две сумки и возможность переложить риск.
@@ -231,37 +248,82 @@ describe.skipIf(!HAS_DB)('забег', () => {
       const { jar } = await register(ctx);
       // `rift` объявлен в перечислении, но отложен до M4. Пустить туда
       // значило бы отдать бой без противника.
-      const res = await post(ctx, API_ROUTES.runStart, { zone: 'rift', difficulty: 'normal' }, jar);
+      const res = await post(
+        ctx,
+        API_ROUTES.runStart,
+        { zone: 'rift', segment: 0, difficulty: 'normal' },
+        jar,
+      );
       expect(res.status).toBeGreaterThanOrEqual(400);
     });
 
-    it('зона выше уровня заперта, и сервер отказывает, а не только экран', async () => {
+    it('ЗОНЫ И УЧАСТКИ ОТПИРАЮТСЯ ПРОХОЖДЕНИЕМ, и отказывает сервер', async () => {
       const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
       const res = await get(ctx, API_ROUTES.zones, jar);
       const body = res.body as unknown as ZonesResponse;
 
       const wastes = body.zones.find((z) => z.id === 'wastes');
-      const forge = body.zones.find((z) => z.id === 'forge');
-      expect(wastes?.unlocked, 'первая зона обязана быть открыта новичку').toBe(true);
-      // Проверка «запертая заперта» пуста, если запертых нет вовсе:
-      // тогда она проходит и на игре без запирания.
-      expect(forge?.unlocked, 'зона 24–32 не может быть открыта первому уровню').toBe(false);
-      expect(forge?.minLevel).toBeGreaterThan(1);
+      const warcamp = body.zones.find((z) => z.id === 'warcamp');
+      expect(wastes?.unlocked, 'первый участок первой зоны обязан быть открыт').toBe(true);
+      expect(wastes?.segments[0]?.unlocked).toBe(true);
+      /* Проверка «запертое заперто» пуста, если запертого нет вовсе:
+         тогда она проходит и на игре без запирания. */
+      expect(wastes?.segments[1]?.unlocked, 'второй участок открыт без прохождения').toBe(false);
+      expect(warcamp?.unlocked, 'вторая зона открыта без прохождения первой').toBe(false);
+
+      /* УРОВЕНЬ ИГРОКА ДОСТУПА НЕ ДАЁТ. Прежний замок считался
+         от `players.level`, и сороковой уровень открывал всё. Теперь
+         открывает только пройденное — иначе «участок 1-2 остаётся
+         проходимым навсегда» имело бы обратную сторону: участок 38-40
+         был бы доступен тому, кто там не выживет. */
+      await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
+      const grown = (
+        (await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse
+      ).zones.find((z) => z.id === 'warcamp');
+      expect(grown?.unlocked, 'уровень игрока отпер зону').toBe(false);
 
       /* И ГЛАВНОЕ: отказывает СЕРВЕР, а не экран. Замок на карточке
-         обходится одним запросом мимо интерфейса, и без этой проверки
-         «Кошмар» в переросшей зоне остался бы бесплатным умножением
-         добычи — уровень врага там зажат диапазоном и от сложности
-         не зависит, а множитель лута ×2.5. */
+         обходится одним запросом мимо интерфейса. */
       const denied = await post(
         ctx,
         API_ROUTES.runStart,
-        { zone: 'forge', difficulty: 'nightmare' },
+        { zone: 'wastes', segment: 2, difficulty: 'nightmare' },
         jar,
       );
       expect(denied.status).toBe(403);
-      expect(denied.body).toMatchObject({ error: { messageKey: 'error.run.zoneLocked' } });
+      expect(denied.body).toMatchObject({ error: { messageKey: 'error.run.segmentLocked' } });
       expect(await runOf(jar), 'отказ не должен оставлять начатый забег').toBeNull();
+    });
+
+    it('пройденный участок открывает следующий, и только следующий', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+
+      /* Прогресс ставится напрямую: провести пять боёв до победы над
+         боссом свежим изгнанным нельзя, а проверяется здесь правило
+         отпирания, а не проходимость. Что прогресс пишется именно
+         за убитого босса, проверяется отдельно ниже. */
+      await ctx.db.insert(zoneProgress).values({ playerId, zone: 'wastes', cleared: 1 });
+
+      const zones = ((await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse)
+        .zones;
+      const wastes = zones.find((z) => z.id === 'wastes');
+      expect(wastes?.segments[0]?.cleared).toBe(true);
+      expect(wastes?.segments[1]?.unlocked, 'следующий участок не открылся').toBe(true);
+      // И только следующий: третий по-прежнему заперт.
+      expect(wastes?.segments[2]?.unlocked, 'открылось больше, чем пройдено').toBe(false);
+      expect(zones.find((z) => z.id === 'warcamp')?.unlocked).toBe(false);
+
+      // Вся зона пройдена — открывается первый участок следующей.
+      await ctx.db
+        .update(zoneProgress)
+        .set({ cleared: 4 })
+        .where(eq(zoneProgress.playerId, playerId));
+      const after = ((await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse)
+        .zones;
+      expect(after.find((z) => z.id === 'warcamp')?.unlocked).toBe(true);
+      expect(after.find((z) => z.id === 'catacombs')?.unlocked).toBe(false);
     });
 
     it('свежий забег: пять боёв впереди, три зелья, пустая сумка', async () => {
@@ -329,6 +391,76 @@ describe.skipIf(!HAS_DB)('забег', () => {
       for (const bagged of result.run.bag) {
         expect(after.items.find((i) => i.id === bagged.id)).toBeUndefined();
       }
+    });
+
+    it('РЕДКОСТЬ ОТ СЛОЖНОСТИ: на обычной эпика нет, на кошмаре босс его даёт', async () => {
+      /* Это вторая ось правки тупика, и мерится она на живом сервере,
+         а не на функции: между таблицей и сумкой лежит генератор,
+         который однажды уже брал веса не оттуда.
+
+         Прогоняется много забегов, потому что редкость — распределение,
+         а не значение. Уровень участка везде один и тот же: проверяется
+         ровно то, что редкость от него НЕ зависит, а от сложности
+         зависит. */
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+      await gearUp(jar);
+
+      const harvest = async (difficulty: 'normal' | 'nightmare'): Promise<Set<string>> => {
+        const seen = new Set<string>();
+        for (let attempt = 0; attempt < 6; attempt++) {
+          await ctx.db.delete(runs).where(eq(runs.playerId, playerId));
+          await start(jar, 'wastes', difficulty);
+          for (let i = 0; i < raid.fightsPerRun; i++) {
+            const step = await fight(jar);
+            for (const item of step.rewards.loot) seen.add(item.rarity);
+            if (step.run.state !== 'active') break;
+          }
+        }
+        return seen;
+      };
+
+      const onNormal = await harvest('normal');
+      const onNightmare = await harvest('nightmare');
+
+      /* ПАРА К ПРОВЕРКЕ НИЖЕ: «эпика не выпало» верно и тогда, когда
+         не выпало вообще ничего. Лут обязан идти в обеих выборках. */
+      expect(onNormal.size, 'на обычной не выпало ни одного предмета').toBeGreaterThan(0);
+      expect(onNightmare.size, 'на кошмаре не выпало ни одного предмета').toBeGreaterThan(0);
+
+      expect([...onNormal], 'эпик выпал на обычной сложности').not.toContain('epic');
+      expect([...onNightmare], 'эпик не выпал на кошмаре').toContain('epic');
+      // Легендарка выключена нулём — ни на одной сложности.
+      expect([...onNormal, ...onNightmare]).not.toContain('legendary');
+    });
+
+    it('ILVL ДОБЫЧИ — ИЗ УЧАСТКА, а не из уровня игрока', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+      await gearUp(jar);
+      /* Сороковой уровень в первой зоне. Прежде ilvl добычи ехал
+         за игроком до потолка зоны; теперь он ограничен участком,
+         и участок 1-2 роняет ilvl 1-2 сколько его ни фарми. Это
+         и есть «фарм переросшего участка даёт мусор». */
+      await ctx.db.update(players).set({ level: 40 }).where(eq(players.id, playerId));
+
+      const [lo, hi] = WASTES.segments[0]?.levels ?? [1, 1];
+      let seen = 0;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        await ctx.db.delete(runs).where(eq(runs.playerId, playerId));
+        await start(jar, 'wastes', 'nightmare');
+        for (let i = 0; i < raid.fightsPerRun; i++) {
+          const step = await fight(jar);
+          for (const item of step.rewards.loot) {
+            expect(item.ilvl, `${item.baseKey}: ilvl вне участка`).toBeGreaterThanOrEqual(lo);
+            expect(item.ilvl, `${item.baseKey}: ilvl вне участка`).toBeLessThanOrEqual(hi);
+            seen++;
+          }
+          if (step.run.state !== 'active') break;
+        }
+      }
+      // Пара: диапазон соблюдён и на пустой выборке.
+      expect(seen, 'ни одного предмета не выпало — проверка пуста').toBeGreaterThan(0);
     });
 
     it('эвакуация раньше второго боя запрещена', async () => {
@@ -689,6 +821,126 @@ describe.skipIf(!HAS_DB)('забег', () => {
     });
   });
 
+  describe('итог забега', () => {
+    it('ИТОГ ПРИХОДИТ ТОЛЬКО С ПОСЛЕДНИМ БОЕМ, а не с каждым', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      await start(jar);
+
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state !== 'active') break;
+        /* Итог посреди забега объявил бы исход раньше времени — та же
+           ошибка, что панель наград над ещё идущим боем. */
+        expect(last.summary, `бой ${i}: итог показан посреди забега`).toBeNull();
+      }
+
+      expect(last?.run.state).toBe('extracted');
+      const done = last?.summary;
+      expect(done, 'последний бой пришёл без итога').not.toBeNull();
+      if (done === null || done === undefined) return;
+
+      expect(done.state).toBe('extracted');
+      expect(done.fightsCleared).toBe(raid.fightsPerRun);
+      expect(done.bossKilled).toBe(true);
+      expect(done.segment).toBe(0);
+      expect(done.segmentLevels).toEqual(WASTES.segments[0]?.levels);
+    });
+
+    it('СУММА ЗА ЗАБЕГ — ЖУРНАЛ БОЁВ, а не последний бой', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      await start(jar);
+
+      const perFight: number[] = [];
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state === 'wiped') break;
+        perFight.push(last.rewards.xp);
+        if (last.run.state !== 'active') break;
+      }
+      const done = last?.summary;
+      if (done === null || done === undefined) throw new Error('итога нет');
+
+      /* Пара к сравнению ниже: сумма совпала бы с последним боем,
+         если бы бой был один. Их обязано быть несколько. */
+      expect(perFight.length).toBeGreaterThan(1);
+      expect(done.xp).toBe(perFight.reduce((a, b) => a + b, 0));
+      expect(done.xp).toBeGreaterThan(perFight[perFight.length - 1] ?? 0);
+    });
+
+    it('ДОБЫЧА В ИТОГЕ — ЗА ВЕСЬ ЗАБЕГ, включая пятый бой', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      const before = await inventory(jar);
+      await start(jar, 'wastes', 'nightmare');
+
+      let last: RunFightResponse | null = null;
+      const seenInBag: string[] = [];
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        for (const item of last.rewards.loot) seenInBag.push(item.id);
+        if (last.run.state !== 'active') break;
+      }
+      const done = last?.summary;
+      if (done === null || done === undefined) throw new Error('итога нет');
+      if (last?.run.state !== 'extracted') return; // погиб — другой тест
+
+      // Пара: сравнение множеств пусто, если ничего не выпало.
+      expect(seenInBag.length, 'за забег не выпало ни одного предмета').toBeGreaterThan(0);
+      expect([...done.loot.map((i) => i.id)].sort()).toEqual([...seenInBag].sort());
+
+      /* И ровно это доехало до инвентаря — под теми же номерами.
+         Итог обязан описывать то, что игрок получил, а не то, что
+         сервер посчитал отдельно. */
+      const after = await inventory(jar);
+      const added = after.items.length - before.items.length;
+      expect(added).toBe(done.loot.length);
+    });
+
+    it('ЭВАКУАЦИЯ ТОЖЕ ДАЁТ ИТОГ, и в нём босс не убит', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      await start(jar);
+      for (let i = 0; i < 2; i++) {
+        const step = await fight(jar);
+        expect(step.run.state).toBe('active');
+      }
+
+      const res = await post(ctx, API_ROUTES.runExtract, {}, jar);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const done = (res.body as unknown as RunExtractResponse).summary;
+
+      expect(done.state).toBe('extracted');
+      expect(done.fightsCleared).toBe(2);
+      // Ушёл до босса — участок не засчитан, и итог обязан это сказать.
+      expect(done.bossKilled).toBe(false);
+    });
+
+    it('ПОГИБШИЙ ПОЛУЧАЕТ ИТОГ С ПУСТОЙ СУМКОЙ, а не пустой экран', async () => {
+      const { jar } = await register(ctx);
+      // Без снаряжения: свежий изгнанный в Пустошах на кошмаре гибнет.
+      await start(jar, 'wastes', 'nightmare');
+
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state !== 'active') break;
+      }
+      /* Пара: проверка ниже пуста, если игрок выжил. Тест обязан
+         убедиться, что смерть в выборке была. */
+      expect(last?.run.state, 'боец выжил — проверка смерти пуста').toBe('wiped');
+
+      const done = last?.summary;
+      if (done === null || done === undefined) throw new Error('погибший остался без итога');
+      expect(done.state).toBe('wiped');
+      expect(done.loot).toHaveLength(0);
+      expect(done.bossKilled).toBe(false);
+    });
+  });
+
   describe('пятый бой заканчивает забег', () => {
     it('выживший после босса получает сумку без отдельной эвакуации', async () => {
       const { jar } = await register(ctx);
@@ -707,6 +959,70 @@ describe.skipIf(!HAS_DB)('забег', () => {
       const inv = await inventory(jar);
       expect(inv.items.length).toBeGreaterThan(1);
       expect(await runOf(jar)).toBeNull();
+    });
+
+    it('УБИТЫЙ БОСС ЗАСЧИТЫВАЕТ УЧАСТОК и открывает следующий', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+      await gearUp(jar);
+      await start(jar);
+
+      const before = (
+        (await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse
+      ).zones
+        .find((z) => z.id === 'wastes')
+        ?.segments.map((s) => s.unlocked);
+      expect(before, 'до прохождения открыт только первый участок').toEqual([
+        true,
+        false,
+        false,
+        false,
+      ]);
+
+      let last: RunFightResponse | null = null;
+      for (let i = 0; i < raid.fightsPerRun; i++) {
+        last = await fight(jar);
+        if (last.run.state !== 'active') break;
+      }
+      /* Пара к проверке ниже: «участок засчитан» ничего не доказывает,
+         если босс не был убит. Забег обязан кончиться победой в пятом
+         бою, а не смертью на третьем. */
+      expect(last?.run.state, 'босс не убит — проверка ниже пуста').toBe('extracted');
+
+      const rows = await ctx.db
+        .select()
+        .from(zoneProgress)
+        .where(eq(zoneProgress.playerId, playerId));
+      expect(rows[0]?.cleared).toBe(1);
+
+      const after = ((await get(ctx, API_ROUTES.zones, jar)).body as unknown as ZonesResponse).zones
+        .find((z) => z.id === 'wastes')
+        ?.segments.map((s) => s.unlocked);
+      expect(after).toEqual([true, true, false, false]);
+    });
+
+    it('ЭВАКУАЦИЯ УЧАСТОК НЕ ЗАСЧИТЫВАЕТ', async () => {
+      const { jar } = await register(ctx);
+      const playerId = await playerIdOf(jar);
+      await gearUp(jar);
+      await start(jar);
+
+      /* Уйти с добычей — это отказ от риска, и открывать им следующий
+         участок значило бы платить продвижением за отказ. Ровно та же
+         причина, по которой множитель лута растёт только за пройденные
+         развилки. */
+      for (let i = 0; i < 2; i++) {
+        const step = await fight(jar);
+        expect(step.run.state, 'забег кончился раньше первой развилки').toBe('active');
+      }
+      const left = await post(ctx, API_ROUTES.runExtract, {}, jar);
+      expect(left.status, JSON.stringify(left.body)).toBe(200);
+
+      const rows = await ctx.db
+        .select()
+        .from(zoneProgress)
+        .where(eq(zoneProgress.playerId, playerId));
+      expect(rows, 'эвакуация записала прохождение участка').toHaveLength(0);
     });
 
     it('множитель лута растёт с глубиной', async () => {

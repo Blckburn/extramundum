@@ -127,3 +127,60 @@ describe('роли слотов', () => {
     }
   });
 });
+
+/**
+ * Таблица редкости в НАСТОЯЩИХ данных, а не в тестовой копии.
+ *
+ * Правило проверяется дважды и в разных местах намеренно: тест
+ * в `packages/shared` держит саму функцию против требования на своей
+ * таблице, этот — держит `balance.json` против того же требования.
+ * Одного мало: функция может быть верной на данных, которые нарушают
+ * правило, и наоборот.
+ */
+describe('редкость по сложностям — настоящие данные', () => {
+  const table = loot.drop.rarityByDifficulty;
+
+  it('таблица есть на все три сложности, и рядовым отдельно от босса', () => {
+    for (const difficulty of ['normal', 'dangerous', 'nightmare'] as const) {
+      expect(table[difficulty], difficulty).toBeDefined();
+      expect(Object.keys(table[difficulty] ?? {}).sort()).toEqual(['boss', 'monster']);
+    }
+  });
+
+  it('ПОТОЛОК ТИРА совпадает с объявленным в §7.3', () => {
+    const has = (difficulty: 'normal' | 'dangerous' | 'nightmare', who: 'monster' | 'boss') =>
+      Object.entries(table[difficulty]?.[who] ?? {})
+        .filter(([, weight]) => weight > 0)
+        .map(([rarity]) => rarity);
+
+    // Обычная: эпика нет нигде.
+    expect(has('normal', 'monster')).not.toContain('epic');
+    expect(has('normal', 'boss')).not.toContain('epic');
+    // Опасная: эпик ТОЛЬКО с босса.
+    expect(has('dangerous', 'monster')).not.toContain('epic');
+    expect(has('dangerous', 'boss')).toContain('epic');
+    // Кошмар: босс роняет эпик и ничего кроме — то есть гарантированно.
+    expect(has('nightmare', 'boss')).toEqual(['epic']);
+  });
+
+  it('редкое встречается тем чаще, чем выше сложность', () => {
+    /* Пара к проверке потолка: «эпика нет на обычной» верно и для
+       таблицы, где сложность не меняет вообще ничего. Оси обязаны
+       различаться на всём диапазоне, а не только на верхней ступени. */
+    const rareShare = (difficulty: 'normal' | 'dangerous' | 'nightmare') => {
+      const w = table[difficulty]?.monster ?? {};
+      const total = Object.values(w).reduce((a, b) => a + b, 0);
+      return (w.rare ?? 0) / total;
+    };
+    expect(rareShare('dangerous')).toBeGreaterThan(rareShare('normal'));
+    expect(rareShare('nightmare')).toBeGreaterThan(rareShare('dangerous'));
+  });
+
+  it('легендарка выключена нулём во всех шести строках', () => {
+    for (const difficulty of ['normal', 'dangerous', 'nightmare'] as const) {
+      for (const who of ['monster', 'boss'] as const) {
+        expect(table[difficulty]?.[who]?.legendary, `${difficulty}/${who}`).toBe(0);
+      }
+    }
+  });
+});
