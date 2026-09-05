@@ -22,10 +22,39 @@
  * и тот же результат, иначе «стало лучше» нельзя отличить от шума.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
-const balance = JSON.parse(readFileSync(new URL('packages/data/balance.json', root), 'utf8'));
+
+/* СТРАЖ СБОРКИ СТОИТ ДО ЛЮБЫХ ЧИСЕЛ, а не после первой таблицы.
+   Замер на устаревшей сборке печатает правдоподобные числа про игру,
+   которой нет, — и правдоподобие сходит за правильность. Отдельным
+   процессом, чтобы падение было явным и с тем же текстом, что
+   у `pnpm check:data`. */
+{
+  const { status } = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('scripts/check-data-build.mjs', root))],
+    { stdio: 'inherit' },
+  );
+  if (status !== 0) process.exit(status ?? 1);
+}
+
+/* ДАННЫЕ ЧИТАЮТСЯ ИЗ СБОРКИ, ТОЙ ЖЕ, ЧТО У СЕРВЕРА.
+   Прежде матрица брала исходные `packages/data/*.json`, а игра —
+   их копии в `dist`, которые кладёт туда `tsc --build`. Один файл,
+   два пути, расходятся молча: замер печатал откалиброванные множители
+   участков, а карточка зоны показывала прежние.
+   Что сама сборка не отстала от исходников, проверяет
+   `scripts/check-data-build.mjs` — он же стоит первым в этом файле. */
+const {
+  ZONES: zones,
+  MONSTERS: monstersBuilt,
+  zoneSpec: _zoneSpec,
+} = await import(fileURLToPath(new URL('packages/data/dist/zones.js', root)));
+const { balance } = await import(fileURLToPath(new URL('packages/data/dist/index.js', root)));
+const { CARDS } = await import(fileURLToPath(new URL('packages/data/dist/cards.js', root)));
 
 const { resolveBattle } = await import(fileURLToPath(new URL('packages/sim/dist/index.js', root)));
 /* Реестр трейтов нужен прогрессии игрока: школа трейта — данные движка,
@@ -154,7 +183,6 @@ function build(archetype, extraTraits = [], level = 1, ilvl = 1) {
  * это находка о балансе школ, и её видно в разбросе, а не в одном
  * усреднённом числе.
  */
-const CARDS = JSON.parse(readFileSync(new URL('packages/data/cards.json', root), 'utf8')).cards;
 const PROG = balance.progression;
 const LEANS = ['atk', 'def', 'agi', 'spd'];
 const LEAN_SCHOOL = { atk: 'str', def: 'def', agi: 'agi', spd: 'mag' };
@@ -487,12 +515,7 @@ for (const family of PERCENT_FAMILIES) {
  * Уровень один кривой не даёт: игрок приходит в зону уровнем по ней,
  * и без множителя пятая зона была бы ровно так же трудна, как первая.
  */
-const zones = JSON.parse(readFileSync(new URL('packages/data/zones.json', root), 'utf8')).zones;
-const monsterSpecs = Object.fromEntries(
-  JSON.parse(readFileSync(new URL('packages/data/monsters.json', root), 'utf8')).monsters.map(
-    (m) => [m.key, m],
-  ),
-);
+const monsterSpecs = Object.fromEntries(monstersBuilt.map((m) => [m.key, m]));
 /* Базы читаются из json НАПРЯМУЮ, поэтому умолчания схемы надо
    подставить руками: `minIlvl` в файле указан не у всех, а генератор
    сравнивает его с уровнем и на `undefined` отбрасывает базу молча.
