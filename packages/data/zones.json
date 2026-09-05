@@ -58,21 +58,21 @@
             3,
             4
           ],
-          "power": 1.08
+          "power": 1.01
         },
         {
           "levels": [
             5,
             6
           ],
-          "power": 0.86
+          "power": 0.85
         },
         {
           "levels": [
             7,
             8
           ],
-          "power": 0.88
+          "power": 0.91
         }
       ],
       "armorClass": "light",
@@ -95,14 +95,14 @@
             8,
             10
           ],
-          "power": 0.91
+          "power": 0.86
         },
         {
           "levels": [
             10,
             12
           ],
-          "power": 0.85
+          "power": 0.82
         },
         {
           "levels": [
@@ -116,7 +116,7 @@
             14,
             16
           ],
-          "power": 0.81
+          "power": 0.83
         }
       ],
       "armorClass": "medium",
@@ -139,14 +139,14 @@
             16,
             18
           ],
-          "power": 0.95
+          "power": 0.97
         },
         {
           "levels": [
             18,
             20
           ],
-          "power": 0.97
+          "power": 0.96
         },
         {
           "levels": [
@@ -160,7 +160,7 @@
             22,
             24
           ],
-          "power": 1.03
+          "power": 1.04
         }
       ],
       "armorClass": "cloth",
@@ -183,28 +183,28 @@
             24,
             26
           ],
-          "power": 0.87
+          "power": 0.89
         },
         {
           "levels": [
             26,
             28
           ],
-          "power": 0.89
+          "power": 0.94
         },
         {
           "levels": [
             28,
             30
           ],
-          "power": 0.98
+          "power": 1.05
         },
         {
           "levels": [
             30,
             32
           ],
-          "power": 1.07
+          "power": 1.05
         }
       ],
       "armorClass": "heavy",
@@ -227,28 +227,28 @@
             32,
             34
           ],
-          "power": 1.25
+          "power": 1.29
         },
         {
           "levels": [
             34,
             36
           ],
-          "power": 1.29
+          "power": 1.3
         },
         {
           "levels": [
             36,
             38
           ],
-          "power": 1.29
+          "power": 1.34
         },
         {
           "levels": [
             38,
             40
           ],
-          "power": 1.35
+          "power": 1.38
         }
       ],
       "armorClass": "mixed",
