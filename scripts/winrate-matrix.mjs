@@ -803,13 +803,69 @@ function median(values) {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/* ─────────── ПРИБОР НА ИЗВЕСТНОМ ОТВЕТЕ · CLAUDE.md ────────────
+ *
+ * Новый замер сначала проверяется на случае с ЗАРАНЕЕ ИЗВЕСТНЫМ
+ * ответом, и только потом — на том, ради которого он писался. Правило
+ * появилось после четырёх подряд ошибок в приборе, а не в игре: каждый
+ * раз он печатал правдоподобные числа, и правдоподобие сходило
+ * за правильность.
+ *
+ * Здесь известных ответов два, и они ловят разное.
+ *
+ * ПЕРВЫЙ: боец против самого себя даёт ровно половину. Ловит перекос
+ * в самой дуэли — если первый ход, порядок инициативы или сид дают
+ * кому-то фору, число уедет от 50% и всё остальное, что напечатает
+ * матрица, будет смещено на ту же величину.
+ *
+ * ВТОРОЙ: множитель силы ОБЯЗАН менять исход. Ловит прибор, который
+ * меряет не ту величину: если `power` до бойца не доезжает, все двадцать
+ * подобранных чисел будут одинаково бессмысленны, а таблица — гладкой
+ * и убедительной.
+ */
+{
+  const probe = tierGearedPlayer('forbidden', 20, 20, 'known-answer', 'balanced', 'def');
+  const mirror = duel(probe, probe, 'known-answer-mirror', 2000).rate;
+  if (Math.abs(mirror - 0.5) > 0.03) {
+    console.error(
+      `ПРИБОР НЕВЕРЕН: боец против самого себя даёт ${(mirror * 100).toFixed(1)}%, ` +
+        'а обязан давать 50%. Всё остальное в этом прогоне смещено на ту же величину.',
+    );
+    process.exit(2);
+  }
+
+  const enemy = monsterSpecs[zones[0].monsters[0]];
+  const weak = duel(probe, monsterFighter(enemy, 8, 0.5), 'known-answer-weak', 400).rate;
+  const strong = duel(probe, monsterFighter(enemy, 8, 3), 'known-answer-strong', 400).rate;
+  if (!(weak > strong + 0.2)) {
+    console.error(
+      `ПРИБОР НЕВЕРЕН: множитель силы не меняет исход (${(weak * 100).toFixed(1)}% против ` +
+        `${(strong * 100).toFixed(1)}%). Подбор множителей в таком прогоне бессмыслен.`,
+    );
+    process.exit(2);
+  }
+}
+
+/**
+ * ЗОНА МЕРИТСЯ НА ЧЕТВЁРТОМ УЧАСТКЕ — той же точке, что и раньше.
+ *
+ * Прежде эталон стоял «на верхнем уровне диапазона зоны»; после
+ * перехода на участки это ровно верх четвёртого участка. Точка та же,
+ * поэтому числа сравнимы с прежними записями, а не начинают новую
+ * историю.
+ *
+ * Уровень врага усредняется по ВСЕМ уровням участка: внутри участка
+ * он разыгрывается броском, и мерить по одному значило бы мерить
+ * половину боёв. Прогоны делятся между уровнями, а не добавляются
+ * к ним, — иначе секция подорожала бы вдвое-втрое без нового знания.
+ */
 const zoneCurve = zones.map((zone, index) => {
-  const playerLevel = zone.levels[1];
-  // Нормальная сложность: уровень игрока −1, зажатый диапазоном зоны.
-  const enemyLevel = Math.min(
-    zone.levels[1],
-    Math.max(zone.levels[0], playerLevel + balance.raid.difficulty.normal.enemyLevelOffset),
-  );
+  const segment = zone.segments[zone.segments.length - 1];
+  const playerLevel = segment.levels[1];
+  const enemyLevels = [];
+  for (let lv = segment.levels[0]; lv <= segment.levels[1]; lv++) enemyLevels.push(lv);
+  const zonePower = segment.power;
+  const levelRuns = Math.max(20, Math.round(zoneRuns / enemyLevels.length));
 
   /* Носитель ОДИН на все зоны и сложности — `forbidden`, самый ровный
      из четырёх. Разный носитель по зонам смешал бы трудность зоны
@@ -840,14 +896,16 @@ const zoneCurve = zones.map((zone, index) => {
     return (
       zone.monsters
         .map((key) => {
-          const rates = players.map(
-            (player, i) =>
-              duel(
-                player,
-                monsterFighter(monsterSpecs[key], enemyLevel, power),
-                `seed${sd}-${zone.id}-${key}-${i}-${power.toFixed(3)}`,
-                zoneRuns,
-              ).rate,
+          const rates = players.flatMap((player, i) =>
+            enemyLevels.map(
+              (lv) =>
+                duel(
+                  player,
+                  monsterFighter(monsterSpecs[key], lv, power),
+                  `seed${sd}-${zone.id}-${key}-${i}-lv${lv}-${power.toFixed(3)}`,
+                  levelRuns,
+                ).rate,
+            ),
           );
           return rates.reduce((a, b) => a + b, 0) / rates.length;
         })
@@ -856,7 +914,7 @@ const zoneCurve = zones.map((zone, index) => {
   };
 
   const seedRates = [];
-  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, zone.power));
+  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, zonePower));
   const bySeed = seedRates.slice(1);
   const medianRate = median(seedRates);
 
@@ -878,12 +936,33 @@ const zoneCurve = zones.map((zone, index) => {
   const byLean = byLeanOn(0);
 
   const across = (spec, tag) => {
-    const rates = kits.map(
-      (player, i) =>
-        duel(player, monsterFighter(spec, enemyLevel, zone.power), `${tag}-${i}`, zoneRuns).rate,
+    const rates = kits.flatMap((player, i) =>
+      enemyLevels.map(
+        (lv) =>
+          duel(player, monsterFighter(spec, lv, zonePower), `${tag}-${i}-lv${lv}`, levelRuns).rate,
+      ),
     );
     return rates.reduce((a, b) => a + b, 0) / rates.length;
   };
+
+  /** Винрейт бойца против пула зоны, усреднённый по уровням участка. */
+  const versusPool = (fighter, tag) =>
+    zone.monsters
+      .map(
+        (key) =>
+          enemyLevels
+            .map(
+              (lv) =>
+                duel(
+                  fighter,
+                  monsterFighter(monsterSpecs[key], lv, zonePower),
+                  `${tag}-${key}-lv${lv}`,
+                  levelRuns,
+                ).rate,
+            )
+            .reduce((a, b) => a + b, 0) / enemyLevels.length,
+      )
+      .reduce((a, b) => a + b, 0) / zone.monsters.length;
 
   const perMonster = zone.monsters.map((key) => ({
     key,
@@ -898,34 +977,15 @@ const zoneCurve = zones.map((zone, index) => {
      от трейтов. */
   const cardsOnly = byLean.map(({ lean, kit }) => ({
     lean,
-    rate:
-      zone.monsters
-        .map(
-          (key) =>
-            duel(
-              { ...kit, traits: [balance.archetypes.forbidden.trait] },
-              monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-              `cards-${zone.id}-${lean}-${key}`,
-              zoneRuns,
-            ).rate,
-        )
-        .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    rate: versusPool(
+      { ...kit, traits: [balance.archetypes.forbidden.trait] },
+      `cards-${zone.id}-${lean}`,
+    ),
   }));
 
   const leanRates = byLean.map(({ lean, kit }) => ({
     lean,
-    rate:
-      zone.monsters
-        .map(
-          (key) =>
-            duel(
-              kit,
-              monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-              `lean-${zone.id}-${lean}-${key}`,
-              zoneRuns,
-            ).rate,
-        )
-        .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    rate: versusPool(kit, `lean-${zone.id}-${lean}`),
   }));
 
   /* РАЗМАХ ПО НАКЛОНАМ ТОЖЕ МЕРИТСЯ ПО МЕДИАНЕ СИДОВ, и по той же
@@ -933,19 +993,11 @@ const zoneCurve = zones.map((zone, index) => {
      Печатаются оба — сид 0 для сравнимости с прежними записями
      и медиана как настоящее число. */
   const spreadOn = (sd, bare) => {
-    const rates = byLeanOn(sd).map(
-      ({ lean, kit }) =>
-        zone.monsters
-          .map(
-            (key) =>
-              duel(
-                bare ? { ...kit, traits: [balance.archetypes.forbidden.trait] } : kit,
-                monsterFighter(monsterSpecs[key], enemyLevel, zone.power),
-                `${bare ? 'cards' : 'lean'}-s${sd}-${zone.id}-${lean}-${key}`,
-                zoneRuns,
-              ).rate,
-          )
-          .reduce((a, b) => a + b, 0) / zone.monsters.length,
+    const rates = byLeanOn(sd).map(({ lean, kit }) =>
+      versusPool(
+        bare ? { ...kit, traits: [balance.archetypes.forbidden.trait] } : kit,
+        `${bare ? 'cards' : 'lean'}-s${sd}-${zone.id}-${lean}`,
+      ),
     );
     return Math.max(...rates) - Math.min(...rates);
   };
@@ -961,38 +1013,18 @@ const zoneCurve = zones.map((zone, index) => {
   const rate = perMonster.reduce((sum, m) => sum + m.rate, 0) / perMonster.length;
   const target = ZONE_TARGETS[index] ?? 0;
 
-  /* ПОДБОР ИДЁТ ПО МЕДИАНЕ СИДОВ, а не по одному сиду, и это вся
-     разница между прежней калибровкой и нынешней. Прежняя двигала
-     множитель, пока НА СИДЕ 0 не выйдет цель, — отчего сид 0 и оказался
-     с краю распределения во всех зонах разом. Медиана такого сделать
-     не даёт: сдвинуть её означает сдвинуть больше половины сидов.
-
-     Цель по-прежнему берётся из `ZONE_TARGETS`, и это не возврат
-     к абсолютным числам: лестница 85/75/65/55/45 арифметическая
-     с шагом ровно `ZONE_STEP`, поэтому попадание каждой зоны в свою
-     цель ПО МЕДИАНЕ и есть требуемая форма плюс якорь первой зоны.
-
-     Печатается предложение, файл не трогается — числа баланса правит
-     человек, увидев их. */
-  let suggested = null;
-  if (CALIBRATE) {
-    let lo = 0.15;
-    let hi = 4;
-    for (let step = 0; step < 11; step++) {
-      const mid = (lo + hi) / 2;
-      const probes = [];
-      for (let sd = 0; sd < SEEDS; sd++) probes.push(rateOnSeed(sd, mid));
-      if (median(probes) > target) lo = mid;
-      else hi = mid;
-    }
-    suggested = Math.round(((lo + hi) / 2) * 100) / 100;
-  }
+  /* ПОДБОР ЖИВЁТ У ЛЕСТНИЦЫ, А НЕ ЗДЕСЬ. Прежде множитель подбирался
+     по одной точке на зону — этой самой. Замер лестницы показал, что
+     одного числа на четыре участка мало: внутри зоны трудность идёт
+     не туда. Двадцать точек подбираются в секции лестницы, и четвёртый
+     участок каждой зоны — одна из них, то есть эта точка тоже. Второй
+     подбор здесь считал бы то же самое за ту же цену. */
 
   return {
     id: zone.id,
-    power: zone.power,
+    power: zonePower,
     playerLevel,
-    enemyLevel,
+    enemyLevels,
     rate,
     bySeed,
     seedRates,
@@ -1008,11 +1040,317 @@ const zoneCurve = zones.map((zone, index) => {
     medianLeanSpread: median(leanSpreadSeeds),
     medianCardsSpread: median(cardsSpreadSeeds),
     boss: bossRate,
-    suggested,
   };
 });
 
-const zoneBreaches = zoneCurve.filter((z) => !z.within);
+/* ──────────────── ЛЕСТНИЦА УЧАСТКОВ · GDD §7.4 ─────────────────
+ *
+ * ЗАЧЕМ ДВАДЦАТЬ ТОЧЕК, А НЕ ПЯТЬ. Кривая зон меряет по одной точке
+ * на зону — четвёртый участок, — и этого хватало, пока внутри зоны
+ * ничего не происходило: уровень врага там был один. Теперь внутри
+ * зоны четыре ступени, и трудность на них РАЗНАЯ: кривая монстров
+ * `baseStat + statPerLevel × уровень` растёт линейно, а снаряжение
+ * игрока — через `1 + ilvl × ilvlScale` в каждом аффиксе. Это разные
+ * наклоны, и расходятся они внутри зоны так же, как между зонами.
+ * Замерять только верх зоны значило бы не видеть три ступени из
+ * четырёх — ровно тот наклон, который однажды уже уехал
+ * (`balance.monsters.$slope`).
+ *
+ * ПОЧЕМУ ШАГ МЕЖДУ УЧАСТКАМИ НЕ ПРОВЕРЯЕТСЯ ЦЕЛЬЮ. Цель кривой —
+ * 10 п.п. между зонами; между участками это ~2.5 п.п., что ниже шума
+ * замера (ширина 10-90 процентиля шага на 25 сидах — единицы пунктов).
+ * Проверять цель на такой величине значило бы проверять шум. Поэтому
+ * у лестницы проверяется только УБЫВАНИЕ, и с допуском: ступень вверх
+ * означает, что участок легче предыдущего, а это перевёрнутая
+ * прогрессия при любом допуске.
+ *
+ * ЭТАЛОН ЗДЕСЬ ДЕШЕВЛЕ, ЧЕМ У КРИВОЙ ЗОН: три класса оружия вместо
+ * двенадцати комплектов. Три обязательны — с одним классом число
+ * мерило бы матчап, а не трудность места. Наклоны драфта сняты:
+ * их разброс меряется отдельной секцией, и платить за него
+ * двадцатикратно незачем.
+ */
+const ladderRuns = Math.max(30, Math.round(zoneRuns / 2));
+
+const ladder = zones.flatMap((zone) =>
+  zone.segments.map((spec, segment) => {
+    const [lo, hi] = spec.levels;
+    const levels = [];
+    for (let lv = lo; lv <= hi; lv++) levels.push(lv);
+
+    /* Игрок берётся уровнем и снаряжением ПО УЧАСТКУ: это тот, кто
+       дошёл сюда по лестнице, а не тот, кто перерос. Перерастание
+       больше не помогает — в этом вся правка. */
+    const kitsFor = (sd) =>
+      ['light', 'balanced', 'heavy'].map((weaponClass) =>
+        tierGearedPlayer(
+          'forbidden',
+          hi,
+          hi,
+          gearSeedTag(`${zone.id}-${segment}`, sd),
+          weaponClass,
+          'def',
+        ),
+      );
+
+    const rateOnSeed = (sd, power) => {
+      const players = kitsFor(sd);
+      return (
+        zone.monsters
+          .map((key) => {
+            const rates = players.flatMap((player, i) =>
+              levels.map(
+                (lv) =>
+                  duel(
+                    player,
+                    monsterFighter(monsterSpecs[key], lv, power),
+                    `seg${sd}-${zone.id}-${segment}-${key}-${i}-lv${lv}-${power.toFixed(3)}`,
+                    ladderRuns,
+                  ).rate,
+              ),
+            );
+            return rates.reduce((a, b) => a + b, 0) / rates.length;
+          })
+          .reduce((a, b) => a + b, 0) / zone.monsters.length
+      );
+    };
+
+    const seedRates = [];
+    for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd, spec.power));
+
+    return {
+      zone: zone.id,
+      segment,
+      levels: spec.levels,
+      power: spec.power,
+      medianRate: median(seedRates),
+      seedRates,
+      rateOnSeed,
+    };
+  }),
+);
+
+/**
+ * ПЕРВЫЙ УЧАСТОК ПЕРВОЙ ЗОНЫ ПОДБОРУ НЕ ПОДЛЕЖИТ.
+ *
+ * Это единственное место в игре, которое меряется ДВУМЯ приборами
+ * сразу: лестница смотрит на него снаряжённым бойцом, доходимость —
+ * голым изгнанным с одним подобранным клинком. Множитель участка
+ * двигает обоих разом, а требования у них разные, и требование
+ * новичка жёстче.
+ *
+ * На этом уже наступили. Подбор по лестнице дал первому участку
+ * цель 92.5% для СНАРЯЖЁННОГО бойца и поднял множитель с 1.04 до 1.53.
+ * Лестница сошлась; доходимость первой сессии упала с 97.4% до 0.1% —
+ * то есть игра перестала начинаться. Одно число нельзя подбирать
+ * по двум разным бойцам, и выбирать надо того, кто там ИГРАЕТ.
+ *
+ * Поэтому множитель первого участка задаёт ДОХОДИМОСТЬ, а лестница
+ * начинается от того, что на нём измерилось.
+ */
+const PINNED_BY_REACH = 0;
+
+/**
+ * ЦЕЛЬ ЛЕСТНИЦЫ — интерполяция между якорями зон.
+ *
+ * Якоря те же 85/75/65/55/45 и стоят там же, где стояли: на четвёртом
+ * участке каждой зоны. Между ними цель идёт линейно, а начинается
+ * от ИЗМЕРЕННОГО значения первого участка — того самого, который
+ * подбору не подлежит.
+ *
+ * Ступень внутри зоны выходит ~2.5 п.п. Проверять её этой целью нельзя
+ * (ниже шума медианы), но ПОДБИРАТЬ по ней можно и нужно: подбор
+ * двигает медиану, а не попадает в неё одним сидом.
+ */
+const SEGMENTS_PER_ZONE = 4;
+
+function ladderTarget(index, startRate) {
+  const anchors = [{ at: PINNED_BY_REACH, value: startRate }];
+  for (const [i, value] of ZONE_TARGETS.entries()) {
+    anchors.push({ at: i * SEGMENTS_PER_ZONE + (SEGMENTS_PER_ZONE - 1), value });
+  }
+  for (let i = 1; i < anchors.length; i++) {
+    const a = anchors[i - 1];
+    const b = anchors[i];
+    if (index <= b.at) {
+      return a.value + ((b.value - a.value) * (index - a.at)) / (b.at - a.at);
+    }
+  }
+  return anchors[anchors.length - 1].value;
+}
+
+/**
+ * Ступени лестницы. Нарушением считается ступень ВВЕРХ: участок легче
+ * предыдущего — это перевёрнутая прогрессия, и допуском она
+ * не покрывается.
+ *
+ * Допуск нужен на шум: медиана 25 сидов имеет собственную ширину,
+ * и требовать строгого убывания значило бы валить прогон на разнице
+ * в один пункт, которой в игре нет.
+ */
+const LADDER_RISE_TOLERANCE = 0.03;
+
+const ladderSteps = ladder.slice(1).map((point, i) => {
+  const prev = ladder[i];
+  const step = prev.medianRate - point.medianRate;
+  return {
+    from: `${prev.zone}#${prev.segment + 1}`,
+    to: `${point.zone}#${point.segment + 1}`,
+    step,
+    /* Граница зоны — не то же самое, что ступень внутри зоны: там
+       меняется и множитель силы зоны, и ожидаемый шаг вчетверо
+       больше. Помечается, чтобы в выводе было видно, где что. */
+    crossesZone: prev.zone !== point.zone,
+    rises: step < -LADDER_RISE_TOLERANCE,
+  };
+});
+const ladderBreaches = ladderSteps.filter((s) => s.rises);
+
+/**
+ * ПОДБОР МНОЖИТЕЛЕЙ ПО УЧАСТКАМ.
+ *
+ * Раньше подбирался один множитель на зону — по той точке, где кривая
+ * и мерилась. Замер лестницы показал, что этого мало: внутри зоны
+ * трудность идёт не туда, и одно число на четыре ступени этого
+ * не выражает. Теперь подбирается двадцать чисел, по одному
+ * на участок, и каждое — ПО МЕДИАНЕ сидов, как и прежде.
+ *
+ * Файл не трогается: числа баланса правит человек, увидев их.
+ */
+const ladderSuggested = CALIBRATE
+  ? ladder.map((point, index) => {
+      /* Первый участок пропускается: его множитель задаёт доходимость,
+         а не лестница. Печатается со звёздочкой, чтобы в таблице было
+         видно, что число не подобрано, а закреплено. */
+      if (index === PINNED_BY_REACH) {
+        return {
+          zone: point.zone,
+          segment: point.segment,
+          target: point.medianRate,
+          power: point.power,
+          pinned: true,
+        };
+      }
+      const target = ladderTarget(index, ladder[PINNED_BY_REACH].medianRate);
+      /* Границы поиска ШИРОКИЕ намеренно. Узкие давали бы упёршийся
+         в край ответ, а он выглядит как настоящий: число печатается,
+         в файл ложится, и только замер потом показывает, что цели
+         оно не даёт. Упирание в край видно по повторяющемуся числу
+         в столбце. */
+      let lo = 0.05;
+      let hi = 8;
+      for (let step = 0; step < 13; step++) {
+        const mid = (lo + hi) / 2;
+        const probes = [];
+        for (let sd = 0; sd < SEEDS; sd++) probes.push(point.rateOnSeed(sd, mid));
+        if (median(probes) > target) lo = mid;
+        else hi = mid;
+      }
+      return {
+        zone: point.zone,
+        segment: point.segment,
+        target,
+        power: Math.round(((lo + hi) / 2) * 100) / 100,
+        pinned: false,
+      };
+    })
+  : null;
+
+/* ──────────── ТУПИК НЕВОСПРОИЗВОДИМ · PLAYTEST 2026-09-04 ────────────
+ *
+ * Главная проверка этой правки, и она отвечает не на «сбалансировано
+ * ли», а на «есть ли выход». Прежде уровень врага считался как
+ * `clamp(уровень игрока + сдвиг, мин зоны, макс зоны)`: игрок рос, зона
+ * росла с ним, а снаряжение оставалось того уровня, на котором добыто.
+ * Игрок в эпиках ilvl 2 к шестому уровню не мог пройти первую зону
+ * и не мог добыть ничего лучше — выхода средствами игры не было.
+ *
+ * СВОЙСТВО, КОТОРОЕ ОБЯЗАНО ДЕРЖАТЬСЯ: пройденный участок остаётся
+ * проходимым НАВСЕГДА. Формально — винрейт на участке не падает
+ * с ростом уровня игрока. Меряется на первом участке первой зоны:
+ * он и есть то место, куда игрок возвращается.
+ *
+ * ЭТО ТЕСТ НА ОТСУТСТВИЕ ПЛОХОГО ПОВЕДЕНИЯ, поэтому рядом стоит пара:
+ * уровень игрока в выборке обязан РЕАЛЬНО меняться и что-то менять,
+ * иначе «не падает» верно и для замера, который меряет одно и то же
+ * число четыре раза.
+ */
+/**
+ * МЕРИТЬ НАДО ТАМ, ГДЕ ИСХОД НЕ РЕШЁН ЗАРАНЕЕ. Первый участок для этого
+ * не годится: снаряжённый боец выигрывает там 100% на любом уровне,
+ * и «не стало хуже» на потолке недоказуемо — прибор не может отличить
+ * здоровую игру от сломанной, потому что обе дают сто процентов.
+ * Именно это и сказала пара к проверке, когда её поставили.
+ *
+ * Берётся ЧЕТВЁРТЫЙ участок Пустошей: там 85%, есть куда падать,
+ * и это то же самое место по смыслу — низ лестницы, куда игрок
+ * возвращается, переросши его.
+ */
+const DEADLOCK_LEVELS = [8, 12, 20, 30, 40];
+const deadlockZone = zones[0];
+const deadlockSegment = 3;
+
+const deadlock = DEADLOCK_LEVELS.map((level) => {
+  const {
+    levels: [lo, hi],
+    power: deadlockPower,
+  } = deadlockZone.segments[deadlockSegment];
+  const levels = [];
+  for (let lv = lo; lv <= hi; lv++) levels.push(lv);
+
+  const rateOnSeed = (sd) => {
+    const players = ['light', 'balanced', 'heavy'].map((weaponClass) =>
+      /* Снаряжение ПО УРОВНЮ ИГРОКА, а не по участку: моделируется
+         тот, кто вырос и вернулся. Именно он и упирался в тупик. */
+      tierGearedPlayer(
+        'forbidden',
+        level,
+        level,
+        gearSeedTag(`dead-${level}`, sd),
+        weaponClass,
+        'def',
+      ),
+    );
+    return (
+      deadlockZone.monsters
+        .map((key) => {
+          const rates = players.flatMap((player, i) =>
+            levels.map(
+              (lv) =>
+                duel(
+                  player,
+                  monsterFighter(monsterSpecs[key], lv, deadlockPower),
+                  `dead-${level}-s${sd}-${key}-${i}-lv${lv}`,
+                  ladderRuns,
+                ).rate,
+            ),
+          );
+          return rates.reduce((a, b) => a + b, 0) / rates.length;
+        })
+        .reduce((a, b) => a + b, 0) / deadlockZone.monsters.length
+    );
+  };
+
+  const seedRates = [];
+  for (let sd = 0; sd < SEEDS; sd++) seedRates.push(rateOnSeed(sd));
+  return { level, medianRate: median(seedRates) };
+});
+
+/* Допуск на шум медианы: падение в пределах него — не тупик,
+   а разброс замера. Настоящий тупик выглядел иначе — десятки пунктов. */
+const DEADLOCK_TOLERANCE = 0.05;
+
+const deadlockBreaches = deadlock.slice(1).filter((point, i) => {
+  const prev = deadlock[i];
+  return point.medianRate < prev.medianRate - DEADLOCK_TOLERANCE;
+});
+
+/* ПАРА К ПРОВЕРКЕ ВЫШЕ. «Не падает» верно и для замера, где уровень
+   игрока не меняет вообще ничего, — а именно так выглядела бы
+   поломка, вернувшая уровень игрока в расчёт врага наоборот.
+   Рост обязан быть виден. */
+const deadlockFlat =
+  deadlock[deadlock.length - 1].medianRate - deadlock[0].medianRate < DEADLOCK_TOLERANCE;
 
 /**
  * ФОРМА КРИВОЙ — шаги между соседними зонами, по медиане сидов.
@@ -1021,13 +1359,23 @@ const zoneBreaches = zoneCurve.filter((z) => !z.within);
  * а абсолютная высота — нет. Нарушением считается либо шаг вне допуска,
  * либо шаг вверх (зона легче предыдущей): второе — не «форма чуть
  * поехала», а перевёрнутая прогрессия, и допуском оно не покрывается.
+ *
+ * ЧИСЛА БЕРУТСЯ ИЗ ЛЕСТНИЦЫ, а не считаются заново. Кривая зон — это
+ * лестница на четвёртом участке каждой зоны, то есть ТА ЖЕ САМАЯ
+ * величина. Второй замер той же точки другим эталоном (двенадцать
+ * комплектов против трёх классов оружия) дал расхождение до 23 п.п.:
+ * подбор шёл по лестнице, а проверка смотрела на другого бойца
+ * и объявляла форму нарушенной. Два прибора на одну величину —
+ * это место, где они разойдутся, и они разошлись.
  */
-const zoneSteps = zoneCurve.slice(1).map((z, i) => {
-  const prev = zoneCurve[i];
+const zoneAnchors = ladder.filter((p) => p.segment === SEGMENTS_PER_ZONE - 1);
+
+const zoneSteps = zoneAnchors.slice(1).map((z, i) => {
+  const prev = zoneAnchors[i];
   const step = prev.medianRate - z.medianRate;
   return {
-    from: prev.id,
-    to: z.id,
+    from: prev.zone,
+    to: z.zone,
     step,
     within: Math.abs(step - ZONE_STEP) <= ZONE_STEP_TOLERANCE,
     /* Убывание проверяется ОТДЕЛЬНО от допуска. Шаг −0.02 при допуске
@@ -1038,6 +1386,16 @@ const zoneSteps = zoneCurve.slice(1).map((z, i) => {
   };
 });
 const stepBreaches = zoneSteps.filter((s) => !s.within || !s.descends);
+
+/**
+ * ВЫСОТА КРИВОЙ — грубый якорь. Числа те же, из лестницы: форма
+ * выполняется и на кривой 40/30/20/10/0, где играть невозможно нигде.
+ */
+const zoneBreaches = ZONE_TARGETS.map((target, i) => ({
+  id: zoneAnchors[i]?.zone ?? '',
+  medianRate: zoneAnchors[i]?.medianRate ?? 0,
+  target,
+})).filter((z) => Math.abs(z.medianRate - z.target) > ZONE_ANCHOR_TOLERANCE);
 
 /**
  * ЦЕЛЬ по разбросу наклонов, и это ЦЕЛЬ, а не порог.
@@ -1136,13 +1494,11 @@ function restoreFractionOf(zone) {
  * который ими пользуется. Числа расходятся, и показывать одно значило бы
  * выбрать за человека, какой вопрос он задал.
  */
-function simulateRun(player, zone, seedTag, withPotions) {
+function simulateRun(player, zone, segment, seedTag, withPotions) {
   const maxHp = maxHpOf(player, balance);
   const restore = restoreFractionOf(zone);
-  const enemyLevel = Math.min(
-    zone.levels[1],
-    Math.max(zone.levels[0], player.level + balance.raid.difficulty.normal.enemyLevelOffset),
-  );
+  const spec = zone.segments[segment];
+  const bounds = spec.levels;
 
   let hp = maxHp;
   let potions = withPotions ? balance.raid.potionChargesPerRun : 0;
@@ -1174,10 +1530,19 @@ function simulateRun(player, zone, seedTag, withPotions) {
       pool.length - 1,
       Math.floor(seededRoll(`${seedTag}:enemy:${fight}`) * pool.length),
     );
-    const spec = last ? monsterSpecs[zone.boss] : monsterSpecs[pool[at]];
+    const who = last ? monsterSpecs[zone.boss] : monsterSpecs[pool[at]];
+
+    /* УРОВЕНЬ ТОЖЕ БРОСАЕТСЯ, и СВОИМ броском, как на сервере: один
+       бросок на «кто вышел» и «какого он уровня» связал бы их, и часть
+       монстров встречалась бы только на своём конце диапазона. Босс
+       берёт верхнюю границу участка. */
+    const [lo, hi] = bounds;
+    const level = last
+      ? hi
+      : Math.min(hi, lo + Math.floor(seededRoll(`${seedTag}:level:${fight}`) * (hi - lo + 1)));
 
     const { outcome } = resolveBattle(
-      [{ ...player, startHp: hp }, monsterFighter(spec, enemyLevel, zone.power)],
+      [{ ...player, startHp: hp }, monsterFighter(who, level, spec.power)],
       balance,
       `${seedTag}-f${fight}`,
     );
@@ -1190,7 +1555,11 @@ function simulateRun(player, zone, seedTag, withPotions) {
   return cleared;
 }
 
-/** Доходимость меряется на ПЕРВОЙ зоне: первая сессия идёт туда. */
+/**
+ * Доходимость меряется на ПЕРВОМ УЧАСТКЕ первой зоны: первая сессия
+ * идёт туда, и туда же теперь пускают — уровень игрока доступа
+ * не открывает, открывает прохождение.
+ */
 const REACH_ZONE = zones[0];
 
 /**
@@ -1218,7 +1587,7 @@ const reach = ARCHETYPES.map((archetype) => {
   const tally = (withPotions) => {
     const counts = [0, 0, 0, 0, 0, 0];
     for (let i = 0; i < reachRuns; i++) {
-      counts[simulateRun(player, REACH_ZONE, `reach-${archetype}-${i}`, withPotions)]++;
+      counts[simulateRun(player, REACH_ZONE, 0, `reach-${archetype}-${i}`, withPotions)]++;
     }
     // Доля забегов, в которых пройдено НЕ МЕНЬШЕ n боёв.
     const atLeast = (n) => counts.slice(n).reduce((a, b) => a + b, 0) / reachRuns;
@@ -1228,6 +1597,48 @@ const reach = ARCHETYPES.map((archetype) => {
 });
 
 const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) / reach.length;
+
+/**
+ * ПОДБОР МНОЖИТЕЛЯ ПЕРВОГО УЧАСТКА — ПО ДОХОДИМОСТИ, а не по лестнице.
+ *
+ * Лестница смотрит на это место снаряжённым бойцом и упирается там
+ * в потолок: на любом множителе из разумного диапазона он выигрывает
+ * около ста процентов, и подбирать по нему нечего. Играет там голый
+ * изгнанный, и цель §7.2 — половина забегов доходит до первого
+ * решения — сформулирована ровно про него.
+ *
+ * Поэтому число ищется здесь и этим прибором. Печатается вместе
+ * с остальным подбором; файл не трогается.
+ */
+const reachSuggested = CALIBRATE
+  ? (() => {
+      const rateAt = (power) => {
+        const zone = {
+          ...REACH_ZONE,
+          segments: REACH_ZONE.segments.map((seg, i) => (i === 0 ? { ...seg, power } : seg)),
+        };
+        const rates = ARCHETYPES.map((archetype) => {
+          const player = freshExile(archetype);
+          const counts = [0, 0, 0, 0, 0, 0];
+          for (let i = 0; i < reachRuns; i++) {
+            counts[simulateRun(player, zone, 0, `reachcal-${archetype}-${i}`, false)]++;
+          }
+          return counts.slice(2).reduce((a, b) => a + b, 0) / reachRuns;
+        });
+        return rates.reduce((a, b) => a + b, 0) / rates.length;
+      };
+
+      let lo = 0.05;
+      let hi = 3;
+      for (let step = 0; step < 11; step++) {
+        const mid = (lo + hi) / 2;
+        // Больше множитель — ниже доходимость.
+        if (rateAt(mid) > REACH_TARGET) lo = mid;
+        else hi = mid;
+      }
+      return Math.round(((lo + hi) / 2) * 100) / 100;
+    })()
+  : null;
 
 /* ─────────────── ДОХОДИМОСТЬ НА РАЗНЫХ УРОВНЯХ · §7.2 ────────────────
  *
@@ -1249,11 +1660,27 @@ const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) 
  */
 const REACH_LEVELS = [1, 10, 20];
 
-const zoneForLevel = (level) =>
-  zones.find((z) => level >= z.levels[0] && level <= z.levels[1]) ?? zones[zones.length - 1];
+/**
+ * УЧАСТОК, СООТВЕТСТВУЮЩИЙ УРОВНЮ ИГРОКА.
+ *
+ * Прежде здесь была зона: доходимость мерилась «игрок уровня L в зоне,
+ * куда его пускают». Зон пять, участков двадцать, и вопрос теперь
+ * точнее — какой участок игрок этого уровня способен пройти. Берётся
+ * первый, чей верх не ниже уровня: это и есть место, куда он дошёл бы,
+ * двигаясь по лестнице.
+ */
+const segmentForLevel = (level) => {
+  for (const zone of zones) {
+    for (let i = 0; i < zone.segments.length; i++) {
+      if (level <= zone.segments[i].levels[1]) return { zone, segment: i };
+    }
+  }
+  const last = zones[zones.length - 1];
+  return { zone: last, segment: last.segments.length - 1 };
+};
 
 const reachByLevel = REACH_LEVELS.map((level) => {
-  const zone = zoneForLevel(level);
+  const { zone, segment } = segmentForLevel(level);
   // На первом уровне усредняем по архетипам, дальше — по наклонам
   // драфта: с уровня выбор игрока начинает значить больше, чем причина
   // изгнания.
@@ -1279,7 +1706,9 @@ const reachByLevel = REACH_LEVELS.map((level) => {
     for (const [n, player] of players.entries()) {
       const counts = [0, 0, 0, 0, 0, 0];
       for (let i = 0; i < reachRuns; i++) {
-        counts[simulateRun(player, zone, `reachlv-${level}-s${sd}-${n}-${i}`, withPotions)]++;
+        counts[
+          simulateRun(player, zone, segment, `reachlv-${level}-s${sd}-${n}-${i}`, withPotions)
+        ]++;
       }
       const atLeast = (k) => counts.slice(k).reduce((a, b) => a + b, 0) / reachRuns;
       totals.first += atLeast(2) / players.length;
@@ -1340,6 +1769,11 @@ const report = () => ({
   reach,
   breaches,
   breachesShape: stepBreaches,
+  ladder,
+  ladderSteps,
+  breachesLadder: ladderBreaches,
+  deadlock,
+  breachesDeadlock: deadlockBreaches,
   zoneBreaches,
 });
 
@@ -1484,14 +1918,14 @@ if (AS_JSON) {
   );
   console.log('');
   console.log(
-    `${pad('зона', 12)}${padL('ур.', 5)}${padL('power', 8)}${padL('медиана', 9)}${padL('шаг', 8)}${padL('сид 0', 8)}${padL('ориентир', 10)}${padL('босс', 8)}   по монстрам`,
+    `${pad('зона', 12)}${padL('ур.', 8)}${padL('power', 8)}${padL('медиана', 9)}${padL('шаг', 8)}${padL('сид 0', 8)}${padL('ориентир', 10)}${padL('босс', 8)}   по монстрам`,
   );
   console.log('─'.repeat(86));
   for (const [i, z] of zoneCurve.entries()) {
     const st = i === 0 ? null : zoneSteps[i - 1];
     console.log(
       pad(z.id, 12) +
-        padL(`${z.playerLevel}/${z.enemyLevel}`, 5) +
+        padL(`${z.playerLevel}/${z.enemyLevels[0]}-${z.enemyLevels[z.enemyLevels.length - 1]}`, 8) +
         padL(z.power.toFixed(2), 8) +
         padL(pct(z.medianRate), 9) +
         padL(st === null ? '—' : `${(st.step * 100).toFixed(1)}`, 8) +
@@ -1672,9 +2106,22 @@ if (AS_JSON) {
   console.log('а не типичный противник зоны. Смешать их значило бы занижать');
   console.log('оценку первых четырёх боёв.');
 
-  if (CALIBRATE) {
-    console.log('ПОДБОР МНОЖИТЕЛЕЙ (файл не тронут — числа правит человек):');
-    for (const z of zoneCurve) console.log(`  ${pad(z.id, 12)} power ${z.suggested}`);
+  if (CALIBRATE && reachSuggested !== null) {
+    console.log(
+      `ПОДБОР ПЕРВОГО УЧАСТКА ПО ДОХОДИМОСТИ: power ${reachSuggested} ` +
+        `(цель §7.2 — ${pct(REACH_TARGET)} забегов до первого решения)`,
+    );
+    console.log('');
+  }
+
+  if (CALIBRATE && ladderSuggested !== null) {
+    console.log('ПОДБОР МНОЖИТЕЛЕЙ ПО УЧАСТКАМ (файл не тронут — правит человек):');
+    for (const p of ladderSuggested) {
+      console.log(
+        `  ${pad(`${p.zone} #${p.segment + 1}`, 18)} power ${String(p.power).padStart(5)}` +
+          `   цель ${pct(p.target)}${p.pinned ? '  ← закреплён доходимостью, не подбирается' : ''}`,
+      );
+    }
     console.log('');
   }
 
@@ -1689,6 +2136,50 @@ if (AS_JSON) {
     }
     console.log('Править надо power в zones.json, и подбирать ПО МЕДИАНЕ:');
     console.log('`--calibrate` теперь ищет её, а не попадание одного сида.');
+  }
+
+  /* ЛЕСТНИЦА УЧАСТКОВ — двадцать точек вместо пяти. Кривая зон меряет
+     четвёртый участок каждой зоны; здесь видно, что происходит внутри,
+     а внутри теперь происходит: уровень врага растёт по ступеням. */
+  console.log('\nЛЕСТНИЦА УЧАСТКОВ · медиана по сидам, ступень к предыдущему');
+  console.log('─'.repeat(66));
+  console.log(
+    `${pad('участок', 18)}${padL('уровни', 9)}${padL('медиана', 10)}${padL('ступень', 10)}`,
+  );
+  for (const [i, point] of ladder.entries()) {
+    const st = i === 0 ? null : ladderSteps[i - 1];
+    const mark = st === null ? '' : st.crossesZone ? '  ← граница зоны' : '';
+    console.log(
+      pad(`${point.zone} #${point.segment + 1}`, 18) +
+        padL(`${point.levels[0]}-${point.levels[1]}`, 9) +
+        padL(pct(point.medianRate), 10) +
+        padL(st === null ? '—' : `${(st.step * 100).toFixed(1)}`, 10) +
+        mark,
+    );
+  }
+
+  /* ТУПИК: пройденный участок обязан остаться проходимым навсегда. */
+  console.log('\nТУПИК НЕВОСПРОИЗВОДИМ · четвёртый участок Пустошей, игрок разных уровней');
+  console.log('─'.repeat(66));
+  console.log('  ' + deadlock.map((d) => `ур.${d.level} ${pct(d.medianRate)}`).join(' · '));
+  if (deadlockBreaches.length > 0) {
+    console.log('ТУПИК ВЕРНУЛСЯ: с ростом уровня участок стал ТРУДНЕЕ.');
+    for (const d of deadlockBreaches) console.log(`  на ур. ${d.level}: ${pct(d.medianRate)}`);
+  } else if (deadlockFlat) {
+    console.log('ЗАМЕР НИЧЕГО НЕ МЕРИТ: уровень игрока не меняет исход вовсе.');
+  } else {
+    console.log('Участок остаётся проходимым: с ростом уровня только легче.');
+  }
+
+  if (ladderBreaches.length > 0) {
+    console.log(`\nЛЕСТНИЦА ИДЁТ ВВЕРХ в ${ladderBreaches.length} ступен(ях):`);
+    for (const st of ladderBreaches) {
+      console.log(
+        `  ${st.from} → ${st.to}: ${(st.step * 100).toFixed(1)} п.п. — участок ЛЕГЧЕ предыдущего`,
+      );
+    }
+    console.log('Цель 10 п.п. здесь не проверяется: между участками это ~2.5,');
+    console.log('то есть ниже шума замера. Проверяется только убывание.');
   }
 
   if (zoneBreaches.length > 0) {
@@ -1721,7 +2212,13 @@ if (AS_JSON) {
    позже: те мерили сид роллов наравне с настройкой, и держать их
    красной линией значило бы валить сборку за удачу. */
 process.exit(
-  breaches.length > 0 || stepBreaches.length > 0 || zoneBreaches.length > 0 || reachBreached
+  breaches.length > 0 ||
+    stepBreaches.length > 0 ||
+    zoneBreaches.length > 0 ||
+    ladderBreaches.length > 0 ||
+    deadlockBreaches.length > 0 ||
+    deadlockFlat ||
+    reachBreached
     ? 1
     : 0,
 );

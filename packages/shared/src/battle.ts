@@ -36,6 +36,11 @@ export type PreviewChange = z.infer<typeof previewChangeSchema>;
 
 export const simulatePreviewInputSchema = z.object({
   zone: zoneIdSchema,
+  /**
+   * Участок зоны, 0..3. Он задаёт уровень противников (§7.4 в редакции
+   * после тупика), поэтому превью без него отвечало бы про другое место.
+   */
+  segment: z.int().min(0).max(3),
   difficulty: difficultySchema,
   loadoutHash: loadoutHashSchema,
   /** Что показать «если надеть». Без него считается текущий набор. */
@@ -83,8 +88,11 @@ export type SimulatePreviewResponse = {
    * с кем сравнили. Ключи монстров, а не имена, — имена берёт локаль.
    */
   readonly against?: readonly string[];
-  /** Уровень противников, посчитанный по §7.3. */
-  readonly enemyLevel?: number;
+  /**
+   * Границы уровней участка, а не одно число: внутри участка уровень
+   * разыгрывается броском, и одно число врало бы про половину боёв.
+   */
+  readonly enemyLevels?: readonly [number, number];
   /** Множитель силы тира сложности. §7.3: тир не двигает уровень. */
   readonly enemyPower?: number;
 };

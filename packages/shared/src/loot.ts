@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { difficultySchema, type Difficulty } from './battle.js';
 import {
   affixFamilySchema,
   affixTierSchema,
@@ -101,30 +102,24 @@ export const lootBalanceSchema = z.object({
      */
     rarityWeights: z.record(raritySchema, z.number().min(0)),
     /**
-     * Веса редкости для лута ИЗ БОЯ: `base + perLevel × уровень монстра`.
+     * Веса редкости для лута ИЗ БОЯ: по СЛОЖНОСТИ, отдельно рядовым
+     * и боссу. GDD §7.3 в редакции после тупика.
      *
-     * Редкость приходит от силы врага, а не сыплется ровным потоком.
-     * На живых сессиях ровный поток и оказался причиной, по которой лут
-     * перестал быть решением: «смотришь на калькулятор и ждёшь зелёные
-     * цифры».
+     * ДВЕ ОСИ, И КАЖДАЯ ОТВЕЧАЕТ ЗА СВОЁ: участок задаёт уровень
+     * предмета, сложность — его редкость. Прежде редкость считалась
+     * от уровня монстра, и это склеивало обе оси: чтобы одеться
+     * в эпики, надо было идти глубже, а глубже не пускало снаряжение.
+     *
+     * Таблицей, а не формулой: потолок редкости — правило дизайна,
+     * и выводить его из арифметики значило бы его спрятать.
      */
-    rarityByLevel: z.record(
-      raritySchema,
-      z.object({ base: z.number().min(0), perLevel: z.number() }),
+    rarityByDifficulty: z.record(
+      difficultySchema,
+      z.object({
+        monster: z.record(raritySchema, z.number().min(0)),
+        boss: z.record(raritySchema, z.number().min(0)),
+      }),
     ),
-    /**
-     * Добавка к весам, которую даёт ТОЛЬКО босс.
-     *
-     * Эпик и легендарка живут здесь, а не в `rarityByLevel`: обычный
-     * монстр не роняет их вовсе. Это заодно чинит эвакуацию — босс стоит
-     * на пятом бою, значит идти до конца осмысленно из-за ДОСТУПА
-     * К КАТЕГОРИИ лута, а не из-за множителя количества.
-     *
-     * Легендарка по-прежнему выключена нулём (нет уникальных
-     * модификаторов, GDD §6.2), но проходит по той же ветке: включение
-     * остаётся правкой одного числа.
-     */
-    bossRarityBonus: z.record(raritySchema, z.number().min(0)),
     familyWeights: z.record(affixFamilySchema, z.number().min(0)),
     /**
      * Какие семейства вообще могут выпасть на слоте. GDD §5.3.
@@ -150,21 +145,18 @@ export { affixTierSchema };
  * и матрица при замере плотности. Вторая реализация разошлась бы,
  * и замер мерил бы не то, что получает игрок.
  *
- * Отрицательный вес не бывает: `common` убывает с уровнем и на глубоких
- * зонах ушёл бы в минус, а минус во взвешенном выборе — это не «реже»,
- * а сдвиг всей выборки.
+ * УРОВНЯ ЗДЕСЬ БОЛЬШЕ НЕТ. Он ушёл в ilvl предмета — туда, где ему
+ * и место: участок решает, какого уровня вещь, сложность решает, какого
+ * она сорта. Пока эти две оси были одной, игрок в эпиках ilvl 2 не мог
+ * ни получить эпик ilvl 8, ни захотеть обычный ilvl 8, и выхода
+ * из этого не было (PLAYTEST 2026-09-04).
  */
 export function rarityWeightsFor(
-  level: number,
+  difficulty: Difficulty,
   isBoss: boolean,
   drop: LootBalance['drop'],
 ): Partial<Record<Rarity, number>> {
-  const out: Partial<Record<Rarity, number>> = {};
-
-  for (const [rarity, curve] of Object.entries(drop.rarityByLevel)) {
-    const bonus = isBoss ? (drop.bossRarityBonus[rarity as Rarity] ?? 0) : 0;
-    out[rarity as Rarity] = Math.max(0, curve.base + curve.perLevel * level) + bonus;
-  }
-
-  return out;
+  const table = drop.rarityByDifficulty[difficulty];
+  if (table === undefined) throw new Error(`нет таблицы редкости для сложности «${difficulty}»`);
+  return isBoss ? table.boss : table.monster;
 }

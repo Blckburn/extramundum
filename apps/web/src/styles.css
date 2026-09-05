@@ -215,6 +215,7 @@ select,
 .inv__controls,
 .inv__grid,
 .zone__difficulties,
+.zone__segments,
 .raid__actions,
 .screen__actions {
   gap: var(--tap-gap);
@@ -1473,6 +1474,42 @@ button[disabled],
   flex-wrap: wrap;
 }
 
+/* ── выбор участка ──
+   Две оси решения стоят РАЗНЫМИ рядами: участок задаёт уровень добычи,
+   сложность — её редкость. В одном ряду из двенадцати кнопок это
+   разделение пропало бы ровно там, где игрок выбирает. */
+.zone__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tap-gap);
+}
+
+.zone__segments {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+/* Выбранное отличается не только цветом (UI-BRIEF §2): рамка толще
+   и подложка другая. Цветом закодирована редкость, и занимать его
+   ещё и состоянием кнопки значило бы перегрузить один сигнал. */
+.zone__segment[aria-pressed='true'] {
+  border-width: 2px;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Пройденный помечается, потому что именно он открыл следующий:
+   без пометки непонятно, за что дали доступ. */
+.zone__segment--cleared::after {
+  content: '✓';
+  margin-left: 0.35rem;
+  color: var(--accent);
+}
+
+.zone__segment:disabled {
+  opacity: 0.45;
+}
+
 /* ── панель забега ── */
 
 .raid__lead {
@@ -1898,5 +1935,42 @@ button[disabled],
 .draft__about {
   font-size: 0.72rem;
   line-height: 1.3;
+  color: var(--muted);
+}
+
+/* ── итог рейда ──
+   Показывается ВМЕСТО выбора зоны, а не поверх него: забега уже нет,
+   и предлагать «в бой» рядом с «отряд погиб» было бы предложением
+   не читать написанное. */
+.raid__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.raid__summaryState {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.raid__summaryState--lost {
+  color: var(--danger);
+}
+
+/* Открылся ли следующий участок — главное, что игрок хочет знать
+   после боя с боссом, и узнать это из молчания нельзя. */
+.raid__summaryUnlock {
+  margin: 0;
+  color: var(--accent);
+}
+
+.raid__summaryUnlock--no {
+  color: var(--muted);
+}
+
+.raid__summaryTotals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
   color: var(--muted);
 }

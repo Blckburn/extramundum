@@ -32,6 +32,15 @@ export const runs = pgTable(
       .references(() => players.id, { onDelete: 'cascade' }),
 
     zone: zoneEnum('zone').notNull(),
+    /**
+     * Участок зоны, 0..3. GDD §7.4 в редакции после тупика.
+     *
+     * Уровень монстров берётся ОТСЮДА, а не от уровня игрока. Хранится
+     * в забеге, потому что забег целиком идёт по одному участку:
+     * границы читаются из данных зоны по этому номеру, и никакого
+     * уровня в строке нет — иначе он мог бы разойтись с данными.
+     */
+    segment: integer('segment').notNull().default(0),
     difficulty: difficultyEnum('difficulty').notNull(),
     /** Сколько боёв пройдено: 0..5 (GDD §7.2). */
     fightIndex: integer('fight_index').notNull().default(0),
@@ -73,6 +82,7 @@ export const runs = pgTable(
       .where(sql`${table.state} = 'active'`),
     index('runs_player_idx').on(table.playerId),
     check('runs_fight_index_range', sql`${table.fightIndex} between 0 and 5`),
+    check('runs_segment_range', sql`${table.segment} between 0 and 3`),
     check('runs_potions_non_negative', sql`${table.potionsLeft} >= 0`),
   ],
 );
@@ -179,3 +189,37 @@ export const arenaLadder = pgTable(
     check('arena_ladder_losses_non_negative', sql`${table.losses} >= 0`),
   ],
 );
+
+/**
+ * zone_progress — сколько участков зоны пройдено. GDD §7.4.
+ *
+ * ОТПИРАНИЕ ПРОХОЖДЕНИЕМ, А НЕ УРОВНЕМ ИГРОКА. Прежний замок считался
+ * из `players.level` и не хранился вовсе; теперь хранить приходится,
+ * потому что уровень игрока к доступу отношения не имеет.
+ *
+ * Участок засчитывается, когда убит его босс, то есть пройдены все
+ * пять боёв. Не «дошёл и эвакуировался»: эвакуация — это уход
+ * с добычей вместо продолжения, и открывать ею следующий участок
+ * значило бы платить продвижением за отказ от риска.
+ *
+ * Хранится МАКСИМУМ достигнутого, а не список: участки идут по порядку,
+ * и «пройдено три» описывает то же самое, что три строки, но не может
+ * оказаться дырявым.
+ */
+export const zoneProgress = pgTable(
+  'zone_progress',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    zone: zoneEnum('zone').notNull(),
+    /** Сколько участков пройдено: 0..4. */
+    cleared: integer('cleared').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('zone_progress_player_zone_idx').on(table.playerId, table.zone),
+    check('zone_progress_cleared_range', sql`${table.cleared} between 0 and 4`),
+  ],
+);
+
+export type ZoneProgressRow = typeof zoneProgress.$inferSelect;
