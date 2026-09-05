@@ -1043,8 +1043,6 @@ const zoneCurve = zones.map((zone, index) => {
   };
 });
 
-const zoneBreaches = zoneCurve.filter((z) => !z.within);
-
 /* ──────────────── ЛЕСТНИЦА УЧАСТКОВ · GDD §7.4 ─────────────────
  *
  * ЗАЧЕМ ДВАДЦАТЬ ТОЧЕК, А НЕ ПЯТЬ. Кривая зон меряет по одной точке
@@ -1225,7 +1223,13 @@ const ladderSuggested = CALIBRATE
          а не лестница. Печатается со звёздочкой, чтобы в таблице было
          видно, что число не подобрано, а закреплено. */
       if (index === PINNED_BY_REACH) {
-        return { zone: point.zone, segment: point.segment, target: point.medianRate, power: point.power, pinned: true };
+        return {
+          zone: point.zone,
+          segment: point.segment,
+          target: point.medianRate,
+          power: point.power,
+          pinned: true,
+        };
       }
       const target = ladderTarget(index, ladder[PINNED_BY_REACH].medianRate);
       /* Границы поиска ШИРОКИЕ намеренно. Узкие давали бы упёршийся
@@ -1271,9 +1275,20 @@ const ladderSuggested = CALIBRATE
  * иначе «не падает» верно и для замера, который меряет одно и то же
  * число четыре раза.
  */
-const DEADLOCK_LEVELS = [2, 6, 12, 24, 40];
+/**
+ * МЕРИТЬ НАДО ТАМ, ГДЕ ИСХОД НЕ РЕШЁН ЗАРАНЕЕ. Первый участок для этого
+ * не годится: снаряжённый боец выигрывает там 100% на любом уровне,
+ * и «не стало хуже» на потолке недоказуемо — прибор не может отличить
+ * здоровую игру от сломанной, потому что обе дают сто процентов.
+ * Именно это и сказала пара к проверке, когда её поставили.
+ *
+ * Берётся ЧЕТВЁРТЫЙ участок Пустошей: там 85%, есть куда падать,
+ * и это то же самое место по смыслу — низ лестницы, куда игрок
+ * возвращается, переросши его.
+ */
+const DEADLOCK_LEVELS = [8, 12, 20, 30, 40];
 const deadlockZone = zones[0];
-const deadlockSegment = 0;
+const deadlockSegment = 3;
 
 const deadlock = DEADLOCK_LEVELS.map((level) => {
   const {
@@ -1344,13 +1359,23 @@ const deadlockFlat =
  * а абсолютная высота — нет. Нарушением считается либо шаг вне допуска,
  * либо шаг вверх (зона легче предыдущей): второе — не «форма чуть
  * поехала», а перевёрнутая прогрессия, и допуском оно не покрывается.
+ *
+ * ЧИСЛА БЕРУТСЯ ИЗ ЛЕСТНИЦЫ, а не считаются заново. Кривая зон — это
+ * лестница на четвёртом участке каждой зоны, то есть ТА ЖЕ САМАЯ
+ * величина. Второй замер той же точки другим эталоном (двенадцать
+ * комплектов против трёх классов оружия) дал расхождение до 23 п.п.:
+ * подбор шёл по лестнице, а проверка смотрела на другого бойца
+ * и объявляла форму нарушенной. Два прибора на одну величину —
+ * это место, где они разойдутся, и они разошлись.
  */
-const zoneSteps = zoneCurve.slice(1).map((z, i) => {
-  const prev = zoneCurve[i];
+const zoneAnchors = ladder.filter((p) => p.segment === SEGMENTS_PER_ZONE - 1);
+
+const zoneSteps = zoneAnchors.slice(1).map((z, i) => {
+  const prev = zoneAnchors[i];
   const step = prev.medianRate - z.medianRate;
   return {
-    from: prev.id,
-    to: z.id,
+    from: prev.zone,
+    to: z.zone,
     step,
     within: Math.abs(step - ZONE_STEP) <= ZONE_STEP_TOLERANCE,
     /* Убывание проверяется ОТДЕЛЬНО от допуска. Шаг −0.02 при допуске
@@ -1361,6 +1386,16 @@ const zoneSteps = zoneCurve.slice(1).map((z, i) => {
   };
 });
 const stepBreaches = zoneSteps.filter((s) => !s.within || !s.descends);
+
+/**
+ * ВЫСОТА КРИВОЙ — грубый якорь. Числа те же, из лестницы: форма
+ * выполняется и на кривой 40/30/20/10/0, где играть невозможно нигде.
+ */
+const zoneBreaches = ZONE_TARGETS.map((target, i) => ({
+  id: zoneAnchors[i]?.zone ?? '',
+  medianRate: zoneAnchors[i]?.medianRate ?? 0,
+  target,
+})).filter((z) => Math.abs(z.medianRate - z.target) > ZONE_ANCHOR_TOLERANCE);
 
 /**
  * ЦЕЛЬ по разбросу наклонов, и это ЦЕЛЬ, а не порог.
@@ -1562,6 +1597,48 @@ const reach = ARCHETYPES.map((archetype) => {
 });
 
 const reachAvg = (key, mode) => reach.reduce((sum, r) => sum + r[mode][key], 0) / reach.length;
+
+/**
+ * ПОДБОР МНОЖИТЕЛЯ ПЕРВОГО УЧАСТКА — ПО ДОХОДИМОСТИ, а не по лестнице.
+ *
+ * Лестница смотрит на это место снаряжённым бойцом и упирается там
+ * в потолок: на любом множителе из разумного диапазона он выигрывает
+ * около ста процентов, и подбирать по нему нечего. Играет там голый
+ * изгнанный, и цель §7.2 — половина забегов доходит до первого
+ * решения — сформулирована ровно про него.
+ *
+ * Поэтому число ищется здесь и этим прибором. Печатается вместе
+ * с остальным подбором; файл не трогается.
+ */
+const reachSuggested = CALIBRATE
+  ? (() => {
+      const rateAt = (power) => {
+        const zone = {
+          ...REACH_ZONE,
+          segments: REACH_ZONE.segments.map((seg, i) => (i === 0 ? { ...seg, power } : seg)),
+        };
+        const rates = ARCHETYPES.map((archetype) => {
+          const player = freshExile(archetype);
+          const counts = [0, 0, 0, 0, 0, 0];
+          for (let i = 0; i < reachRuns; i++) {
+            counts[simulateRun(player, zone, 0, `reachcal-${archetype}-${i}`, false)]++;
+          }
+          return counts.slice(2).reduce((a, b) => a + b, 0) / reachRuns;
+        });
+        return rates.reduce((a, b) => a + b, 0) / rates.length;
+      };
+
+      let lo = 0.05;
+      let hi = 3;
+      for (let step = 0; step < 11; step++) {
+        const mid = (lo + hi) / 2;
+        // Больше множитель — ниже доходимость.
+        if (rateAt(mid) > REACH_TARGET) lo = mid;
+        else hi = mid;
+      }
+      return Math.round(((lo + hi) / 2) * 100) / 100;
+    })()
+  : null;
 
 /* ─────────────── ДОХОДИМОСТЬ НА РАЗНЫХ УРОВНЯХ · §7.2 ────────────────
  *
@@ -2029,6 +2106,14 @@ if (AS_JSON) {
   console.log('а не типичный противник зоны. Смешать их значило бы занижать');
   console.log('оценку первых четырёх боёв.');
 
+  if (CALIBRATE && reachSuggested !== null) {
+    console.log(
+      `ПОДБОР ПЕРВОГО УЧАСТКА ПО ДОХОДИМОСТИ: power ${reachSuggested} ` +
+        `(цель §7.2 — ${pct(REACH_TARGET)} забегов до первого решения)`,
+    );
+    console.log('');
+  }
+
   if (CALIBRATE && ladderSuggested !== null) {
     console.log('ПОДБОР МНОЖИТЕЛЕЙ ПО УЧАСТКАМ (файл не тронут — правит человек):');
     for (const p of ladderSuggested) {
@@ -2074,7 +2159,7 @@ if (AS_JSON) {
   }
 
   /* ТУПИК: пройденный участок обязан остаться проходимым навсегда. */
-  console.log('\nТУПИК НЕВОСПРОИЗВОДИМ · первый участок Пустошей, игрок разных уровней');
+  console.log('\nТУПИК НЕВОСПРОИЗВОДИМ · четвёртый участок Пустошей, игрок разных уровней');
   console.log('─'.repeat(66));
   console.log('  ' + deadlock.map((d) => `ур.${d.level} ${pct(d.medianRate)}`).join(' · '));
   if (deadlockBreaches.length > 0) {
