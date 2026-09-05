@@ -18,6 +18,7 @@
     "build": "pnpm -r --filter \"./packages/*\" build && pnpm --filter @extramundum/server build && pnpm --filter @extramundum/web build && pnpm --filter @extramundum/web build:render",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:data": "node scripts/check-data-build.mjs",
+    "economy:probe": "node scripts/economy-probe.mjs",
     "db:generate": "pnpm --filter @extramundum/server db:generate",
     "db:migrate": "pnpm --filter @extramundum/server db:migrate",
     "db:local:up": "bash scripts/local-db.sh up",

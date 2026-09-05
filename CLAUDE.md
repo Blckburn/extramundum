@@ -271,7 +271,8 @@ apps/web/dev/      пробные страницы для замера в бра
 assets-src/        исходные PNG 1024 для иконок, обрабатываются скриптом
 locales/           ru.json (основной), en.json
 scripts/           check-bundle.mjs, check-data-build.mjs (сборка данных
-                   не отстала от исходников), check-doc-refs.mjs, local-db.sh,
+                   не отстала от исходников), check-doc-refs.mjs,
+                   economy-probe.mjs (прибор экономики), local-db.sh,
                    probe-invariant-1.js, preview-proxy.mjs, process-assets.mjs,
                    winrate-matrix.mjs — матрица винрейтов §4.6,
                    render-budget.mjs — бюджеты §3.4 (в CI),
@@ -302,6 +303,7 @@ DATABASE_URL=postgres://postgres@127.0.0.1:55432/extramundum pnpm test
 pnpm build            # пакеты, сервер, клиент
 pnpm check:bundle     # движка и секретов нет в собранном клиенте
 pnpm check:data       # собранные данные совпадают с исходными (это же в CI)
+pnpm economy:probe    # пять проверок экономики на известном ответе (это же в CI)
 pnpm check:docs       # ссылки вида «GDD §7.2» ведут в существующие разделы
 pnpm balance:matrix              # матрица винрейтов §4.6, 10 000 боёв на пару
                                  # плюс бюджеты семейств, КРИВАЯ ЗОН

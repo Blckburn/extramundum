@@ -10,6 +10,7 @@
 export * from './auth.js';
 export * from './battle.js';
 export * from './combat.js';
+export * from './economy.js';
 export * from './errors.js';
 export * from './items.js';
 export * from './loot.js';
