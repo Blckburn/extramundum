@@ -69,6 +69,8 @@ export const API_ROUTES = {
    */
   shop: '/shop',
   shopBuy: '/shop/buy',
+  shopFlask: '/shop/flask',
+  shopStashTab: '/shop/stash-tab',
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

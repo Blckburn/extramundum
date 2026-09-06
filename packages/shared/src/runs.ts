@@ -44,6 +44,20 @@ export const emptyInputSchema = z.object({}).strict();
 
 /* ──────────────────────────── состояние забега ───────────────────────── */
 
+/** Фляга в сумке игрока: сколько зарядов и что она даёт. GDD §7.2. */
+export type FlaskView = {
+  readonly id: string;
+  readonly charges: number;
+  /** Доля максимума HP, [мин, макс]. */
+  readonly restore: readonly [number, number];
+  /** Побочный эффект в обе стороны. `null` — у этого тира его нет. */
+  readonly side: {
+    readonly good: string;
+    readonly bad: string;
+    readonly chance: number;
+  } | null;
+};
+
 /** Кто ждёт в следующем бою. GDD §7.2: «игрок смотрит на превью врага». */
 export type NextEnemy = {
   /** Ключ монстра. Имя берёт локаль — `monster.<key>`. */
@@ -79,7 +93,22 @@ export type RunView = {
   readonly fightsTotal: number;
   readonly hp: number;
   readonly maxHp: number;
-  readonly potionsLeft: number;
+  /**
+   * Фляги: что есть у игрока и что каждая даст. GDD §7.2.
+   *
+   * ДИАПАЗОН, А НЕ ЧИСЛО: восстановление разыгрывается броском,
+   * и обещать точную величину было бы враньём. Побочный эффект назван
+   * заранее — он часть выбора фляги, а не сюрприз.
+   */
+  readonly flasks: readonly FlaskView[];
+  /**
+   * Побочный эффект, ждущий следующего боя. `null` — ничего не ждёт.
+   *
+   * ПОКАЗАН ЗАРАНЕЕ, потому что он часть решения «идти дальше или
+   * уйти». Всплыви он в журнале боя — игрок узнал бы о нём после того,
+   * как решение уже принято.
+   */
+  readonly pendingStatus: string | null;
   /**
    * Что уже лежит в сумке.
    *

@@ -1,4 +1,4 @@
-import type { ShopResponse, ShopSlot } from '@extramundum/shared';
+import type { FlaskOffer, ShopResponse, ShopSlot, StashTabOffer } from '@extramundum/shared';
 
 import { api, ApiClientError } from '../api.ts';
 import { clear, el } from '../dom.ts';
@@ -22,6 +22,7 @@ export function renderShop(root: HTMLElement, onBack: () => void): void {
 
   const head = el('div', { class: 'shop__head' });
   const grid = el('div', { class: 'shop__grid' });
+  const flaskBox = el('section', { class: 'shop__flasks' });
   const notice = el('p', { class: 'shop__notice', role: 'status' });
 
   const back = el('button', { class: 'button button--ghost', type: 'button' }, [t('action.back')]);
@@ -34,6 +35,7 @@ export function renderShop(root: HTMLElement, onBack: () => void): void {
         head,
       ]),
       grid,
+      flaskBox,
       el('p', { class: 'shop__hint' }, [t('shop.refresh')]),
       el('div', { class: 'shop__bar screen__actions' }, [notice, back]),
     ]),
@@ -63,6 +65,116 @@ export function renderShop(root: HTMLElement, onBack: () => void): void {
     clear(grid);
     for (const slot of data.slots) grid.append(card(slot));
     grid.append(el('p', { class: 'shop__hint' }, [t('shop.level.hint')]));
+
+    clear(flaskBox);
+    flaskBox.append(el('h2', { class: 'shop__subtitle' }, [t('shop.flasks')]));
+    for (const flask of data.flasks) flaskBox.append(flaskCard(flask));
+    flaskBox.append(tabsCard(data.stashTabs));
+  }
+
+  /**
+   * Вкладки стеша. GDD §6.3.
+   *
+   * ЕДИНСТВЕННЫЙ СТОК, КОТОРЫЙ НЕ НАСЫЩАЕТСЯ по смыслу, поэтому он
+   * стоит на том же прилавке, а не прячется на экране снаряжения:
+   * решение «улучшить меч или купить место» — это решение, и обе цены
+   * должны быть видны разом.
+   */
+  function tabsCard(tabs: StashTabOffer): HTMLElement {
+    const buy = el('button', { class: 'button button--small', type: 'button' }, [
+      tabs.price === null ? t('shop.tabs.all') : t('shop.tabs.buy', { price: tabs.price }),
+    ]) as HTMLButtonElement;
+
+    buy.disabled = !tabs.affordable;
+    buy.addEventListener('click', () => {
+      buy.disabled = true;
+      void api
+        .shopStashTab()
+        .then(async (result) => {
+          notice.textContent = t('shop.tabs.bought', { capacity: result.capacity });
+          await refresh();
+        })
+        .catch((err: unknown) => {
+          notice.textContent = t(err instanceof ApiClientError ? err.messageKey : 'error.internal');
+          buy.disabled = false;
+        });
+    });
+
+    return el('article', { class: 'shop__card' }, [
+      el('h3', { class: 'shop__name' }, [t('shop.tabs')]),
+      el('p', { class: 'shop__sub' }, [
+        t('shop.tabs.have', { owned: tabs.owned, capacity: tabs.capacity }),
+      ]),
+      ...(tabs.price === null
+        ? []
+        : [el('p', { class: 'shop__sub' }, [t('shop.tabs.adds', { slots: tabs.slotsPerTab })])]),
+      el('div', { class: 'shop__actions' }, [
+        buy,
+        ...(tabs.affordable || tabs.price === null
+          ? []
+          : [el('span', { class: 'shop__short' }, [t('shop.cantAfford')])]),
+      ]),
+    ]);
+  }
+
+  /**
+   * Фляга на прилавке. GDD §7.2.
+   *
+   * ДИАПАЗОН И ОБЕ СТОРОНЫ ПОБОЧНОГО ЭФФЕКТА НАПИСАНЫ, а не спрятаны:
+   * выбор между дешёвой предсказуемой и дорогой с двумя сторонами —
+   * это и есть решение, ради которого тиры существуют. Без обеих цифр
+   * игрок покупает самую дорогую и не понимает, за что заплатил.
+   */
+  function flaskCard(flask: FlaskOffer): HTMLElement {
+    const lo = Math.round(flask.restore[0] * 100);
+    const hi = Math.round(flask.restore[1] * 100);
+
+    const buy = el('button', { class: 'button button--small', type: 'button' }, [
+      flask.charges >= flask.max
+        ? t('shop.flask.full')
+        : t('shop.flask.buy', { price: flask.price }),
+    ]) as HTMLButtonElement;
+
+    buy.disabled = !flask.affordable;
+    buy.addEventListener('click', () => {
+      buy.disabled = true;
+      void api
+        .shopFlask({ tier: flask.id })
+        .then(async () => {
+          notice.textContent = t('shop.flask.bought', { name: t(`flask.${flask.id}`) });
+          await refresh();
+        })
+        .catch((err: unknown) => {
+          notice.textContent = t(err instanceof ApiClientError ? err.messageKey : 'error.internal');
+          buy.disabled = false;
+        });
+    });
+
+    return el('article', { class: 'shop__card' }, [
+      el('h3', { class: 'shop__name' }, [
+        t('shop.flask.have', {
+          name: t(`flask.${flask.id}`),
+          charges: flask.charges,
+          max: flask.max,
+        }),
+      ]),
+      el('p', { class: 'shop__sub' }, [t('shop.flask.restore', { lo, hi })]),
+      el('p', { class: 'shop__sub' }, [
+        flask.side === null
+          ? t('shop.flask.plain')
+          : t('shop.flask.side', {
+              good: t(`status.${flask.side.good}`),
+              bad: t(`status.${flask.side.bad}`),
+              percent: Math.round(flask.side.chance * 100),
+            }),
+      ]),
+      el('div', { class: 'shop__actions' }, [
+        buy,
+        ...(flask.affordable || flask.charges >= flask.max
+          ? []
+          : [el('span', { class: 'shop__short' }, [t('shop.cantAfford')])]),
+      ]),
+    ]);
   }
 
   function card(slot: ShopSlot): HTMLElement {

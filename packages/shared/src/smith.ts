@@ -124,6 +124,16 @@ export type ShopResponse = {
   readonly gold: number;
   readonly slots: readonly ShopSlot[];
   /**
+   * Фляги на том же прилавке. GDD §6.3.
+   *
+   * Не отдельным экраном: и предметы, и заряды покупаются за золото,
+   * и держать их врозь значило бы заставлять игрока считать бюджет
+   * между двумя экранами.
+   */
+  readonly flasks: readonly FlaskOffer[];
+  /** Вкладки стеша — тот самый сток, который не насыщается. GDD §6.3. */
+  readonly stashTabs: StashTabOffer;
+  /**
    * Уровень ассортимента — верх САМОГО ГЛУБОКОГО ПРОЙДЕННОГО участка.
    *
    * Показывается, а не подразумевается: иначе «почему тут только
@@ -135,4 +145,50 @@ export type ShopResponse = {
 export type ShopBuyResponse = {
   readonly gold: number;
   readonly item: ItemView;
+};
+
+/** Что покупается в лавке помимо предметов: заряд фляги. GDD §6.3. */
+export const flaskBuyInputSchema = z.object({ tier: z.string().min(1).max(32) });
+export type FlaskBuyInput = z.infer<typeof flaskBuyInputSchema>;
+
+export type FlaskBuyResponse = {
+  readonly gold: number;
+  readonly tier: string;
+  readonly charges: number;
+};
+
+/** Тир фляги на прилавке: цена, диапазон, побочный эффект, запас. */
+export type FlaskOffer = {
+  readonly id: string;
+  readonly price: number;
+  readonly restore: readonly [number, number];
+  readonly side: { readonly good: string; readonly bad: string; readonly chance: number } | null;
+  readonly charges: number;
+  readonly max: number;
+  readonly affordable: boolean;
+};
+
+/**
+ * Покупка вкладки стеша. GDD §6.3.
+ *
+ * ТЕЛА НЕТ: следующая вкладка одна, и какая именно — сервер знает
+ * из числа уже купленных. Принимать номер значило бы дать купить
+ * четвёртую, не купив третью, то есть по цене третьей.
+ */
+export const stashTabInputSchema = z.object({}).strict();
+
+export type StashTabResponse = {
+  readonly gold: number;
+  readonly owned: number;
+  readonly capacity: number;
+};
+
+/** Вкладки стеша на прилавке. `price` `null` — все куплены. */
+export type StashTabOffer = {
+  readonly owned: number;
+  readonly price: number | null;
+  readonly capacity: number;
+  /** Сколько добавит следующая вкладка. */
+  readonly slotsPerTab: number;
+  readonly affordable: boolean;
 };

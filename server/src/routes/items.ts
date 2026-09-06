@@ -6,6 +6,7 @@ import {
   lockInputSchema,
   lootBalanceSchema,
   moveInputSchema,
+  stashCapacity,
   sellInputSchema,
   unequipInputSchema,
   type DismantleResponse,
@@ -21,6 +22,7 @@ import { parseBody, type AppEnv } from '../http/middleware.ts';
 import { countedQuotas, loadoutStats, toView } from '../items/loadout.ts';
 import { progressionOf } from '../progression/service.ts';
 import { readMaterials } from '../items/materials.ts';
+import { economy } from '../items/prices.ts';
 import {
   dismantleItems,
   equipItem,
@@ -92,7 +94,12 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
       stats: loadoutStats(profile, loadout, progression),
       gold: profile.gold,
       materials,
-      capacity: loot.capacity,
+      /* Вместимость стеша РАСТЁТ С КУПЛЕННЫМИ ВКЛАДКАМИ, и считает её
+         та же функция, что сторожит перекладывание предмета. */
+      capacity: {
+        inv: loot.capacity.inv,
+        stash: stashCapacity(profile.stashTabs, loot.capacity.stash, economy),
+      },
     };
     return c.json(body);
   });

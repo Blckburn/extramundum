@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { difficultySchema, type Difficulty } from './battle.js';
+import { statusIdSchema } from './combat.js';
 import { raritySchema, type AffixTier, type Item, type Rarity } from './items.js';
 
 /**
@@ -57,6 +58,19 @@ export const economyBalanceSchema = z.object({
     emberChanceByDifficulty: z.record(difficultySchema, z.number().min(0).max(1)),
   }),
   smith: z.object({
+    /**
+     * Множитель цены от УРОВНЯ ПРЕДМЕТА: `1 + ilvl × это число`.
+     *
+     * БЕЗ НЕГО ЦЕНЫ КУЗНЕЦА НЕ ЗАВИСЕЛИ ОТ ГЛУБИНЫ ВОВСЕ, а доход
+     * от неё растёт: улучшить вещь сорокового уровня стоило столько же,
+     * сколько вещь второго. Замер это и показал — «всё сразу» в Кузне
+     * стоило 6.2 забега при пороге 8, то есть выбирать было не из чего.
+     *
+     * Это ОСЬ, а не подкрутка: цена обязана расти вместе с тем, что
+     * покупается, иначе любой сток насыщается ровно тогда, когда игрок
+     * доходит до глубины, где он нужен.
+     */
+    ilvlCostScale: z.number().min(0),
     upgrade: z.object({
       goldBase: z.number().min(0),
       goldGrowth: z.number().min(1),
@@ -112,8 +126,22 @@ export const economyBalanceSchema = z.object({
           /** Доля максимума HP, [мин, макс]. Бросок, а не число (§7.2). */
           restore: z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)]),
           price: z.number().min(0),
+          /**
+           * Побочный эффект в обе стороны. §7.2.
+           *
+           * ЭФФЕКТЫ — СУЩЕСТВУЮЩИЕ СТАТУСЫ ИЗ РЕЕСТРА, и схема требует
+           * именно их: свободная строка позволила бы записать в баланс
+           * эффект, которого нет, и фляга молча не делала бы ничего.
+           */
           side: z
-            .object({ good: z.string(), bad: z.string(), chance: z.number().min(0).max(1) })
+            .object({
+              good: statusIdSchema,
+              bad: statusIdSchema,
+              chance: z.number().min(0).max(1),
+              stacks: z.int().min(1),
+              /** В тиках. -1 — до конца боя. */
+              duration: z.int().min(-1),
+            })
             .nullable(),
         }),
       )
@@ -268,13 +296,26 @@ export function upgradeCost(
   const u = economy.smith.upgrade;
   const step = Math.max(1, to);
   const risky = to > riskFreeThrough;
+  const depth = ilvlFactor(ilvl, economy);
   return {
-    gold: Math.round(u.goldBase * Math.pow(u.goldGrowth, step - 1)),
+    gold: Math.round(u.goldBase * Math.pow(u.goldGrowth, step - 1) * depth),
     scrap: Math.max(1, Math.round(u.scrapBase * Math.pow(u.scrapGrowth, step - 1))),
     tier: scrapTierFor(ilvl, economy),
     ember: risky ? u.emberAbove : 0,
     success: risky ? (u.successAbove[String(to)] ?? 0) : 1,
   };
+}
+
+/**
+ * Множитель цены от уровня предмета. ОДНА функция на всё, что кузнец
+ * берёт золотом.
+ *
+ * Лом по ней НЕ масштабируется: у него своя ось — тир, и он уже растёт
+ * с глубиной. Умножь ещё и количество, и лом рос бы вдвое быстрее
+ * добычи.
+ */
+function ilvlFactor(ilvl: number, economy: Pick<EconomyBalance, 'smith'>): number {
+  return 1 + Math.max(0, ilvl) * economy.smith.ilvlCostScale;
 }
 
 /** Цена перековки одного аффикса: золото плюс лом. GDD §6.3. */
@@ -303,7 +344,7 @@ export function rarityUpCost(
 ): { gold: number; scrap: number; tier: ScrapTier } | null {
   if (from !== 'common' && from !== 'magic' && from !== 'rare') return null;
   return {
-    gold: economy.smith.rarityUp.gold[from],
+    gold: Math.round(economy.smith.rarityUp.gold[from] * ilvlFactor(ilvl, economy)),
     scrap: economy.smith.rarityUp.scrap[from],
     tier: scrapTierFor(ilvl, economy),
   };
@@ -334,11 +375,22 @@ export function flaskRestore(
   return lo + (hi - lo) * Math.max(0, Math.min(1, roll));
 }
 
-/** Цена заряда фляги этого тира. */
-export function flaskPrice(tierId: string, economy: Pick<EconomyBalance, 'flasks'>): number {
+/**
+ * Цена заряда фляги. РАСТЁТ С ГЛУБИНОЙ, а не постоянна.
+ *
+ * Фляга возвращает ДОЛЮ максимума, то есть её польза растёт вместе
+ * с игроком; постоянная цена означала бы, что к сороковому уровню
+ * фляги бесплатны. Глубина берётся та же, что у ассортимента лавки, —
+ * самый глубокий ПРОЙДЕННЫЙ участок, а не уровень игрока.
+ */
+export function flaskPrice(
+  tierId: string,
+  economy: Pick<EconomyBalance, 'flasks' | 'smith'>,
+  level = 0,
+): number {
   const tier = economy.flasks.tiers.find((t) => t.id === tierId);
   if (tier === undefined) throw new Error(`нет тира фляги «${tierId}»`);
-  return tier.price;
+  return Math.round(tier.price * ilvlFactor(level, economy));
 }
 
 /**
@@ -351,6 +403,22 @@ export function stashTabPrice(
   economy: Pick<EconomyBalance, 'stashTabs'>,
 ): number | null {
   return economy.stashTabs.prices[owned] ?? null;
+}
+
+/**
+ * Вместимость стеша с учётом купленных вкладок. GDD §6.3.
+ *
+ * ОДНА ФУНКЦИЯ НА РЕПОЗИТОРИЙ: её зовут показ инвентаря, перекладывание
+ * предмета в стеш и покупка вкладки. Второе место разошлось бы
+ * с первым — и игрок увидел бы «120 из 240» там, где сервер отказывает
+ * на 121-м.
+ */
+export function stashCapacity(
+  owned: number,
+  base: number,
+  economy: Pick<EconomyBalance, 'stashTabs'>,
+): number {
+  return base + Math.max(0, owned) * economy.stashTabs.slotsPerTab;
 }
 
 /* ─────────────────────── что игрок может потратить ───────────────────── */

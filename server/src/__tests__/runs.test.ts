@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { players } from '../db/schema/game.ts';
 import { runs, zoneProgress } from '../db/schema/runs.ts';
+import { grantFlask } from '../items/flasks.ts';
 import { grantItems } from '../items/repository.ts';
 import { healBetweenFights, restoreFractionOf } from '../runs/service.ts';
 
@@ -326,13 +327,19 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(after.find((z) => z.id === 'catacombs')?.unlocked).toBe(false);
     });
 
-    it('свежий забег: пять боёв впереди, три зелья, пустая сумка', async () => {
+    it('свежий забег: пять боёв впереди, НОЛЬ фляг, пустая сумка', async () => {
       const { jar } = await register(ctx);
       const run = await start(jar);
 
       expect(run.fightIndex).toBe(0);
       expect(run.fightsTotal).toBe(raid.fightsPerRun);
-      expect(run.potionsLeft).toBe(raid.potionChargesPerRun);
+      /* ЗАРЯДОВ ПО УМОЛЧАНИЮ НОЛЬ (решение человека): первый забег
+         без золота обязан быть возможен, и «идти без фляг» — это он
+         и есть. Тиры при этом показаны все: иначе игрок не узнает,
+         что фляги бывают, пока случайно не купит. */
+      expect(run.flasks.length).toBeGreaterThan(0);
+      for (const flask of run.flasks) expect(flask.charges).toBe(0);
+      expect(run.pendingStatus).toBeNull();
       expect(run.bag).toHaveLength(0);
       expect(run.hp).toBe(run.maxHp);
       // Уйти до первой развилки нельзя: рисковать ещё нечем (§7.2).
@@ -806,45 +813,117 @@ describe.skipIf(!HAS_DB)('забег', () => {
       expect(checked, 'ни один бой не стоил игроку HP — проверять нечего').toBe(true);
     });
 
-    it('зелье тратит заряд и лечит, а без зарядов — отказ', async () => {
+    it('ФЛЯГА ТРАТИТ ЗАРЯД И ЛЕЧИТ, а без зарядов — отказ', async () => {
       const { jar } = await register(ctx);
       await gearUp(jar);
       const playerId = await playerIdOf(jar);
       await start(jar, 'wastes', 'nightmare');
 
-      /* Игрока надо ПОРАНИТЬ: на полном здоровье зелье не отличается
+      /* Игрока надо ПОРАНИТЬ: на полном здоровье фляга не отличается
          от бездействия, и тест ничего не докажет.
 
          Рана ставится прямой записью, а не подбором боя: исход боя
          случаен, и тест, который ждёт удачного расклада, — это тест,
          который однажды покраснеет без единой правки кода. Проверяется
-         здесь зелье, а не бой; подготовка состояния законна ровно тем,
-         что сам механизм зелья идёт обычным путём через эндпоинт. */
-      const full = await runOf(jar);
-      expect(full).not.toBeNull();
+         здесь фляга, а не бой; подготовка состояния законна ровно тем,
+         что сам механизм фляги идёт обычным путём через эндпоинт. */
       await ctx.db.update(players).set({ hpCurrent: 1 }).where(eq(players.id, playerId));
       const hurt = await runOf(jar);
 
       expect(hurt?.state).toBe('active');
       expect(hurt?.hp, 'лечить нечего — тест не докажет ничего').toBeLessThan(hurt?.maxHp ?? 0);
 
-      let potions = hurt?.potionsLeft ?? 0;
-      let hp = hurt?.hp ?? 0;
-      for (let i = 0; i < raid.potionChargesPerRun; i++) {
-        const res = await post(ctx, API_ROUTES.runPotion, {}, jar);
-        expect(res.status, `заряд ${i + 1}`).toBe(200);
-        const run = (res.body as unknown as RunResponse).run;
-        expect(run?.potionsLeft).toBe(potions - 1);
-        // Лечит, а не просто тратит заряд. Строгое «больше» — пока
-        // не упёрлись в максимум; дальше только «не меньше».
-        if (hp < (run?.maxHp ?? 0)) expect(run?.hp ?? 0).toBeGreaterThan(hp);
-        else expect(run?.hp ?? 0).toBe(hp);
-        potions = run?.potionsLeft ?? 0;
-        hp = run?.hp ?? 0;
-      }
+      const tier = hurt?.flasks[0]?.id;
+      if (tier === undefined) throw new Error('в балансе нет ни одного тира фляг');
 
-      // Четвёртого заряда нет — и это отказ, а не тихое ничего.
-      expect((await post(ctx, API_ROUTES.runPotion, {}, jar)).status).toBe(409);
+      // Без заряда — ОТКАЗ, а не тихое ничего. Проверяется ДО покупки:
+      // ноль зарядов — стартовое состояние, а не подстроенное.
+      expect((await post(ctx, API_ROUTES.runPotion, { tier }, jar)).status).toBe(409);
+
+      await ctx.db.transaction((tx) => grantFlask(tx, playerId, tier));
+      const hp = hurt?.hp ?? 0;
+
+      const res = await post(ctx, API_ROUTES.runPotion, { tier }, jar);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const run = (res.body as unknown as RunResponse).run;
+
+      expect(run?.flasks.find((f) => f.id === tier)?.charges).toBe(0);
+      expect(run?.hp ?? 0).toBeGreaterThan(hp);
+
+      // И второй раз тем же зарядом — снова отказ.
+      expect((await post(ctx, API_ROUTES.runPotion, { tier }, jar)).status).toBe(409);
+    });
+
+    it('ВОССТАНОВЛЕНИЕ — БРОСОК В ДИАПАЗОНЕ, а не фиксированная доля', async () => {
+      /* Доля из диапазона, и выпавшее игрок видит ДО решения
+         об эвакуации: случайность работает НА решение.
+
+         Проверяется по ЧИСЛУ, а не по разбросу между забегами: бросок
+         детерминирован от сида забега, и один забег даёт одно значение.
+         Границы диапазона берутся из баланса — тест не знает, какое
+         именно выпадет, и знать не должен. */
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      const playerId = await playerIdOf(jar);
+      await start(jar, 'wastes', 'nightmare');
+      await ctx.db.update(players).set({ hpCurrent: 1 }).where(eq(players.id, playerId));
+
+      const before = await runOf(jar);
+      const tier = before?.flasks[0];
+      if (tier === undefined) throw new Error('в балансе нет ни одного тира фляг');
+      await ctx.db.transaction((tx) => grantFlask(tx, playerId, tier.id));
+
+      const res = await post(ctx, API_ROUTES.runPotion, { tier: tier.id }, jar);
+      const run = (res.body as unknown as RunResponse).run;
+      const maxHp = run?.maxHp ?? 0;
+      const healed = (run?.hp ?? 0) - (before?.hp ?? 0);
+
+      expect(tier.restore[0], 'диапазон вырожден — «бросок» ничего не значит').toBeLessThan(
+        tier.restore[1],
+      );
+      expect(healed).toBeGreaterThanOrEqual(Math.round(maxHp * tier.restore[0]) - 1);
+      expect(healed).toBeLessThanOrEqual(Math.round(maxHp * tier.restore[1]) + 1);
+    });
+
+    it('ПОБОЧНЫЙ ЭФФЕКТ ФЛЯГИ ДОХОДИТ ДО БОЯ, а не остаётся надписью', async () => {
+      /* Ровно та ошибка, которую движок уже допускал с `innateAdvocate`:
+         событие «сработало» без последствий. Проверяется поэтому НЕ поле
+         в ответе, а ЖУРНАЛ БОЯ — статус обязан быть наложен бойцу 0.
+
+         Эффект ставится в забег прямой записью, а не подбором броска:
+         он выпадает с шансом, и тест, который его ждёт, краснел бы
+         примерно каждый третий прогон. Проверяется здесь ПУТЬ от записи
+         до боя, а сам бросок — своим тестом в `flasks.test.ts`. */
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      const playerId = await playerIdOf(jar);
+      await start(jar, 'wastes', 'nightmare');
+
+      await ctx.db
+        .update(runs)
+        .set({ pendingStatus: { id: 'fury', stacks: 1, duration: 60 } })
+        .where(and(eq(runs.playerId, playerId), eq(runs.state, 'active')));
+
+      // Показан ЗАРАНЕЕ: он часть решения «идти дальше или уйти»,
+      // а не сюрприз в журнале.
+      expect((await runOf(jar))?.pendingStatus).toBe('fury');
+
+      const result = await fight(jar);
+      const applied = result.log.events.filter(
+        (event) => event.t === 'status_apply' && event.status === 'fury' && event.target === 0,
+      );
+      expect(applied.length, 'статус фляги не дошёл до боя').toBeGreaterThan(0);
+
+      /* И он ОДНОРАЗОВЫЙ: во втором бою его уже нет. Без этой половины
+         «дошёл до боя» верно и для эффекта, который действует вечно. */
+      if (result.run.state === 'active') {
+        const second = await fight(jar);
+        expect((await runOf(jar))?.pendingStatus ?? null).toBeNull();
+        const again = second.log.events.filter(
+          (event) => event.t === 'status_apply' && event.status === 'fury' && event.target === 0,
+        );
+        expect(again, 'эффект фляги подействовал и во втором бою').toHaveLength(0);
+      }
     });
   });
 

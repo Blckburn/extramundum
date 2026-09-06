@@ -58,14 +58,23 @@ export const runs = pgTable(
     seed: text('seed').notNull(),
 
     /**
-     * Оставшиеся заряды зелий. GDD §7.2: три на забег.
+     * Сколько фляг выпито за забег. GDD §7.2.
      *
-     * Тратятся МЕЖДУ боями: игрок в бой не вмешивается, и единственное
-     * место, где заряд может быть решением, — экран между боями, там же,
-     * где выбор «эвакуироваться или дальше». Иначе зелье не механика,
-     * а автоматическая прибавка к HP.
+     * СЧЁТЧИК ДЛЯ БРОСКА, а не остаток зарядов: сами заряды лежат
+     * у игрока (`player_flasks`) и тратятся оттуда. Восстановление
+     * фляги — БРОСОК В ДИАПАЗОНЕ, и выводится он из сида забега
+     * и этого числа; растёт оно той же транзакцией, что списывает
+     * заряд, поэтому неудачный глоток не переиграть.
      */
-    potionsLeft: integer('potions_left').notNull().default(3),
+    flasksDrunk: integer('flasks_drunk').notNull().default(0),
+
+    /**
+     * Побочный эффект верхней фляги, ждущий СЛЕДУЮЩЕГО боя. §7.2.
+     *
+     * Хранится в забеге, а не у игрока: он принадлежит этому забегу
+     * и вместе с ним кончается. `null` — ничего не ждёт.
+     */
+    pendingStatus: jsonb('pending_status'),
     bag: jsonb('bag')
       .notNull()
       .default(sql`'[]'::jsonb`),
@@ -93,7 +102,7 @@ export const runs = pgTable(
     index('runs_player_idx').on(table.playerId),
     check('runs_fight_index_range', sql`${table.fightIndex} between 0 and 5`),
     check('runs_segment_range', sql`${table.segment} between 0 and 3`),
-    check('runs_potions_non_negative', sql`${table.potionsLeft} >= 0`),
+    check('runs_flasks_drunk_non_negative', sql`${table.flasksDrunk} >= 0`),
     check('runs_bag_ember_non_negative', sql`${table.bagEmber} >= 0`),
   ],
 );

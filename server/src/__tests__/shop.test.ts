@@ -5,8 +5,10 @@ import {
   clearedLevel,
   economyBalanceSchema,
   segmentBounds,
+  type InventoryResponse,
   type ShopBuyResponse,
   type ShopResponse,
+  type StashTabResponse,
 } from '@extramundum/shared';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -239,6 +241,163 @@ describe.skipIf(!HAS_DB)('лавка', () => {
 
       expect(view.slots).toHaveLength(economy.shop.slots);
       expect(view.slots[3]?.sold).toBe(true);
+    });
+  });
+
+  describe('фляги', () => {
+    it('ЗАРЯДОВ ПО УМОЛЧАНИЮ НОЛЬ, и тиры всё равно показаны', async () => {
+      /* Решение человека: первый забег без золота обязан быть возможен,
+         и «идти без фляг» — это он и есть. Показаны при этом ВСЕ тиры,
+         иначе игрок не узнает, что фляги бывают. */
+      const { jar } = await withGold();
+      const view = await shop(jar);
+
+      expect(view.flasks).toHaveLength(economy.flasks.tiers.length);
+      for (const flask of view.flasks) expect(flask.charges).toBe(0);
+    });
+
+    it('покупка прибавляет заряд и списывает золото', async () => {
+      const { jar, playerId } = await withGold();
+      const tier = (await shop(jar)).flasks[0];
+      if (tier === undefined) throw new Error('в балансе нет фляг');
+      expect(tier.price, 'фляга бесплатна — проверять нечего').toBeGreaterThan(0);
+
+      const before =
+        (
+          await ctx.db.select({ gold: players.gold }).from(players).where(eq(players.id, playerId))
+        )[0]?.gold ?? 0;
+      const res = await post(ctx, API_ROUTES.shopFlask, { tier: tier.id }, jar);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+      const now =
+        (
+          await ctx.db.select({ gold: players.gold }).from(players).where(eq(players.id, playerId))
+        )[0]?.gold ?? 0;
+      expect(now).toBe(before - tier.price);
+      expect((await shop(jar)).flasks.find((f) => f.id === tier.id)?.charges).toBe(1);
+    });
+
+    it('ПОТОЛОК ЗАРЯДОВ ОТКАЗЫВАЕТ, а не берёт золото молча', async () => {
+      const { jar, playerId } = await withGold();
+      const tier = (await shop(jar)).flasks[0];
+      if (tier === undefined) throw new Error('в балансе нет фляг');
+
+      for (let i = 0; i < tier.max; i++) {
+        const res = await post(ctx, API_ROUTES.shopFlask, { tier: tier.id }, jar);
+        expect(res.status, `заряд ${i + 1}`).toBe(200);
+      }
+
+      const before =
+        (
+          await ctx.db.select({ gold: players.gold }).from(players).where(eq(players.id, playerId))
+        )[0]?.gold ?? 0;
+      const extra = await post(ctx, API_ROUTES.shopFlask, { tier: tier.id }, jar);
+
+      expect(extra.status).toBe(409);
+      const now =
+        (
+          await ctx.db.select({ gold: players.gold }).from(players).where(eq(players.id, playerId))
+        )[0]?.gold ?? 0;
+      expect(now, 'золото за непроданный заряд списано').toBe(before);
+      expect((await shop(jar)).flasks.find((f) => f.id === tier.id)?.charges).toBe(tier.max);
+    });
+
+    it('без золота — отказ, и заряда не появляется', async () => {
+      const { jar } = await withGold(0);
+      const tier = (await shop(jar)).flasks[0];
+      if (tier === undefined) throw new Error('в балансе нет фляг');
+
+      expect((await post(ctx, API_ROUTES.shopFlask, { tier: tier.id }, jar)).status).toBe(409);
+      expect((await shop(jar)).flasks.find((f) => f.id === tier.id)?.charges).toBe(0);
+    });
+
+    it('фляги, которой нет в балансе, не существует', async () => {
+      const { jar } = await withGold();
+      const res = await post(ctx, API_ROUTES.shopFlask, { tier: 'нет-такой' }, jar);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('вкладки стеша', () => {
+    it('ВМЕСТИМОСТЬ РАСТЁТ ПОКУПКОЙ, и растёт там, где её сторожат', async () => {
+      /* Вместимость считает одна функция на репозиторий: её зовут показ
+         инвентаря и проверка при перекладывании. Второе место
+         разошлось бы с первым, и игрок увидел бы «120 из 240» там,
+         где сервер отказывает на 121-м. Проверяются ОБА места. */
+      const { jar, playerId } = await withGold();
+      const before = ((await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse)
+        .capacity.stash;
+
+      const res = await post(ctx, API_ROUTES.shopStashTab, {}, jar);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      const body = res.body as unknown as StashTabResponse;
+
+      expect(body.owned).toBe(1);
+      expect(body.capacity).toBe(before + economy.stashTabs.slotsPerTab);
+
+      const after = ((await get(ctx, API_ROUTES.items, jar)).body as unknown as InventoryResponse)
+        .capacity.stash;
+      expect(after).toBe(body.capacity);
+
+      const tabs =
+        (
+          await ctx.db
+            .select({ tabs: players.stashTabs })
+            .from(players)
+            .where(eq(players.id, playerId))
+        )[0]?.tabs ?? 0;
+      expect(tabs).toBe(1);
+    });
+
+    it('цена идёт ПО ЛЕСТНИЦЕ, а не одна на все вкладки', async () => {
+      const { jar } = await withGold();
+      const prices = economy.stashTabs.prices;
+      expect(prices.length, 'лестница цен пуста').toBeGreaterThan(1);
+      expect(prices[0]).not.toBe(prices[1]);
+
+      for (let i = 0; i < prices.length; i++) {
+        const offer = (await shop(jar)).stashTabs;
+        expect(offer.price, `вкладка ${i + 1}`).toBe(prices[i]);
+        expect((await post(ctx, API_ROUTES.shopStashTab, {}, jar)).status).toBe(200);
+      }
+
+      // Лестница кончилась — цены больше нет, и покупка отказывает.
+      expect((await shop(jar)).stashTabs.price).toBeNull();
+      expect((await post(ctx, API_ROUTES.shopStashTab, {}, jar)).status).toBe(409);
+    });
+
+    it('ДВЕ ОДНОВРЕМЕННЫЕ ПОКУПКИ ДАЮТ ОДНУ ВКЛАДКУ', async () => {
+      /* Условие `stash_tabs = ожидаемый` в самом UPDATE: иначе два
+         запроса купили бы две вкладки по цене одной. */
+      const { jar, playerId } = await withGold();
+      const price = (await shop(jar)).stashTabs.price ?? 0;
+      const before =
+        (
+          await ctx.db.select({ gold: players.gold }).from(players).where(eq(players.id, playerId))
+        )[0]?.gold ?? 0;
+
+      const [a, b] = await Promise.all([
+        post(ctx, API_ROUTES.shopStashTab, {}, jar),
+        post(ctx, API_ROUTES.shopStashTab, {}, jar),
+      ]);
+
+      const ok = [a, b].filter((res) => res.status === 200);
+      expect(ok, 'куплено две вкладки разом').toHaveLength(1);
+
+      const now = (
+        await ctx.db
+          .select({ gold: players.gold, tabs: players.stashTabs })
+          .from(players)
+          .where(eq(players.id, playerId))
+      )[0];
+      expect(now?.tabs).toBe(1);
+      expect(now?.gold).toBe(before - price);
+    });
+
+    it('без золота — отказ, и вкладки не появляется', async () => {
+      const { jar } = await withGold(0);
+      expect((await post(ctx, API_ROUTES.shopStashTab, {}, jar)).status).toBe(409);
+      expect((await shop(jar)).stashTabs.owned).toBe(0);
     });
   });
 

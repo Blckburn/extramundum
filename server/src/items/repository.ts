@@ -4,6 +4,7 @@ import {
   dismantleYield,
   itemAffixSchema,
   lootBalanceSchema,
+  stashCapacity,
   type Container,
   type EquipmentSlot,
   type Item,
@@ -50,6 +51,16 @@ export function toItem(row: typeof items.$inferSelect): Item {
     locked: row.locked,
     container: row.container,
   };
+}
+
+/** Сколько вкладок куплено. Читается там, где нужна вместимость. */
+export async function stashTabsOf(db: Database, playerId: string): Promise<number> {
+  const rows = await db
+    .select({ tabs: players.stashTabs })
+    .from(players)
+    .where(eq(players.id, playerId))
+    .limit(1);
+  return rows[0]?.tabs ?? 0;
 }
 
 export async function listItems(db: Database, playerId: string): Promise<readonly Item[]> {
@@ -176,7 +187,14 @@ export async function moveItem(
   }
   if (item.container === to) return;
 
-  const capacity = to === 'inv' ? loot.capacity.inv : loot.capacity.stash;
+  /* ВМЕСТИМОСТЬ СТЕША СЧИТАЕТ ОБЩАЯ ФУНКЦИЯ, а не это место: её же
+     зовут показ инвентаря и покупка вкладки. Второе место разошлось бы
+     с первым, и игрок увидел бы «120 из 240» там, где сервер
+     отказывает на 121-м. */
+  const capacity =
+    to === 'inv'
+      ? loot.capacity.inv
+      : stashCapacity(await stashTabsOf(db, playerId), loot.capacity.stash, economy);
   if ((await countIn(db, playerId, to)) >= capacity) {
     throw new AppError('conflict', {
       messageKey: 'error.item.containerFull',

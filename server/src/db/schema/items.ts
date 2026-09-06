@@ -182,3 +182,31 @@ export const playerMaterials = pgTable(
 );
 
 export type PlayerMaterialRow = typeof playerMaterials.$inferSelect;
+
+/**
+ * player_flasks — заряды фляг. GDD §7.2, §6.3.
+ *
+ * СТРОКАМИ, как материалы, и по той же причине: заряд покупается
+ * и тратится конкурентно (купил в лавке, пока открыт экран забега),
+ * а строка позволяет менять его одним условным обновлением.
+ *
+ * ЗАРЯДОВ ПО УМОЛЧАНИЮ НОЛЬ — строки просто нет. Первый забег без
+ * золота обязан быть возможен, и «идти без фляг» — это он и есть.
+ * Бесплатный заряд вводил бы новое правило вместо снятого: его
+ * пришлось бы восстанавливать по таймеру или за забег.
+ */
+export const playerFlasks = pgTable(
+  'player_flasks',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    /** Идентификатор тира из `balance.economy.flasks`. */
+    tier: text('tier').notNull(),
+    charges: integer('charges').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('player_flasks_idx').on(table.playerId, table.tier),
+    check('player_flasks_non_negative', sql`${table.charges} >= 0`),
+  ],
+);

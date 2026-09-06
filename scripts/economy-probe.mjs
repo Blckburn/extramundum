@@ -53,6 +53,7 @@ const {
   reforgeCost,
   rarityUpCost,
   respecCost,
+  flaskPrice,
   SCRAP_TIERS,
 } = await import(fileURLToPath(new URL('packages/shared/dist/index.js', root)));
 
@@ -373,6 +374,283 @@ check('респек стоит ровно 200 × уровень', () => {
   return '200 × уровень, GDD §5.2';
 });
 
+/* ═══════════════════ ТАБЛИЦЫ ДОХОДА И РАСХОДА ═══════════════════════════
+ *
+ * ЗДЕСЬ И ТОЛЬКО ЗДЕСЬ появляются числа экономики, и стоят они ПОСЛЕ
+ * восьми проверок на известном ответе. Обратный порядок писался бы
+ * легче и врал бы убедительнее.
+ *
+ * КРИТЕРИЙ ЭТАПА — НЕ РАБОТАЮЩИЙ КУЗНЕЦ, А СВЕДЁННЫЕ ДОХОД И РАСХОД:
+ * игрок не может позволить себе всё сразу. Это ДВА условия, и слабее
+ * второго не бывает:
+ *
+ *   — каждая отдельная покупка достижима за разумное число забегов,
+ *     иначе сток не сток, а витрина;
+ *   — ВСЁ СРАЗУ недостижимо, иначе выбирать не из чего, и золото
+ *     снова копится впустую — провал v1.0.
+ *
+ * Доход считается ПО ОЖИДАНИЮ, а не прогоном боёв: сколько золота даёт
+ * забег и сколько стоит то, что из него принесли. Бой сюда не входит
+ * намеренно — доходимость меряет матрица, и второй прибор на ту же
+ * величину разошёлся бы с первым.
+ */
+
+const loot = balance.items;
+const raid = balance.raid;
+const rewards = balance.rewards;
+
+/** Ожидаемая цена одного упавшего предмета этого уровня и сложности. */
+function expectedItemValue(ilvl, difficulty, boss) {
+  const weights = loot.drop.rarityByDifficulty[difficulty][boss ? 'boss' : 'monster'];
+  const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return 0;
+
+  let value = 0;
+  for (const [rarity, weight] of Object.entries(weights)) {
+    if (weight <= 0) continue;
+    const [minCount, maxCount] = loot.affixCountByRarity[rarity];
+    const affixes = (minCount + maxCount) / 2;
+    /* Тир аффикса берётся СРЕДНИМ по лестнице надбавок, а не лучшим:
+       завышенная оценка добычи сделала бы расход достижимее, чем он
+       есть, и калибровка выверяла бы экономику, которой нет. */
+    const bonuses = Object.values(loot.sell.affixTierBonus);
+    const perAffix = bonuses.reduce((sum, b) => sum + b, 0) / bonuses.length;
+    value +=
+      (weight / total) * sellPrice({ ilvl, rarity, affixes: [] }, sell) * (1 + affixes * perAffix);
+  }
+  return value;
+}
+
+/** Что приносит ОДИН доведённый до конца забег: золото плюс добыча. */
+function runIncome(ilvl, difficulty) {
+  const fights = raid.fightsPerRun;
+  const lootMul = raid.difficulty[difficulty].lootMultiplier;
+
+  let gold = 0;
+  let drops = 0;
+  let dropValue = 0;
+
+  for (let fight = 0; fight < fights; fight++) {
+    const boss = fight === fights - 1;
+    gold +=
+      Math.round(rewards.goldPerFight.coefficient * Math.pow(ilvl, rewards.goldPerFight.exponent)) *
+      (boss ? rewards.goldPerFight.bossMultiplier : 1);
+
+    const depth =
+      raid.lootMultiplierByFight[Math.min(fight, raid.lootMultiplierByFight.length - 1)];
+    const count = (raid.dropsPerFight + (boss ? raid.bossDropBonus : 0)) * depth * lootMul;
+    drops += count;
+    dropValue += count * expectedItemValue(ilvl, difficulty, boss);
+  }
+
+  return { gold, drops, dropValue, total: gold + dropValue };
+}
+
+/** Полный набор улучшений комплекта до безрискового потолка. */
+function fullUpgradeCost(ilvl) {
+  const slots = 8;
+  let gold = 0;
+  let scrap = 0;
+  for (let to = 1; to <= loot.upgrade.riskFreeThrough; to++) {
+    const step = upgradeCost(to, ilvl, economy, loot.upgrade.riskFreeThrough);
+    gold += step.gold * slots;
+    scrap += step.scrap * slots;
+  }
+  return { gold, scrap, tier: scrapTierFor(ilvl, economy) };
+}
+
+const DEPTHS = [
+  { name: 'Пустоши #1', ilvl: 2 },
+  { name: 'Пустоши #4', ilvl: 8 },
+  { name: 'Лагерь #4', ilvl: 16 },
+  { name: 'Катакомбы #4', ilvl: 24 },
+  { name: 'Кузня #4', ilvl: 32 },
+  { name: 'Чумные ямы #4', ilvl: 40 },
+];
+
+const DIFFICULTIES = ['normal', 'dangerous', 'nightmare'];
+
+const income = DEPTHS.map((depth) => ({
+  ...depth,
+  by: Object.fromEntries(DIFFICULTIES.map((d) => [d, runIncome(depth.ilvl, d)])),
+}));
+
+/* ────────────────────── что игрок хочет купить ───────────────────────── */
+
+const basket = DEPTHS.map((depth) => {
+  const ilvl = depth.ilvl;
+  const upgrade = fullUpgradeCost(ilvl);
+  const reforge = reforgeCost(ilvl, economy);
+  const up = rarityUpCost('rare', ilvl, economy);
+  const flasks =
+    flaskPrice(economy.flasks.tiers[economy.flasks.tiers.length - 1].id, economy, ilvl) *
+    economy.flasks.maxCharges;
+  const shopItem = buyPrice({ ilvl, rarity: 'rare', affixes: [] }, sell, economy);
+
+  return {
+    ...depth,
+    upgrade,
+    reforge,
+    rarityUp: up,
+    flasks,
+    shopItem,
+    /* КОРЗИНА ЦЕЛИКОМ: комплект до +5, одно повышение редкости,
+       одна перековка, полный запас фляг и один предмет из лавки.
+       Это и есть «всё сразу», которое обязано быть недостижимым. */
+    all: upgrade.gold + reforge.gold + (up?.gold ?? 0) + flasks + shopItem,
+  };
+});
+
+/* ────────────────────────────── вердикт ──────────────────────────────── */
+
+/** За сколько забегов «нормально» окупается покупка на этой глубине. */
+function runsFor(cost, at) {
+  const per = at.by.normal.total;
+  return per <= 0 ? Infinity : cost / per;
+}
+
+const RUNS_PER_PURCHASE_MAX = 12;
+const RUNS_PER_BASKET_MIN = 8;
+
+const verdicts = [];
+for (let i = 0; i < DEPTHS.length; i++) {
+  const at = income[i];
+  const want = basket[i];
+
+  const single = Math.max(
+    runsFor(want.flasks, at),
+    runsFor(want.rarityUp?.gold ?? 0, at),
+    runsFor(want.shopItem, at),
+  );
+  const all = runsFor(want.all, at);
+
+  if (single > RUNS_PER_PURCHASE_MAX) {
+    verdicts.push(
+      `${at.name}: одна покупка стоит ${single.toFixed(1)} забегов — сток недостижим (порог ${RUNS_PER_PURCHASE_MAX})`,
+    );
+  }
+  if (all < RUNS_PER_BASKET_MIN) {
+    verdicts.push(
+      `${at.name}: ВСЁ СРАЗУ стоит ${all.toFixed(1)} забегов — выбирать не из чего (порог ${RUNS_PER_BASKET_MIN})`,
+    );
+  }
+}
+
+/* ────────── ЛАВКА НЕ ДОЛЖНА ВЫТЕСНЯТЬ ДОБЫЧУ ─────────── */
+
+/**
+ * Два условия, и структурного одного мало.
+ *
+ * ПЕРВОЕ ДЕРЖИТСЯ ПОСТРОЕНИЕМ: цена покупки выведена из цены продажи
+ * наценкой строго больше единицы, поэтому «продать всё и накупить
+ * в лавке» всегда даёт МЕНЬШЕ вещей, чем было. Это проверено выше
+ * и от чисел не зависит.
+ *
+ * ВТОРОЕ — ЧИСЛО, и его надо мерить. Если предмет в лавке стоит
+ * копейки против дохода забега, шесть дневных слотов становятся
+ * бесплатной раздачей: золото за них не платится ощутимо, и добыча
+ * перестаёт быть тем, ради чего ходят в рейд. Замер и поймал это:
+ * при `sell.base` = 4 редкий сорокового уровня стоил 123 золота
+ * против 1333 дохода забега — 9%.
+ */
+const SHOP_SHARE_MIN = 0.2;
+
+const displacement = [];
+for (const depth of DEPTHS) {
+  const price = buyPrice({ ilvl: depth.ilvl, rarity: 'rare', affixes: [] }, sell, economy);
+  const perRun = runIncome(depth.ilvl, 'normal');
+  const dropsRare = perRun.drops * (loot.drop.rarityByDifficulty.normal.monster.rare / 100);
+  const share = perRun.total <= 0 ? 0 : price / perRun.total;
+  displacement.push({ name: depth.name, price, perRun: perRun.total, dropsRare, share });
+
+  if (share < SHOP_SHARE_MIN) {
+    verdicts.push(
+      `${depth.name}: редкий в лавке стоит ${(share * 100).toFixed(0)}% дохода забега — ` +
+        `лавка раздаёт даром (порог ${(SHOP_SHARE_MIN * 100).toFixed(0)}%)`,
+    );
+  }
+}
+
+/* ──────────────────────────── печать таблиц ──────────────────────────── */
+
+function padR(text, width) {
+  return String(text).padEnd(width, ' ');
+}
+function padL(text, width) {
+  return String(text).padStart(width, ' ');
+}
+
+function printTables() {
+  console.log('\n\nДОХОД ЗА ОДИН ЗАВЕРШЁННЫЙ ЗАБЕГ · золото + цена добычи');
+  console.log('─'.repeat(78));
+  console.log(padR('глубина', 16) + padL('обычная', 20) + padL('опасная', 20) + padL('кошмар', 20));
+  for (const row of income) {
+    console.log(
+      padR(row.name, 16) +
+        DIFFICULTIES.map((d) =>
+          padL(`${Math.round(row.by[d].total)} (${Math.round(row.by[d].gold)}+лут)`, 20),
+        ).join(''),
+    );
+  }
+  console.log('\nЗолото боёв плюс ожидаемая цена добычи. Бой в расчёт не входит:');
+  console.log('доходимость меряет матрица, и второй прибор на ту же величину');
+  console.log('разошёлся бы с первым.');
+
+  console.log('\n\nРАСХОД · во сколько ЗАБЕГОВ на «обычной» обходится покупка');
+  console.log('─'.repeat(78));
+  console.log(
+    padR('глубина', 16) +
+      padL('комплект +5', 14) +
+      padL('редкость', 11) +
+      padL('перековка', 11) +
+      padL('фляги', 9) +
+      padL('лавка', 9) +
+      padL('ВСЁ СРАЗУ', 12),
+  );
+  for (let i = 0; i < DEPTHS.length; i++) {
+    const at = income[i];
+    const want = basket[i];
+    console.log(
+      padR(at.name, 16) +
+        padL(runsFor(want.upgrade.gold, at).toFixed(1), 14) +
+        padL(runsFor(want.rarityUp?.gold ?? 0, at).toFixed(1), 11) +
+        padL(runsFor(want.reforge.gold, at).toFixed(1), 11) +
+        padL(runsFor(want.flasks, at).toFixed(1), 9) +
+        padL(runsFor(want.shopItem, at).toFixed(1), 9) +
+        padL(runsFor(want.all, at).toFixed(1), 12),
+    );
+  }
+  console.log(
+    `\nКаждая покупка обязана укладываться в ${RUNS_PER_PURCHASE_MAX} забегов, ВСЁ СРАЗУ —`,
+  );
+  console.log(`не дешевле ${RUNS_PER_BASKET_MIN}. Первое делает сток стоком, второе — выбором.`);
+
+  console.log('\n\nЛАВКА НЕ ВЫТЕСНЯЕТ ДОБЫЧУ · цена редкого против дохода забега');
+  console.log('─'.repeat(78));
+  console.log(
+    padR('глубина', 16) +
+      padL('редкий в лавке', 16) +
+      padL('доход забега', 14) +
+      padL('доля', 8) +
+      padL('редких за забег', 18),
+  );
+  for (const row of displacement) {
+    console.log(
+      padR(row.name, 16) +
+        padL(Math.round(row.price), 16) +
+        padL(Math.round(row.perRun), 14) +
+        padL(`${(row.share * 100).toFixed(0)}%`, 8) +
+        padL(row.dropsRare.toFixed(2), 18),
+    );
+  }
+  console.log(
+    `\nДоля обязана быть не ниже ${(SHOP_SHARE_MIN * 100).toFixed(0)}%: иначе шесть дневных слотов —`,
+  );
+  console.log('бесплатная раздача, и добыча перестаёт быть тем, ради чего ходят в рейд.');
+  console.log('«Продать всё и накупить в лавке» закрыто отдельно и ПОСТРОЕНИЕМ:');
+  console.log('наценка строго больше единицы, значит вещей всегда станет меньше.');
+}
+
 /* ──────────────────────────────── вывод ──────────────────────────────── */
 
 console.log('\nПРИБОР ЭКОНОМИКИ · проверки на известном ответе');
@@ -389,3 +667,18 @@ if (failures.length > 0) {
 }
 
 console.log(`\nВсе ${notes.length} проверок пройдены. Прибору можно верить.`);
+
+/* ЧИСЛА ПЕЧАТАЮТСЯ ТОЛЬКО ПОСЛЕ ТОГО, КАК ПРИБОР СЕБЯ ДОКАЗАЛ. Выше
+   стоит `process.exit(1)` на любой непройденной проверке, и таблицы
+   до него не доходят: правдоподобные числа про экономику, которой нет,
+   хуже отсутствующих. */
+printTables();
+
+if (verdicts.length > 0) {
+  console.log('\n\nДОХОД И РАСХОД НЕ СВЕДЕНЫ:');
+  for (const line of verdicts) console.log(`  ✗ ${line}`);
+  console.log('\nКритерий этапа — не работающий кузнец, а сведённые доход и расход.');
+  process.exit(1);
+}
+
+console.log('\n\nДоход и расход сведены: каждая покупка достижима, всё сразу — нет.');

@@ -385,16 +385,38 @@ async function render(surface: Surface): Promise<void> {
       );
     }
 
-    if (current.potionsLeft > 0 && current.hp < current.maxHp) {
-      add(
-        t('raid.action.potion', { left: current.potionsLeft }),
-        'button button--small',
-        async () => {
-          await api.runPotion();
-          await refresh();
-          draw();
-        },
-      );
+    /* ФЛЯГИ — ПО ОДНОЙ КНОПКЕ НА ТИР, и на каждой написано, что она
+       даст: диапазон восстановления и побочный эффект, если он есть.
+       Одной кнопкой «выпить» выбор между тирами исчез бы, а он и есть
+       та самая ставка — дешёвая и предсказуемая против дорогой
+       и с двумя сторонами (§7.2). */
+    if (current.hp < current.maxHp) {
+      for (const flask of current.flasks) {
+        if (flask.charges <= 0) continue;
+        const lo = Math.round(flask.restore[0] * 100);
+        const hi = Math.round(flask.restore[1] * 100);
+        add(
+          t('raid.action.flask', {
+            name: t(`flask.${flask.id}`),
+            left: flask.charges,
+            lo,
+            hi,
+          }),
+          'button button--small',
+          async () => {
+            await api.runPotion({ tier: flask.id });
+            await refresh();
+            draw();
+          },
+          flask.side === null
+            ? undefined
+            : t('raid.action.flaskSide', {
+                good: t(`status.${flask.side.good}`),
+                bad: t(`status.${flask.side.bad}`),
+                percent: Math.round(flask.side.chance * 100),
+              }),
+        );
+      }
     }
 
     if (current.canExtract) {

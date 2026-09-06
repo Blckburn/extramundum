@@ -1366,6 +1366,29 @@ button[disabled],
   font-size: 0.75rem;
 }
 
+/* Фляги на том же прилавке: и предметы, и заряды покупаются
+   за золото, и считать бюджет между двумя экранами игрок не должен. */
+.shop__flasks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--tap-gap);
+}
+
+@media (min-width: 720px) {
+  .shop__flasks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.shop__subtitle {
+  grid-column: 1 / -1;
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .shop__bar {
   display: flex;
   flex-wrap: wrap;

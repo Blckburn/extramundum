@@ -33,7 +33,10 @@ export type RunRow = {
   readonly difficulty: Difficulty;
   readonly fightIndex: number;
   readonly seed: string;
-  readonly potionsLeft: number;
+  /** Сколько фляг выпито за забег — из этого числа считается бросок. */
+  readonly flasksDrunk: number;
+  /** Побочный эффект, ждущий следующего боя. `null` — ничего не ждёт. */
+  readonly pendingStatus: PendingStatus | null;
   readonly state: 'active' | 'extracted' | 'wiped';
   readonly bag: readonly BagItem[];
   /** Высокий материал в сумке. Теряется вместе с ней. */
@@ -49,7 +52,8 @@ function toRun(row: typeof runs.$inferSelect): RunRow {
     difficulty: row.difficulty,
     fightIndex: row.fightIndex,
     seed: row.seed,
-    potionsLeft: row.potionsLeft,
+    flasksDrunk: row.flasksDrunk,
+    pendingStatus: (row.pendingStatus as PendingStatus | null) ?? null,
     state: row.state,
     bag: row.bag as readonly BagItem[],
     bagEmber: row.bagEmber,
@@ -89,7 +93,6 @@ export async function insertRun(
     segment: number;
     difficulty: Difficulty;
     seed: string;
-    potionsLeft: number;
     /** Полный запас HP на вход. Считает движок — здесь только запись. */
     maxHp: number;
   },
@@ -103,7 +106,6 @@ export async function insertRun(
         segment: input.segment,
         difficulty: input.difficulty,
         seed: input.seed,
-        potionsLeft: input.potionsLeft,
       })
       .returning();
 
@@ -314,26 +316,57 @@ export async function applyFightOutcome(
 
 /* ───────────────────────────────── зелье ─────────────────────────────── */
 
-export async function spendPotion(
+export type PendingStatus = {
+  readonly id: string;
+  readonly stacks: number;
+  readonly duration: number;
+};
+
+/**
+ * Выпить флягу: списать заряд, вылечить, записать побочный эффект.
+ *
+ * ОДНОЙ ТРАНЗАКЦИЕЙ и с двумя условиями сразу. Счётчик глотков растёт
+ * условием `flasks_drunk = ожидаемый` — два одновременных «выпить»
+ * не вылечат дважды за один заряд; сам заряд списывается условием
+ * `charges >= 1` внутри `spend`. Проверка «есть ли заряд» до записи
+ * прошла бы у обоих запросов.
+ *
+ * Списание заряда приходит КОЛБЭКОМ, а не делается здесь: заряды живут
+ * у игрока, а не в забеге, и знать про них модулю забега незачем.
+ */
+export async function drinkFlask(
   db: Database,
-  input: { runId: string; playerId: string; expectedPotions: number; hpAfter: number },
+  input: {
+    runId: string;
+    playerId: string;
+    expectedDrunk: number;
+    hpAfter: number;
+    pendingStatus: PendingStatus | null;
+    spend: (
+      tx: Parameters<Parameters<Database['transaction']>[0]>[0],
+      playerId: string,
+    ) => Promise<boolean>;
+  },
 ): Promise<{ run: RunRow; profile: PlayerProfile }> {
   return db.transaction(async (tx) => {
+    if (!(await input.spend(tx, input.playerId))) throw new Error('заряда нет');
+
     const [row] = await tx
       .update(runs)
-      .set({ potionsLeft: input.expectedPotions - 1 })
+      .set({
+        flasksDrunk: input.expectedDrunk + 1,
+        pendingStatus: input.pendingStatus,
+      })
       .where(
         and(
           eq(runs.id, input.runId),
           eq(runs.state, 'active'),
-          // То же условие, что у боя: два одновременных «выпить» не должны
-          // вылечить дважды за один заряд.
-          eq(runs.potionsLeft, input.expectedPotions),
+          eq(runs.flasksDrunk, input.expectedDrunk),
         ),
       )
       .returning();
 
-    if (row === undefined) throw new Error('заряд уже потрачен');
+    if (row === undefined) throw new Error('забег изменился между чтением и записью');
 
     const [profile] = await tx
       .update(players)
@@ -344,6 +377,17 @@ export async function spendPotion(
     if (profile === undefined) throw new Error('профиль не найден');
     return { run: toRun(row), profile: toProfile(profile) };
   });
+}
+
+/**
+ * Погасить ждущий эффект. Зовётся ТОЙ ЖЕ транзакцией, что проводит бой:
+ * иначе выпитая фляга подействовала бы дважды, если бой не записался.
+ */
+export async function clearPendingStatus(
+  tx: Parameters<Parameters<Database['transaction']>[0]>[0],
+  runId: string,
+): Promise<void> {
+  await tx.update(runs).set({ pendingStatus: null }).where(eq(runs.id, runId));
 }
 
 /* ────────────────────────────── эвакуация ────────────────────────────── */

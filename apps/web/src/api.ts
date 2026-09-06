@@ -8,6 +8,8 @@ import {
   type DraftPickInput,
   type DraftResponse,
   type EquipInput,
+  type FlaskBuyInput,
+  type FlaskBuyResponse,
   type InventoryResponse,
   type LockInput,
   type MoveInput,
@@ -26,6 +28,7 @@ import {
   type ShopBuyResponse,
   type ShopResponse,
   type SmithItemInput,
+  type StashTabResponse,
   type SmithViewResponse,
   type UpgradeResponse,
   type UnequipInput,
@@ -159,8 +162,11 @@ export const api = {
     })) as RunFightResponse;
   },
 
-  async runPotion(): Promise<RunResponse> {
-    return (await request(API_ROUTES.runPotion, { method: 'POST', body: '{}' })) as RunResponse;
+  async runPotion(input: FlaskBuyInput): Promise<RunResponse> {
+    return (await request(API_ROUTES.runPotion, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as RunResponse;
   },
 
   async runExtract(): Promise<RunExtractResponse> {
@@ -284,6 +290,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     })) as ShopBuyResponse;
+  },
+
+  async shopFlask(input: FlaskBuyInput): Promise<FlaskBuyResponse> {
+    return (await request(API_ROUTES.shopFlask, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as FlaskBuyResponse;
+  },
+
+  async shopStashTab(): Promise<StashTabResponse> {
+    return (await request(API_ROUTES.shopStashTab, {
+      method: 'POST',
+      body: '{}',
+    })) as StashTabResponse;
   },
 
   /**

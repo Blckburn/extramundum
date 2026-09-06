@@ -5,6 +5,7 @@ import {
   clearedLevel,
   lootBalanceSchema,
   shopSlotSeed,
+  stashTabPrice,
   type Item,
 } from '@extramundum/shared';
 import { generateItem } from '@extramundum/sim';
@@ -202,5 +203,62 @@ export async function buySlot(
     if (inserted === undefined) throw new Error('предмет не создался');
 
     return { gold: row.gold, item: { ...item, id: inserted.id } };
+  });
+}
+
+/**
+ * Купить следующую вкладку стеша. GDD §6.3.
+ *
+ * НОМЕР ВКЛАДКИ НЕ ПРИНИМАЕТСЯ: он выводится из числа уже купленных.
+ * Иначе можно было бы купить четвёртую, не купив третью, — то есть
+ * по цене третьей.
+ *
+ * Цена и счётчик двигаются ОДНОЙ транзакцией и с условием
+ * `stash_tabs = ожидаемый`: два одновременных запроса иначе купили бы
+ * две вкладки по цене одной. То же правило, что у двойного начисления
+ * за бой.
+ */
+export async function buyStashTab(
+  db: Database,
+  playerId: string,
+): Promise<{ gold: number; owned: number }> {
+  return db.transaction(async (tx) => {
+    const current = await tx
+      .select({ tabs: players.stashTabs })
+      .from(players)
+      .where(eq(players.id, playerId))
+      .limit(1);
+
+    const owned = current[0]?.tabs;
+    if (owned === undefined) throw new Error('профиль не найден');
+
+    const price = stashTabPrice(owned, economy);
+    if (price === null) {
+      throw new AppError('conflict', {
+        messageKey: 'error.shop.allTabs',
+        message: 'все вкладки уже куплены',
+      });
+    }
+
+    const [row] = await tx
+      .update(players)
+      .set({ gold: sql`${players.gold} - ${price}`, stashTabs: owned + 1 })
+      .where(
+        and(
+          eq(players.id, playerId),
+          eq(players.stashTabs, owned),
+          sql`${players.gold} >= ${price}`,
+        ),
+      )
+      .returning({ gold: players.gold, tabs: players.stashTabs });
+
+    if (row === undefined) {
+      throw new AppError('conflict', {
+        messageKey: 'error.shop.noGold',
+        message: 'не хватает золота',
+      });
+    }
+
+    return { gold: row.gold, owned: row.tabs };
   });
 }
