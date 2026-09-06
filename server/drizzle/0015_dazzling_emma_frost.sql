@@ -1,0 +1,1 @@
+ALTER TABLE "players" ADD COLUMN "stash_tabs" integer DEFAULT 0 NOT NULL;

@@ -1,14 +1,17 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
 import { monsterSpec, ZONES } from '@extramundum/data/zones';
 import {
+  emberChanceFor,
   enemyLevel,
   isSegmentUnlocked,
   lootBalanceSchema,
   rarityWeightsFor,
   seededRoll,
   segmentBounds,
+  statusIdSchema,
   type Difficulty,
   type FightRewards,
+  type FlaskView,
   type MonsterSpec,
   type NextEnemy,
   type RunSummary,
@@ -29,6 +32,8 @@ import {
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { fighterFromLoadout, toView } from '../items/loadout.ts';
+import { readFlasks, sipOf, spendFlask, tierOf } from '../items/flasks.ts';
+import { economy } from '../items/prices.ts';
 import { loadoutOf } from '../items/repository.ts';
 import { progressionOf } from '../progression/service.ts';
 import type { PlayerProfile } from '@extramundum/shared';
@@ -40,7 +45,8 @@ import {
   insertRun,
   readZoneProgress,
   runTotals,
-  spendPotion,
+  clearPendingStatus,
+  drinkFlask,
   type BagItem,
   type RunRow,
 } from './repository.ts';
@@ -161,6 +167,7 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
   const player = fighterFromLoadout(profile, loadout, await progressionOf(db, profile));
   const maxHp = maxHpOf(player, combatBalance);
 
+  const stock = await readFlasks(db, profile.id);
   const finished = row.state !== 'active' || row.fightIndex >= raid.fightsPerRun;
   const next = finished ? null : nextEnemy(zone, row, player.weapon.class);
 
@@ -180,8 +187,12 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
     fightsTotal: raid.fightsPerRun,
     hp: Math.min(profile.hpCurrent, maxHp),
     maxHp,
-    potionsLeft: row.potionsLeft,
+    flasks: flaskViews(stock),
+    /* Побочный эффект ждёт следующего боя и ПОКАЗАН заранее: он часть
+       решения «идти дальше или уйти», а не сюрприз в журнале. */
+    pendingStatus: row.pendingStatus === null ? null : row.pendingStatus.id,
     bag,
+    bagEmber: row.bagEmber,
     lootMultiplier: lootMultiplierAt(row.fightIndex),
     hpRestore: restoreFractionOf(zone),
     next,
@@ -202,6 +213,26 @@ function nextEnemy(zone: ZoneSpec, row: RunRow, playerWeapon: NextEnemy['weaponC
     // умножать самому.
     matchup: matchupMultiplier(playerWeapon, spec.armorClass, combatBalance),
   };
+}
+
+/**
+ * Фляги игрока с их диапазонами — то, из чего он выбирает.
+ *
+ * Диапазон и побочный эффект приходят ГОТОВЫМИ: у клиента нет баланса,
+ * а «что даст эта фляга» — первое, что нужно знать до глотка.
+ * Показываются ВСЕ тиры, включая нулевые: иначе игрок не узнает,
+ * что фляги вообще бывают, пока случайно не купит.
+ */
+function flaskViews(stock: Readonly<Record<string, number>>): FlaskView[] {
+  return economy.flasks.tiers.map((tier) => ({
+    id: tier.id,
+    charges: stock[tier.id] ?? 0,
+    restore: tier.restore,
+    side:
+      tier.side === null
+        ? null
+        : { good: tier.side.good, bad: tier.side.bad, chance: tier.side.chance },
+  }));
 }
 
 /* ─────────────────────────────── операции ────────────────────────────── */
@@ -256,7 +287,6 @@ export async function startRun(
     segment: input.segment,
     difficulty: input.difficulty,
     seed: randomUUID(),
-    potionsLeft: raid.potionChargesPerRun,
     maxHp,
   });
 
@@ -278,6 +308,7 @@ async function summaryOf(
   row: RunRow,
   state: Exclude<RunSummary['state'], never>,
   hauled: readonly BagItem[],
+  hauledEmber: number,
 ): Promise<RunSummary> {
   const zone = requireZone(row.zone);
   const totals = await runTotals(db, row.id);
@@ -293,6 +324,7 @@ async function summaryOf(
     xp: totals.xp,
     gold: totals.gold,
     loot: hauled.map((item) => toView(item, null)),
+    ember: hauledEmber,
   };
 }
 
@@ -332,7 +364,25 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
      где-то ещё: боец боя и боец превью собираются одной функцией
      и одной прогрессией, иначе превью обещало бы одно, а бой давал
      другое. */
-  const player = fighterFromLoadout(profile, loadout, await progressionOf(db, profile));
+  const base = fighterFromLoadout(profile, loadout, await progressionOf(db, profile));
+  /* ПОБОЧНЫЙ ЭФФЕКТ ФЛЯГИ ВХОДИТ В БОЙЦА, а не в ветку `resolve.ts`.
+     Движок умеет стартовые статусы с M1b (`applyStartingStatuses`),
+     и трогать его ради фляги не пришлось — ровно то, ради чего реестр
+     десяти эффектов и делался. */
+  const player: typeof base =
+    row.pendingStatus === null
+      ? base
+      : {
+          ...base,
+          statuses: [
+            ...base.statuses,
+            {
+              id: statusIdSchema.parse(row.pendingStatus.id),
+              stacks: row.pendingStatus.stacks,
+              duration: row.pendingStatus.duration,
+            },
+          ],
+        };
   const maxHp = maxHpOf(player, combatBalance);
 
   const spec = enemyFor(zone, row.fightIndex, row.seed);
@@ -351,6 +401,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   const nextIndex = row.fightIndex + 1;
 
   const drops = won ? rollLoot(row, spec, level, nextIndex) : [];
+  const ember = won ? rollEmber(row) : 0;
   const rewards = rewardsFor(spec, level, won);
 
   /* Всё одной транзакцией: исход, HP, XP, золото, лут в сумку
@@ -369,18 +420,28 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     // бои остаётся целиком (§7.2).
     gold: won ? rewards.gold : Math.floor(rewards.gold * raid.goldKeptOnDeath),
     drops,
+    /* Высокий материал едет В СУМКЕ, а не сразу в запас: иначе высокая
+       сложность давала бы ресурс без ставки, и решение об эвакуации
+       перестало бы покрывать всё, что забег принёс. */
+    ember,
     // Пятый бой пройден — забег закончен сам, сумка едет в инвентарь.
     finish: won ? (nextIndex >= raid.fightsPerRun ? 'extracted' : null) : 'wiped',
     opponentRef: `monster:${spec.key}`,
     seed,
     log,
     result: won ? 'win' : 'loss',
-    rewardsJson: { xp: rewards.xp, gold: rewards.gold, drops: drops.length },
+    rewardsJson: { xp: rewards.xp, gold: rewards.gold, drops: drops.length, ember },
     /* УЧАСТОК ЗАСЧИТЫВАЕТСЯ ЗА УБИТОГО БОССА, то есть за пятый бой.
        Не за эвакуацию: уйти с добычей — это отказ от риска, и открывать
        им следующий участок значило бы платить продвижением за отказ. */
     clears: won && isBossFight(row.fightIndex) ? { zone: zone.id, segment: row.segment } : null,
   });
+
+  /* Эффект погашен ПОСЛЕ проведённого боя: он одноразовый, и оставить
+     его значило бы, что одна фляга действует на все следующие бои. */
+  if (row.pendingStatus !== null) {
+    await db.transaction((tx) => clearPendingStatus(tx, row.id));
+  }
 
   const view = await runView(db, { profile: applied.profile, row: applied.run });
 
@@ -395,6 +456,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
           applied.run,
           applied.run.state === 'wiped' ? 'wiped' : 'extracted',
           applied.hauled,
+          applied.hauledEmber,
         );
 
   return {
@@ -409,7 +471,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     enemyLook: { rig: spec.rig, ...(spec.recolor === undefined ? {} : { recolor: spec.recolor }) },
     // Показ считает СЕРВЕР, как и для инвентаря: числа предмета уже
     // с учётом ilvl, и клиент их не выводит (§6.1).
-    rewards: { ...rewards, loot: applied.granted.map((item) => toView(item, null)) },
+    rewards: { ...rewards, ember, loot: applied.granted.map((item) => toView(item, null)) },
     run: view,
   };
 }
@@ -434,12 +496,28 @@ export function healBetweenFights(hp: number, maxHp: number, zone: ZoneSpec): nu
   return Math.min(maxHp, Math.max(1, Math.round(hp + maxHp * restoreFractionOf(zone))));
 }
 
-export async function drinkPotion(db: Database, profile: PlayerProfile): Promise<RunView> {
+/**
+ * Выпить флягу. GDD §7.2.
+ *
+ * ВОССТАНОВЛЕНИЕ — БРОСОК В ДИАПАЗОНЕ, и выпавшее игрок видит ДО
+ * решения об эвакуации: случайность работает НА решение, а не против
+ * него. Бросок выводится из сида забега и номера глотка, а номер
+ * растёт той же транзакцией, что списывает заряд, — неудачный глоток
+ * не переиграть.
+ */
+export async function drinkPotion(
+  db: Database,
+  profile: PlayerProfile,
+  tierId: string,
+): Promise<RunView> {
   const row = await requireActive(db, profile.id);
-  if (row.potionsLeft <= 0) {
+  const tier = tierOf(tierId);
+
+  const stock = await readFlasks(db, profile.id);
+  if ((stock[tier.id] ?? 0) <= 0) {
     throw new AppError('conflict', {
       messageKey: 'error.run.noPotions',
-      message: 'зелья кончились',
+      message: 'зарядов этой фляги нет',
     });
   }
 
@@ -448,13 +526,21 @@ export async function drinkPotion(db: Database, profile: PlayerProfile): Promise
     fighterFromLoadout(profile, loadout, await progressionOf(db, profile)),
     combatBalance,
   );
-  const healed = Math.min(maxHp, profile.hpCurrent + Math.round(maxHp * raid.potionHealFraction));
 
-  const applied = await spendPotion(db, {
+  const sip = sipOf(tier.id, row.seed, row.flasksDrunk);
+  const healed = Math.min(maxHp, profile.hpCurrent + Math.round(maxHp * sip.fraction));
+
+  const applied = await drinkFlask(db, {
     runId: row.id,
     playerId: profile.id,
-    expectedPotions: row.potionsLeft,
+    expectedDrunk: row.flasksDrunk,
     hpAfter: healed,
+    /* Эффект копится, а не заменяется? НЕТ: хранится последний.
+       Две фляги подряд между теми же боями — это одна попытка
+       поправить дела, а не удвоение ставки, и складывать их значило бы
+       превратить деньги в множитель. */
+    pendingStatus: sip.status,
+    spend: (tx, playerId) => spendFlask(tx, playerId, tier.id),
   });
 
   return runView(db, { profile: applied.profile, row: applied.run });
@@ -480,7 +566,7 @@ export async function extract(
     run: view,
     recovered: applied.recovered,
     // Уход — тоже конец забега, и итог у него тот же самый.
-    summary: await summaryOf(db, applied.run, 'extracted', applied.hauled),
+    summary: await summaryOf(db, applied.run, 'extracted', applied.hauled, applied.hauledEmber),
   };
 }
 
@@ -505,7 +591,11 @@ async function requireActive(db: Database, playerId: string): Promise<RunRow> {
  * на любой глубине. Возьми показатель другим — и прогрессия ускорялась
  * бы или глохла сама по себе.
  */
-function rewardsFor(spec: MonsterSpec, level: number, won: boolean): Omit<FightRewards, 'loot'> {
+function rewardsFor(
+  spec: MonsterSpec,
+  level: number,
+  won: boolean,
+): Omit<FightRewards, 'loot' | 'ember'> {
   const bossXp = spec.boss ? rewardsBalance.xpPerFight.bossMultiplier : 1;
   const bossGold = spec.boss ? rewardsBalance.goldPerFight.bossMultiplier : 1;
 
@@ -522,6 +612,25 @@ function rewardsFor(spec: MonsterSpec, level: number, won: boolean): Omit<FightR
   // считает вызывающий: здесь только «сколько стоил бы этот бой».
   void won;
   return { xp, gold };
+}
+
+/**
+ * Выпал ли высокий материал этим боем. GDD §6.3.
+ *
+ * ЕДИНСТВЕННАЯ ПРИЧИНА ХОДИТЬ НА ВЫСОКИЕ СЛОЖНОСТИ ПОМИМО РЕДКОСТИ.
+ * Шанс приходит из данных по сложности, и на «нормально» он ноль —
+ * то есть ветка не отключена кодом, а не оплачена данными.
+ *
+ * Бросок СВОЙ, а не тот, что разыгрывает дробный остаток лута: общий
+ * связал бы «упал ли пятый предмет» с «упал ли высокий материал»,
+ * и две величины, которые игрок читает по отдельности, ходили бы
+ * парой. Это тот же пункт 5 аудита v1.0, что и общий бросок
+ * на уклонение с блоком.
+ */
+export function rollEmber(row: Pick<RunRow, 'seed' | 'difficulty' | 'fightIndex'>): number {
+  const chance = emberChanceFor(row.difficulty, economy);
+  if (chance <= 0) return 0;
+  return seededRoll(`${row.seed}:ember:${row.fightIndex}`) < chance ? 1 : 0;
 }
 
 /**

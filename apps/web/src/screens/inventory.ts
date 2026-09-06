@@ -1,6 +1,7 @@
 import {
   EQUIPMENT_SLOTS,
   isPercentFamily,
+  MATERIAL_KEYS,
   RARITIES,
   type EquipmentSlot,
   type InventoryResponse,
@@ -13,6 +14,7 @@ import {
 import { api, ApiClientError } from '../api.ts';
 import { clear, el } from '../dom.ts';
 import { t } from '../i18n.ts';
+import { affixText } from '../ui/affix.ts';
 import { renderIcon } from '../ui/icon.ts';
 import { statsPanel } from '../ui/stats.ts';
 
@@ -48,6 +50,9 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
      управления: пять названий рядом с вкладками и сортировкой ломали
      ряд на три строки, и в них всё выглядело выбранным. */
   const raritiesRow = el('div', { class: 'inv__rarities', role: 'group' });
+  /* Материалы стоят в шапке рядом с золотом: разбор превращает одно
+     в другое, и обе величины игрок читает в один и тот же момент. */
+  const materialsRow = el('div', { class: 'inv__materials' });
   /* Продажа — ПОСЛЕ ряда редкостей, а не до него: кнопка говорит
      «выберите редкость», и стоять выше того, что она просит выбрать,
      она не должна. */
@@ -69,6 +74,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
         el('h1', { class: 'inv__title' }, [t('inventory.title')]),
         head,
       ]),
+      materialsRow,
       el('div', { class: 'inv__worn' }, [portraitCanvas, slotsRow]),
       controls,
       raritiesRow,
@@ -128,6 +134,7 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       el('span', { class: 'inv__gold' }, [t('inventory.gold', { gold: data.gold })]),
       el('span', { class: 'inv__capacity' }, [t('inventory.capacity', { used, max })]),
     );
+    drawMaterials();
 
     showWorn();
     drawSlots();
@@ -149,6 +156,33 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     charsBox.append(
       statsPanel(['atk', 'def', 'agi', 'spd', 'armor', 'accuracy', 'maxHp', 'critBonus']),
     );
+  }
+
+  /**
+   * Материалы. GDD §6.3.
+   *
+   * Рядом с золотом, а не отдельным экраном: разбор превращает одно
+   * в другое, и обе величины читаются в один момент. Пустой запас
+   * показывается строкой, а не пустотой, — иначе игрок не узнает,
+   * что материалы вообще бывают, пока случайно не разберёт вещь.
+   */
+  function drawMaterials(): void {
+    if (data === null) return;
+    clear(materialsRow);
+    materialsRow.append(el('span', { class: 'inv__label' }, [t('inventory.materials')]));
+
+    const owned = MATERIAL_KEYS.filter((key) => (data?.materials[key] ?? 0) > 0);
+    if (owned.length === 0) {
+      materialsRow.append(el('span', { class: 'inv__mat-none' }, [t('inventory.materials.none')]));
+      return;
+    }
+    for (const key of owned) {
+      materialsRow.append(
+        el('span', { class: `inv__mat inv__mat--${key}` }, [
+          `${t(`material.${key}`)}: ${String(data.materials[key] ?? 0)}`,
+        ]),
+      );
+    }
   }
 
   function drawSlots(): void {
@@ -379,25 +413,16 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     }
 
     detail.append(actions(item));
+    const forkRow = fork(item);
+    if (forkRow !== null) detail.append(forkRow);
     detail.append(el('div', { class: 'inv__preview' }, [t('preview.loading')]));
     void loadPreview(item);
   }
 
-  /**
-   * Строка аффикса.
-   *
-   * Текст берётся по КЛЮЧУ СЕМЕЙСТВА (`affix.<family>`), а не ветвлением
-   * по каждому из семи: забытая ветка молча превратилась бы в строку
-   * другого семейства, и игрок прочитал бы «+12% урона» там, где надет
-   * «+12% брони». Отсутствующий ключ ловит тест локалей.
-   */
+  /** Строка аффикса. Текст собирает общая `affixText` — одна на клиент. */
   function affixRow(affix: ItemAffixView, stats: LoadoutStats): HTMLElement {
     const family = affix.family;
-    const text = t(`affix.${family}`, {
-      // Проценты показываются процентами, плоские — единицами. Одно
-      // и то же число в двух видах — это пункт 4 аудита v1.0.
-      value: isPercentFamily(family) ? Math.round(affix.value * 1000) / 10 : affix.value,
-    });
+    const text = affixText(affix);
 
     const children: (string | Node)[] = [
       el('span', { class: 'inv__affix-text' }, [text]),
@@ -455,6 +480,37 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
       api.lockItem({ itemId: item.id, locked: !item.locked }),
     );
 
+    return row;
+  }
+
+  /**
+   * РАЗВИЛКА «ЗОЛОТО ИЛИ РЕСУРС». GDD §6.3.
+   *
+   * Обе цифры показаны рядом, и это не украшение: выбор взаимоисключающий
+   * — предмет исчезнет в любом случае, — а взаимоисключающий выбор
+   * без обеих цифр на экране не решение, а угадывание. Считает их
+   * сервер, клиент не выводит ни одной.
+   *
+   * Заблокированный не продаётся и не разбирается: сервер откажет
+   * молча, поэтому и кнопок здесь нет — иначе нажатие ничего бы
+   * не делало без объяснения.
+   */
+  function fork(item: ItemView): HTMLElement | null {
+    if (item.container === 'equipped' || item.locked) return null;
+    const row = el('div', { class: 'inv__fork' });
+
+    const sellOne = el('button', { class: 'button button--small', type: 'button' }, [
+      t('inventory.action.sellOne', { gold: item.sellValue }),
+    ]) as HTMLButtonElement;
+    sellOne.addEventListener('click', () => void sellOneItem(item));
+
+    const scrapName = t(`material.${item.scrap.tier}`);
+    const dismantle = el('button', { class: 'button button--small', type: 'button' }, [
+      t('inventory.action.dismantle', { amount: item.scrap.amount, material: scrapName }),
+    ]) as HTMLButtonElement;
+    dismantle.addEventListener('click', () => void dismantleItem(item));
+
+    row.append(sellOne, dismantle, el('p', { class: 'inv__fork-note' }, [t('inventory.fork')]));
     return row;
   }
 
@@ -525,6 +581,59 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
   }
 
   /* ─────────────────────────── массовая продажа ──────────────────────── */
+
+  /**
+   * Продать одну вещь. Подтверждение НАЗЫВАЕТ ОБЕ СТОРОНЫ развилки:
+   * после продажи разобрать её будет нельзя, и узнать об этом
+   * из отсутствия кнопки игрок не должен.
+   */
+  async function sellOneItem(item: ItemView): Promise<void> {
+    const name = t(`item.${item.baseKey}`);
+    if (!globalThis.confirm(t('inventory.sellOne.confirm', { name, gold: item.sellValue }))) return;
+
+    try {
+      const result = await api.sellItems({ itemIds: [item.id] });
+      notice.textContent =
+        result.sold === 0
+          ? t('inventory.sell.none')
+          : t('inventory.sellOne.done', { gold: result.gold });
+      selectedId = null;
+      await refresh();
+    } catch (err) {
+      notice.textContent = t(err instanceof ApiClientError ? err.messageKey : 'error.internal');
+    }
+  }
+
+  async function dismantleItem(item: ItemView): Promise<void> {
+    const name = t(`item.${item.baseKey}`);
+    if (
+      !globalThis.confirm(
+        t('inventory.dismantle.confirm', {
+          name,
+          gold: item.sellValue,
+          amount: item.scrap.amount,
+          material: t(`material.${item.scrap.tier}`),
+        }),
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const result = await api.dismantleItems({ itemIds: [item.id] });
+      const gained = MATERIAL_KEYS.filter((key) => (result.gained[key] ?? 0) > 0)
+        .map((key) => `${t(`material.${key}`)} × ${String(result.gained[key] ?? 0)}`)
+        .join(', ');
+      notice.textContent =
+        result.dismantled === 0
+          ? t('inventory.dismantle.none')
+          : t('inventory.dismantle.done', { count: result.dismantled, gained });
+      selectedId = null;
+      await refresh();
+    } catch (err) {
+      notice.textContent = t(err instanceof ApiClientError ? err.messageKey : 'error.internal');
+    }
+  }
 
   async function sellSelected(): Promise<void> {
     if (rarityFilter.size === 0) return;

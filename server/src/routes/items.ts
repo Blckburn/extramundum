@@ -1,12 +1,15 @@
 import { balance as balanceData } from '@extramundum/data';
 import {
   API_ROUTES,
+  dismantleInputSchema,
   equipInputSchema,
   lockInputSchema,
   lootBalanceSchema,
   moveInputSchema,
+  stashCapacity,
   sellInputSchema,
   unequipInputSchema,
+  type DismantleResponse,
   type InventoryResponse,
   type SellResponse,
 } from '@extramundum/shared';
@@ -18,13 +21,16 @@ import { AppError } from '../http/errors.ts';
 import { parseBody, type AppEnv } from '../http/middleware.ts';
 import { countedQuotas, loadoutStats, toView } from '../items/loadout.ts';
 import { progressionOf } from '../progression/service.ts';
+import { readMaterials } from '../items/materials.ts';
+import { economy } from '../items/prices.ts';
 import {
+  dismantleItems,
   equipItem,
   equippedMap,
   listItems,
   loadoutOf,
   moveItem,
-  sellByRarity,
+  sellItems,
   setLocked,
   unequipSlot,
 } from '../items/repository.ts';
@@ -66,11 +72,12 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
   /** Всё, что есть у игрока, плюс производные набора. */
   app.get(API_ROUTES.items, async (c) => {
     const profile = await playerOf(c);
-    const [all, equipped, loadout, progression] = await Promise.all([
+    const [all, equipped, loadout, progression, materials] = await Promise.all([
       listItems(db, profile.id),
       equippedMap(db, profile.id),
       loadoutOf(db, profile.id),
       progressionOf(db, profile),
+      readMaterials(db, profile.id),
     ]);
 
     const quotas = countedQuotas(loadout);
@@ -86,7 +93,13 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
       equipped: Object.fromEntries(equipped),
       stats: loadoutStats(profile, loadout, progression),
       gold: profile.gold,
-      capacity: loot.capacity,
+      materials,
+      /* Вместимость стеша РАСТЁТ С КУПЛЕННЫМИ ВКЛАДКАМИ, и считает её
+         та же функция, что сторожит перекладывание предмета. */
+      capacity: {
+        inv: loot.capacity.inv,
+        stash: stashCapacity(profile.stashTabs, loot.capacity.stash, economy),
+      },
     };
     return c.json(body);
   });
@@ -120,28 +133,63 @@ export function itemRoutes(db: Database): Hono<AppEnv> {
   });
 
   /**
-   * Массовая продажа. Заблокированные не продаются никогда, надетые
-   * не попадают в выборку по контейнеру.
+   * Продажа: фильтром по редкости или поимённым списком.
    *
-   * Цена ПРОВИЗОРНАЯ: настоящая экономика — M3c. Золото при этом
-   * начисляется, а не теряется: удаление без выплаты было бы
-   * необратимым разрушением без компенсации, а золото пока инертно —
-   * тратить его негде, и неверные числа ничего не ломают.
+   * Заблокированные не продаются никогда, надетые не попадают
+   * в выборку. Список нужен затем, что продажа — половина развилки
+   * с разбором, а вторая половина берётся по конкретной вещи.
    */
   app.post(API_ROUTES.itemsSell, async (c) => {
     const profile = await playerOf(c);
     const input = await parseBody(c, sellInputSchema);
-    const { sold, gold } = await sellByRarity(db, profile.id, input.rarities, input.from);
+    /* Схема уже гарантирует, что задана ровно одна из двух форм: их
+       взаимоисключимость проверяется `refine`, а не здесь. */
+    const { sold, gold } = await sellItems(
+      db,
+      profile.id,
+      input.itemIds === undefined
+        ? { kind: 'rarity', rarities: input.rarities ?? [], from: input.from ?? 'inv' }
+        : { kind: 'items', itemIds: input.itemIds },
+    );
 
-    c.get('log').info('массовая продажа', {
+    c.get('log').info('продажа', {
       playerId: profile.id,
-      from: input.from,
-      rarities: input.rarities,
+      ...(input.itemIds === undefined
+        ? { from: input.from, rarities: input.rarities }
+        : { asked: input.itemIds.length }),
       sold,
       gold,
     });
 
     const body: SellResponse = { sold, gold };
+    return c.json(body);
+  });
+
+  /**
+   * Разбор на материалы. GDD §6.3.
+   *
+   * ВТОРАЯ ПОЛОВИНА РАЗВИЛКИ «золото или ресурс»: тот же предмет либо
+   * продан, либо разобран, и выбор необратим — обе операции его
+   * удаляют. Развилки не было бы, будь лом обратим в золото; он
+   * односторонний намеренно.
+   *
+   * Идентификаторы приходят списком, а не фильтром по редкости, как
+   * у продажи: продажа — уборка мусора, разбор — решение по конкретной
+   * вещи.
+   */
+  app.post(API_ROUTES.itemsDismantle, async (c) => {
+    const profile = await playerOf(c);
+    const input = await parseBody(c, dismantleInputSchema);
+    const { dismantled, gained } = await dismantleItems(db, profile.id, input.itemIds);
+
+    c.get('log').info('разбор предметов', {
+      playerId: profile.id,
+      asked: input.itemIds.length,
+      dismantled,
+      gained,
+    });
+
+    const body: DismantleResponse = { dismantled, gained };
     return c.json(body);
   });
 

@@ -13,6 +13,8 @@ import { battleRoutes } from './routes/battle.ts';
 import { draftRoutes } from './routes/draft.ts';
 import { healthRoutes } from './routes/health.ts';
 import { itemRoutes } from './routes/items.ts';
+import { shopRoutes } from './routes/shop.ts';
+import { smithRoutes } from './routes/smith.ts';
 import { meRoutes } from './routes/me.ts';
 import { runRoutes } from './routes/runs.ts';
 
@@ -46,6 +48,8 @@ export function createApp(db: Database, config: Config, log: Logger): Hono<AppEn
   app.route('/', itemRoutes(db));
   app.route('/', runRoutes(db));
   app.route('/', draftRoutes(db));
+  app.route('/', smithRoutes(db));
+  app.route('/', shopRoutes(db));
   app.route('/auth', authRoutes(db));
 
   // Вход, выход и чтение сессии обслуживает сам Better Auth.

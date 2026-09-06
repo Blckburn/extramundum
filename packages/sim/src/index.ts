@@ -74,4 +74,10 @@ export {
   type TickResult,
 } from './statuses.js';
 export { TRAITS, type Trait, type TraitContext, type TraitHooks } from './traits.js';
-export { allowedTiers, generateItem, type GeneratedItem, type GenerateItemInput } from './loot.js';
+export {
+  allowedTiers,
+  generateItem,
+  rollOneAffix,
+  type GeneratedItem,
+  type GenerateItemInput,
+} from './loot.js';

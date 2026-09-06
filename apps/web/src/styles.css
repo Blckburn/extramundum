@@ -1273,6 +1273,358 @@ button[disabled],
   margin: 0.5rem 0;
 }
 
+/* ─────────────────────────────── ЛАВКА ─────────────────────────────────
+   GDD §6.3. Дневной сток по серверному сиду.
+
+   Карточка показывает АФФИКСЫ, а не только имя: «купить или не купить»
+   без них — то же угадывание, что продажа без цены разбора. */
+.screen--shop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shop__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.shop__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.shop__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--tap-gap);
+}
+
+@media (min-width: 720px) {
+  .shop__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.shop__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.shop__cardHead {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.shop__name {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.shop__sub,
+.shop__hint,
+.shop__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.shop__affixes {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.shop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+}
+
+.shop__short {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+/* Фляги на том же прилавке: и предметы, и заряды покупаются
+   за золото, и считать бюджет между двумя экранами игрок не должен. */
+.shop__flasks {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--tap-gap);
+}
+
+@media (min-width: 720px) {
+  .shop__flasks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.shop__subtitle {
+  grid-column: 1 / -1;
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.shop__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ─────────────────────────────── КУЗНЕЦ ────────────────────────────────
+   GDD §6.3. Главный сток золота.
+
+   Ряд кнопок операций — цели нажатия, значит общий зазор: у кузнеца
+   две соседние кнопки делают РАЗНОЕ с одной вещью, и промах стоит
+   уплаченной цены. */
+.screen--smith {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.smith__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.smith__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.smith__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.smith__body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 720px) {
+  .smith__body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+}
+
+.smith__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+}
+
+.smith__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: center;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  max-width: 6rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.smith__cell--selected {
+  outline: 2px solid var(--accent);
+}
+
+.smith__cellName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Уровень улучшения виден В СПИСКЕ: иначе «что я уже качал»
+   выясняется перебором карточек. */
+.smith__plus {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.smith__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.smith__name {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.smith__sub,
+.smith__note,
+.smith__pick,
+.smith__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+/* РИСК НАПИСАН РЯДОМ С ЦЕНОЙ, а не спрятан в подсказку: провал выше
+   +5 отнимает уровень, и узнавать об этом после нажатия нельзя. */
+.smith__note--risk {
+  color: var(--accent);
+}
+
+.smith__subtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Операция — кнопка и её цена рядом. Ряд целей: общий зазор. */
+.smith__op {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+}
+
+.smith__price {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.smith__short {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.smith__respec {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+}
+
+.smith__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.smith__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+/* РАЗВИЛКА «ЗОЛОТО ИЛИ РЕСУРС». GDD §6.3.
+
+   Две кнопки в ряд и подпись под ними. Ряд целей — значит зазор общий,
+   а не свой: перекрытый зазор здесь стоил бы дороже, чем где-либо ещё,
+   потому что обе кнопки НЕОБРАТИМЫ и промах по соседней означает
+   не то действие над той же вещью.
+
+   Подпись занимает всю ширину, чтобы встать под кнопками, а не между
+   ними: правило «предмет исчезнет в любом случае» относится к обеим. */
+/* Уголь горна в сумке. Отдельной строкой, а не пунктом списка добычи:
+   он не предмет, его нельзя надеть и у него нет редкости. */
+.raid__bagEmber {
+  margin: 0.25rem 0 0;
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv__fork {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  margin: 0.5rem 0;
+}
+
+.inv__fork-note {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* Материалы рядом с золотом: разбор превращает одно в другое, и обе
+   величины читаются в один момент. Прокрутка по горизонтали, как
+   у ряда редкостей: шесть подписей в 390 пикселей не помещаются. */
+.inv__materials {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.75rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  scrollbar-width: thin;
+}
+
+.inv__mat {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Уголь горна — не лом, и читается он иначе: это валюта высоких
+   сложностей, а не побочный продукт уборки инвентаря. */
+.inv__mat--ember {
+  color: var(--accent);
+}
+
+.inv__mat-none {
+  flex: 0 0 auto;
+  font-style: italic;
+}
+
 .inv__preview {
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);

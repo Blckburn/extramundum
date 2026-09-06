@@ -54,7 +54,23 @@ describe('размеры целей нажатия', () => {
     expect(selectors).toContain('select');
   });
 
-  const TAP_ROWS = ['.inv__grid', '.inv__slots', '.zone__difficulties', '.raid__actions'];
+  const TAP_ROWS = [
+    '.inv__grid',
+    '.inv__slots',
+    '.zone__difficulties',
+    '.raid__actions',
+    /* Развилка «продать или разобрать»: обе кнопки НЕОБРАТИМЫ, и промах
+     по соседней означает не то действие над той же вещью. */
+    '.inv__fork',
+    /* У кузнеца соседние кнопки делают РАЗНОЕ с одной вещью, и промах
+       стоит уплаченной цены. */
+    '.smith__list',
+    '.smith__op',
+    /* Витрина лавки: соседние карточки — покупки за золото. */
+    '.shop__grid',
+    '.shop__actions',
+    '.shop__flasks',
+  ];
 
   it('ряды целей получают минимальный зазор', () => {
     for (const row of TAP_ROWS) {

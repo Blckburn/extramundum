@@ -44,6 +44,20 @@ export const emptyInputSchema = z.object({}).strict();
 
 /* ──────────────────────────── состояние забега ───────────────────────── */
 
+/** Фляга в сумке игрока: сколько зарядов и что она даёт. GDD §7.2. */
+export type FlaskView = {
+  readonly id: string;
+  readonly charges: number;
+  /** Доля максимума HP, [мин, макс]. */
+  readonly restore: readonly [number, number];
+  /** Побочный эффект в обе стороны. `null` — у этого тира его нет. */
+  readonly side: {
+    readonly good: string;
+    readonly bad: string;
+    readonly chance: number;
+  } | null;
+};
+
 /** Кто ждёт в следующем бою. GDD §7.2: «игрок смотрит на превью врага». */
 export type NextEnemy = {
   /** Ключ монстра. Имя берёт локаль — `monster.<key>`. */
@@ -79,7 +93,22 @@ export type RunView = {
   readonly fightsTotal: number;
   readonly hp: number;
   readonly maxHp: number;
-  readonly potionsLeft: number;
+  /**
+   * Фляги: что есть у игрока и что каждая даст. GDD §7.2.
+   *
+   * ДИАПАЗОН, А НЕ ЧИСЛО: восстановление разыгрывается броском,
+   * и обещать точную величину было бы враньём. Побочный эффект назван
+   * заранее — он часть выбора фляги, а не сюрприз.
+   */
+  readonly flasks: readonly FlaskView[];
+  /**
+   * Побочный эффект, ждущий следующего боя. `null` — ничего не ждёт.
+   *
+   * ПОКАЗАН ЗАРАНЕЕ, потому что он часть решения «идти дальше или
+   * уйти». Всплыви он в журнале боя — игрок узнал бы о нём после того,
+   * как решение уже принято.
+   */
+  readonly pendingStatus: string | null;
   /**
    * Что уже лежит в сумке.
    *
@@ -88,6 +117,14 @@ export type RunView = {
    * из решения «идти дальше» половину ставки.
    */
   readonly bag: readonly ItemView[];
+  /**
+   * Высокий материал, лежащий в сумке. GDD §6.3.
+   *
+   * Отдельным числом, а не предметом: он не носится и не имеет
+   * аффиксов. Но теряется вместе с сумкой, поэтому и показывается
+   * рядом с ней — иначе половина ставки не была бы видна.
+   */
+  readonly bagEmber: number;
   /** Множитель лута на СЛЕДУЮЩИЙ бой. GDD §7.2. */
   readonly lootMultiplier: number;
   /** Доля запаса, возвращаемая между боями в ЭТОЙ зоне. §7.2. */
@@ -136,6 +173,8 @@ export type RunSummary = {
    * данных, а сам итог: сумка потеряна целиком.
    */
   readonly loot: readonly ItemView[];
+  /** Сколько высокого материала доехало. При смерти ноль. */
+  readonly ember: number;
 };
 
 /** Что бой дал игроку. Всё уже применено к профилю. */
@@ -144,6 +183,8 @@ export type FightRewards = {
   readonly gold: number;
   /** Что упало в сумку ЭТИМ боем. Уже входит в `run.bag`. */
   readonly loot: readonly ItemView[];
+  /** Выпал ли высокий материал этим боем. GDD §6.3. */
+  readonly ember: number;
 };
 
 export type RunFightResponse = {

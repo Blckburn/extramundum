@@ -10,6 +10,7 @@
 export * from './auth.js';
 export * from './battle.js';
 export * from './combat.js';
+export * from './economy.js';
 export * from './errors.js';
 export * from './items.js';
 export * from './loot.js';
@@ -19,5 +20,6 @@ export * from './render.js';
 export * from './rolls.js';
 export * from './routes.js';
 export * from './runs.js';
+export * from './smith.js';
 export * from './validation.js';
 export * from './zones.js';

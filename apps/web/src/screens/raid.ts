@@ -304,12 +304,25 @@ async function render(surface: Surface): Promise<void> {
   }
 
   function bagBlock(current: RunView): HTMLElement {
+    /* УГОЛЬ ГОРНА ТОЖЕ ЛЕЖИТ В СУМКЕ и теряется вместе с ней, поэтому
+       стоит здесь, а не в запасе: игрок решает «уйти или дальше»,
+       глядя на всё, что поставлено. Показывается ДАЖЕ при пустой
+       сумке — иначе половина ставки была бы невидима ровно тогда,
+       когда предметов ещё нет, а уголь уже выпал. */
+    const ember =
+      current.bagEmber > 0
+        ? el('p', { class: 'raid__bagEmber' }, [t('run.bagEmber', { count: current.bagEmber })])
+        : null;
+
     if (current.bag.length === 0) {
-      return el('p', { class: 'raid__bag raid__bag--empty' }, [t('raid.bag.empty')]);
+      const empty = el('p', { class: 'raid__bag raid__bag--empty' }, [t('raid.bag.empty')]);
+      if (ember === null) return empty;
+      return el('div', { class: 'raid__bag' }, [empty, ember]);
     }
 
     return el('div', { class: 'raid__bag' }, [
       el('h2', { class: 'raid__subtitle' }, [t('raid.bag', { count: current.bag.length })]),
+      ...(ember === null ? [] : [ember]),
       // Сумка показывается ЦЕЛИКОМ: игрок видел, как падал лут (§7.2).
       // Спрятать её значило бы убрать из решения половину ставки.
       el(
@@ -372,16 +385,38 @@ async function render(surface: Surface): Promise<void> {
       );
     }
 
-    if (current.potionsLeft > 0 && current.hp < current.maxHp) {
-      add(
-        t('raid.action.potion', { left: current.potionsLeft }),
-        'button button--small',
-        async () => {
-          await api.runPotion();
-          await refresh();
-          draw();
-        },
-      );
+    /* ФЛЯГИ — ПО ОДНОЙ КНОПКЕ НА ТИР, и на каждой написано, что она
+       даст: диапазон восстановления и побочный эффект, если он есть.
+       Одной кнопкой «выпить» выбор между тирами исчез бы, а он и есть
+       та самая ставка — дешёвая и предсказуемая против дорогой
+       и с двумя сторонами (§7.2). */
+    if (current.hp < current.maxHp) {
+      for (const flask of current.flasks) {
+        if (flask.charges <= 0) continue;
+        const lo = Math.round(flask.restore[0] * 100);
+        const hi = Math.round(flask.restore[1] * 100);
+        add(
+          t('raid.action.flask', {
+            name: t(`flask.${flask.id}`),
+            left: flask.charges,
+            lo,
+            hi,
+          }),
+          'button button--small',
+          async () => {
+            await api.runPotion({ tier: flask.id });
+            await refresh();
+            draw();
+          },
+          flask.side === null
+            ? undefined
+            : t('raid.action.flaskSide', {
+                good: t(`status.${flask.side.good}`),
+                bad: t(`status.${flask.side.bad}`),
+                percent: Math.round(flask.side.chance * 100),
+              }),
+        );
+      }
     }
 
     if (current.canExtract) {
@@ -452,6 +487,11 @@ async function render(surface: Surface): Promise<void> {
       el('div', { class: 'raid__summaryTotals' }, [
         el('span', {}, [t('raid.reward.xp', { xp: done.xp })]),
         el('span', {}, [t('raid.reward.gold', { gold: done.gold })]),
+        // Ноль не показывается: строка «угля: 0» после гибели читалась бы
+        // как потеря того, чего не было.
+        ...(done.ember > 0
+          ? [el('span', {}, [t('run.summary.ember', { count: done.ember })])]
+          : []),
       ]),
 
       /* ДОБЫЧА ЗА ЗАБЕГ ЦЕЛИКОМ, включая пятый бой. Пустой список

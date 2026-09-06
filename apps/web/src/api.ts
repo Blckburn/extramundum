@@ -3,20 +3,34 @@ import {
   apiErrorSchema,
   meResponseSchema,
   type ApiError,
+  type DismantleInput,
+  type DismantleResponse,
   type DraftPickInput,
   type DraftResponse,
   type EquipInput,
+  type FlaskBuyInput,
+  type FlaskBuyResponse,
   type InventoryResponse,
   type LockInput,
   type MoveInput,
   type RunExtractResponse,
   type RunFightResponse,
   type RunResponse,
+  type ReforgeInput,
+  type ReforgeResponse,
+  type RespecResponse,
   type RunStartInput,
   type SellInput,
   type SellResponse,
   type SimulatePreviewInput,
   type SimulatePreviewResponse,
+  type ShopBuyInput,
+  type ShopBuyResponse,
+  type ShopResponse,
+  type SmithItemInput,
+  type StashTabResponse,
+  type SmithViewResponse,
+  type UpgradeResponse,
   type UnequipInput,
   type ZonesResponse,
   type MeResponse,
@@ -148,8 +162,11 @@ export const api = {
     })) as RunFightResponse;
   },
 
-  async runPotion(): Promise<RunResponse> {
-    return (await request(API_ROUTES.runPotion, { method: 'POST', body: '{}' })) as RunResponse;
+  async runPotion(input: FlaskBuyInput): Promise<RunResponse> {
+    return (await request(API_ROUTES.runPotion, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as RunResponse;
   },
 
   async runExtract(): Promise<RunExtractResponse> {
@@ -210,6 +227,83 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     })) as SellResponse;
+  },
+
+  async dismantleItems(input: DismantleInput): Promise<DismantleResponse> {
+    return (await request(API_ROUTES.itemsDismantle, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as DismantleResponse;
+  },
+
+  /**
+   * Кузнец. GDD §6.3, §5.2.
+   *
+   * В теле — идентификатор предмета и, у перековки, номер аффикса.
+   * Ни цены, ни шанса, ни результата: клиент их не выводит и прислать
+   * не может — схемы таких полей не содержат.
+   */
+  async smith(): Promise<SmithViewResponse> {
+    return (await request(API_ROUTES.smith)) as SmithViewResponse;
+  },
+
+  async smithUpgrade(input: SmithItemInput): Promise<UpgradeResponse> {
+    return (await request(API_ROUTES.smithUpgrade, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as UpgradeResponse;
+  },
+
+  async smithReforge(input: ReforgeInput): Promise<ReforgeResponse> {
+    return (await request(API_ROUTES.smithReforge, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as ReforgeResponse;
+  },
+
+  async smithRarityUp(input: SmithItemInput): Promise<ReforgeResponse> {
+    return (await request(API_ROUTES.smithRarityUp, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as ReforgeResponse;
+  },
+
+  async smithRespec(): Promise<RespecResponse> {
+    return (await request(API_ROUTES.smithRespec, {
+      method: 'POST',
+      body: '{}',
+    })) as RespecResponse;
+  },
+
+  /**
+   * Лавка. GDD §6.3.
+   *
+   * В теле покупки — НОМЕР СЛОТА. Ни предмета, ни цены: и то, и другое
+   * сервер выводит из серверного сида дня заново.
+   */
+  async shop(): Promise<ShopResponse> {
+    return (await request(API_ROUTES.shop)) as ShopResponse;
+  },
+
+  async shopBuy(input: ShopBuyInput): Promise<ShopBuyResponse> {
+    return (await request(API_ROUTES.shopBuy, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as ShopBuyResponse;
+  },
+
+  async shopFlask(input: FlaskBuyInput): Promise<FlaskBuyResponse> {
+    return (await request(API_ROUTES.shopFlask, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as FlaskBuyResponse;
+  },
+
+  async shopStashTab(): Promise<StashTabResponse> {
+    return (await request(API_ROUTES.shopStashTab, {
+      method: 'POST',
+      body: '{}',
+    })) as StashTabResponse;
   },
 
   /**

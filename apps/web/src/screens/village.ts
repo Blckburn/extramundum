@@ -10,7 +10,7 @@ import { renderIcon } from '../ui/icon.ts';
  * Заглушка деревни — граница этапа M0.
  *
  * Показывает то, что сервер прочитал из БД по сессии, и ничего больше.
- * Кузнец, лавка, инвентарь и вход в рейд — это M3 (GDD §11).
+ * Инвентарь, рейд и кузнец пришли в M3; лавка — там же, следующим срезом.
  */
 export function renderVillage(
   root: HTMLElement,
@@ -19,6 +19,8 @@ export function renderVillage(
   onRaid?: () => void,
   onInventory?: () => void,
   onDraft?: () => void,
+  onSmith?: () => void,
+  onShop?: () => void,
 ): void {
   clear(root);
 
@@ -134,6 +136,8 @@ export function renderVillage(
          из-за текста, который дописали позже. */
       el('div', { class: 'village__nav screen__actions' }, [
         ...(onInventory === undefined ? [] : [navButton('inventory.open', onInventory)]),
+        ...(onSmith === undefined ? [] : [navButton('village.action.smith', onSmith)]),
+        ...(onShop === undefined ? [] : [navButton('village.action.shop', onShop)]),
         ...(onRaid === undefined ? [] : [navButton('raid.enter', onRaid)]),
       ]),
     ]),

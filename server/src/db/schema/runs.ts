@@ -58,17 +58,36 @@ export const runs = pgTable(
     seed: text('seed').notNull(),
 
     /**
-     * Оставшиеся заряды зелий. GDD §7.2: три на забег.
+     * Сколько фляг выпито за забег. GDD §7.2.
      *
-     * Тратятся МЕЖДУ боями: игрок в бой не вмешивается, и единственное
-     * место, где заряд может быть решением, — экран между боями, там же,
-     * где выбор «эвакуироваться или дальше». Иначе зелье не механика,
-     * а автоматическая прибавка к HP.
+     * СЧЁТЧИК ДЛЯ БРОСКА, а не остаток зарядов: сами заряды лежат
+     * у игрока (`player_flasks`) и тратятся оттуда. Восстановление
+     * фляги — БРОСОК В ДИАПАЗОНЕ, и выводится он из сида забега
+     * и этого числа; растёт оно той же транзакцией, что списывает
+     * заряд, поэтому неудачный глоток не переиграть.
      */
-    potionsLeft: integer('potions_left').notNull().default(3),
+    flasksDrunk: integer('flasks_drunk').notNull().default(0),
+
+    /**
+     * Побочный эффект верхней фляги, ждущий СЛЕДУЮЩЕГО боя. §7.2.
+     *
+     * Хранится в забеге, а не у игрока: он принадлежит этому забегу
+     * и вместе с ним кончается. `null` — ничего не ждёт.
+     */
+    pendingStatus: jsonb('pending_status'),
     bag: jsonb('bag')
       .notNull()
       .default(sql`'[]'::jsonb`),
+    /**
+     * Высокий материал В СУМКЕ. GDD §6.3.
+     *
+     * Лежит здесь, а не в запасе игрока, ровно затем, чтобы теряться
+     * при смерти вместе с остальной сумкой. Начисляй его сразу
+     * в запас — и «кошмар» давал бы ресурс без ставки, то есть
+     * решение об эвакуации перестало бы покрывать всё, что забег
+     * принёс.
+     */
+    bagEmber: integer('bag_ember').notNull().default(0),
     state: runStateEnum('state').notNull().default('active'),
 
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
@@ -83,7 +102,8 @@ export const runs = pgTable(
     index('runs_player_idx').on(table.playerId),
     check('runs_fight_index_range', sql`${table.fightIndex} between 0 and 5`),
     check('runs_segment_range', sql`${table.segment} between 0 and 3`),
-    check('runs_potions_non_negative', sql`${table.potionsLeft} >= 0`),
+    check('runs_flasks_drunk_non_negative', sql`${table.flasksDrunk} >= 0`),
+    check('runs_bag_ember_non_negative', sql`${table.bagEmber} >= 0`),
   ],
 );
 
@@ -155,6 +175,33 @@ export const dailies = pgTable(
   (table) => [
     uniqueIndex('dailies_player_day_idx').on(table.playerId, table.dayUtc),
     check('dailies_arena_left_range', sql`${table.arenaLeft} between 0 and 5`),
+  ],
+);
+
+/**
+ * shop_purchases — что уже куплено в дневном стоке. GDD §6.3.
+ *
+ * СТРОКА НА КУПЛЕННЫЙ СЛОТ, а не флаг в jsonb дневных счётчиков.
+ * Уникальный индекс (игрок, день, слот) и есть защита от двойной
+ * покупки: два одновременных запроса дают одну строку, второй падает
+ * на индексе. Проверка «куплено ли» до вставки прошла бы у обоих.
+ *
+ * Дата СЕРВЕРНАЯ, как и у `dailies`. В v1.0 сток зависел от даты
+ * браузера: перевёл часы — получил новый ассортимент (§13, пункт 12).
+ */
+export const shopPurchases = pgTable(
+  'shop_purchases',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    dayUtc: date('day_utc').notNull(),
+    slot: integer('slot').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('shop_purchases_slot_idx').on(table.playerId, table.dayUtc, table.slot),
+    check('shop_purchases_slot_non_negative', sql`${table.slot} >= 0`),
   ],
 );
 

@@ -4,6 +4,7 @@ import {
   API_ROUTES,
   DIFFICULTIES,
   emptyInputSchema,
+  flaskBuyInputSchema,
   runStartInputSchema,
   type RunExtractResponse,
   type RunFightResponse,
@@ -204,10 +205,17 @@ export function runRoutes(db: Database): Hono<AppEnv> {
     return c.json(body);
   });
 
+  /**
+   * Выпить флягу. GDD §7.2.
+   *
+   * В теле — ТИР, и это единственное, что клиент говорит: сколько
+   * зарядов осталось и что выпадет, сервер знает сам. Тир нужен
+   * потому, что фляги разные и выбор между ними — часть решения.
+   */
   app.post(API_ROUTES.runPotion, async (c) => {
     const profile = await profileOf(c);
-    await parseBody(c, emptyInputSchema);
-    const run: RunView = await drinkPotion(db, profile);
+    const input = await parseBody(c, flaskBuyInputSchema);
+    const run: RunView = await drinkPotion(db, profile, input.tier);
     const body: RunResponse = { run };
     return c.json(body);
   });

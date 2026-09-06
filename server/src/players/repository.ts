@@ -108,5 +108,6 @@ export function toProfile(row: typeof players.$inferSelect): PlayerProfile {
     elo: row.elo,
     seasonId: row.seasonId,
     exileNumber: row.exileNumber,
+    stashTabs: row.stashTabs,
   };
 }

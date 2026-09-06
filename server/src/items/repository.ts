@@ -1,11 +1,15 @@
 import { balance as balanceData, itemBase } from '@extramundum/data';
 import {
+  addMaterials,
+  dismantleYield,
   itemAffixSchema,
   lootBalanceSchema,
+  stashCapacity,
   type Container,
   type EquipmentSlot,
   type Item,
   type ItemAffix,
+  type Materials,
   type Rarity,
 } from '@extramundum/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -16,6 +20,8 @@ import { equipment, items } from '../db/schema/items.ts';
 import { AppError } from '../http/errors.ts';
 
 import type { Loadout } from './loadout.ts';
+import { grantMaterials } from './materials.ts';
+import { economy, priceOf } from './prices.ts';
 
 /**
  * Доступ к предметам.
@@ -29,7 +35,7 @@ import type { Loadout } from './loadout.ts';
 const loot = lootBalanceSchema.parse(balanceData.items);
 
 /** Строка БД → предмет контракта. Аффиксы валидируются, а не приводятся. */
-function toItem(row: typeof items.$inferSelect): Item {
+export function toItem(row: typeof items.$inferSelect): Item {
   const base = itemBase(row.baseKey);
   return {
     id: row.id,
@@ -45,6 +51,16 @@ function toItem(row: typeof items.$inferSelect): Item {
     locked: row.locked,
     container: row.container,
   };
+}
+
+/** Сколько вкладок куплено. Читается там, где нужна вместимость. */
+export async function stashTabsOf(db: Database, playerId: string): Promise<number> {
+  const rows = await db
+    .select({ tabs: players.stashTabs })
+    .from(players)
+    .where(eq(players.id, playerId))
+    .limit(1);
+  return rows[0]?.tabs ?? 0;
 }
 
 export async function listItems(db: Database, playerId: string): Promise<readonly Item[]> {
@@ -171,7 +187,14 @@ export async function moveItem(
   }
   if (item.container === to) return;
 
-  const capacity = to === 'inv' ? loot.capacity.inv : loot.capacity.stash;
+  /* ВМЕСТИМОСТЬ СТЕША СЧИТАЕТ ОБЩАЯ ФУНКЦИЯ, а не это место: её же
+     зовут показ инвентаря и покупка вкладки. Второе место разошлось бы
+     с первым, и игрок увидел бы «120 из 240» там, где сервер
+     отказывает на 121-м. */
+  const capacity =
+    to === 'inv'
+      ? loot.capacity.inv
+      : stashCapacity(await stashTabsOf(db, playerId), loot.capacity.stash, economy);
   if ((await countIn(db, playerId, to)) >= capacity) {
     throw new AppError('conflict', {
       messageKey: 'error.item.containerFull',
@@ -192,35 +215,33 @@ export async function setLocked(
   await db.update(items).set({ locked }).where(eq(items.id, itemId));
 }
 
-/** Провизорная цена. Настоящая — M3c вместе с экономикой (§6.3). */
-export function sellPrice(item: Item): number {
-  const multiplier = loot.sell.rarityMultiplier[item.rarity] ?? 1;
-
-  /* Аффиксы входят в цену, и это не украшение. Без них два эпика —
-     один с четырьмя T1, другой с четырьмя T5 — стоили бы одинаково,
-     и читать аффиксы перед массовой продажей было бы незачем. А фильтр
-     и замок из §6.3 существуют ровно затем, чтобы игрок читал. */
-  let quality = 0;
-  for (const affix of item.affixes) quality += loot.sell.affixTierBonus[affix.tier] ?? 0;
-
-  return Math.floor(loot.sell.base * multiplier * (1 + item.ilvl * loot.ilvlScale) * (1 + quality));
-}
+/**
+ * Что продаём: фильтр по редкости или поимённый список.
+ *
+ * Две формы, потому что у продажи две роли. Фильтр — уборка мусора
+ * пачкой. Список — половина развилки «золото или ресурс», и она
+ * берётся по конкретной вещи: развилка, где одна ветка только
+ * массовая, выбором не является.
+ */
+export type SellSelector =
+  | { readonly kind: 'rarity'; readonly rarities: readonly Rarity[]; readonly from: Container }
+  | { readonly kind: 'items'; readonly itemIds: readonly string[] };
 
 /**
- * Массовая продажа по фильтру редкости. GDD §6.3.
+ * Продажа. GDD §6.3.
  *
- * ЗАБЛОКИРОВАННЫЕ НЕ ПРОДАЮТСЯ НИКОГДА, даже попав под фильтр: замок
- * существует ровно для этого. Надетое тоже не продаётся — оно не лежит
- * ни в инвентаре, ни в стеше.
+ * ЗАБЛОКИРОВАННЫЕ НЕ ПРОДАЮТСЯ НИКОГДА, даже попав под фильтр и даже
+ * названные поимённо: замок существует ровно для этого. Надетое тоже
+ * не продаётся — по контейнеру оно не попадает в выборку, а в списке
+ * отсеивается тем же условием, что у разбора.
  *
  * Всё одной транзакцией: списание предметов и начисление золота
  * не должны расходиться, даже если между ними что-то упадёт.
  */
-export async function sellByRarity(
+export async function sellItems(
   db: Database,
   playerId: string,
-  rarities: readonly Rarity[],
-  from: 'inv' | 'stash',
+  selector: SellSelector,
 ): Promise<{ sold: number; gold: number }> {
   return db.transaction(async (tx) => {
     const rows = await tx
@@ -229,15 +250,19 @@ export async function sellByRarity(
       .where(
         and(
           eq(items.ownerId, playerId),
-          eq(items.container, from),
           eq(items.locked, false),
-          inArray(items.rarity, [...rarities]),
+          ...(selector.kind === 'rarity'
+            ? [eq(items.container, selector.from), inArray(items.rarity, [...selector.rarities])]
+            : [
+                inArray(items.container, ['inv', 'stash'] as const),
+                inArray(items.id, [...selector.itemIds]),
+              ]),
         ),
       );
 
     if (rows.length === 0) return { sold: 0, gold: 0 };
 
-    const gold = rows.reduce((sum, row) => sum + sellPrice(toItem(row)), 0);
+    const gold = rows.reduce((sum, row) => sum + priceOf(toItem(row)), 0);
     await tx.delete(items).where(
       inArray(
         items.id,
@@ -250,6 +275,66 @@ export async function sellByRarity(
       .where(eq(players.id, playerId));
 
     return { sold: rows.length, gold };
+  });
+}
+
+/**
+ * Разбор предметов на материалы. GDD §6.3.
+ *
+ * РАЗБОР И ПРОДАЖА ВЗАИМОИСКЛЮЧИМЫ ПО ПОСТРОЕНИЮ, а не по проверке:
+ * и то, и другое удаляет предмет, поэтому второе действие над той же
+ * вещью уже не найдёт её. Это и есть развилка «золото или ресурс» —
+ * единственное, что делает лом ценой, а не побочным продуктом.
+ *
+ * ЛОМ НЕ ПРЕВРАЩАЕТСЯ В ЗОЛОТО, и обратно тоже. Односторонний ресурс
+ * убивает ветку «купил дёшево, разобрал, продал лом» целиком, а не при
+ * удачном подборе цен.
+ *
+ * Заблокированные и надетые не разбираются — те же две защиты, что
+ * у продажи, и по тем же причинам. Молча пропускаются, а не роняют
+ * запрос: разбор пачкой не должен отказывать целиком из-за одного
+ * замка, поставленного между показом экрана и нажатием.
+ */
+export async function dismantleItems(
+  db: Database,
+  playerId: string,
+  itemIds: readonly string[],
+): Promise<{ dismantled: number; gained: Materials }> {
+  if (itemIds.length === 0) return { dismantled: 0, gained: {} };
+
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(items)
+      .where(
+        and(
+          eq(items.ownerId, playerId),
+          eq(items.locked, false),
+          // Надетое не разбирается: разобрать надетое значило бы снять
+          // его молча, а игрок увидел бы пустой слот без объяснения.
+          inArray(items.container, ['inv', 'stash'] as const),
+          inArray(items.id, [...itemIds]),
+        ),
+      );
+
+    if (rows.length === 0) return { dismantled: 0, gained: {} };
+
+    let gained: Materials = {};
+    for (const row of rows) {
+      const item = toItem(row);
+      const yielded = dismantleYield(item, economy);
+      gained = addMaterials(gained, { [yielded.tier]: yielded.amount });
+    }
+
+    await tx.delete(items).where(
+      inArray(
+        items.id,
+        rows.map((row) => row.id),
+      ),
+    );
+    await grantMaterials(tx, playerId, gained);
+
+    return { dismantled: rows.length, gained };
   });
 }
 

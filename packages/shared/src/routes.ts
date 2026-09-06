@@ -47,6 +47,30 @@ export const API_ROUTES = {
   itemsMove: '/items/move',
   itemsLock: '/items/lock',
   itemsSell: '/items/sell',
+  itemsDismantle: '/items/dismantle',
+
+  /**
+   * Кузнец. GDD §6.3, §5.2.
+   *
+   * В теле — идентификатор предмета и, у перековки, номер аффикса.
+   * Ни цены, ни шанса, ни результата: всё считает сервер.
+   */
+  smith: '/smith',
+  smithUpgrade: '/smith/upgrade',
+  smithReforge: '/smith/reforge',
+  smithRarityUp: '/smith/rarity-up',
+  smithRespec: '/smith/respec',
+
+  /**
+   * Лавка. GDD §6.3.
+   *
+   * В теле покупки — НОМЕР СЛОТА, и больше ничего. Ни предмета,
+   * ни цены: и то, и другое сервер выводит из серверного сида дня.
+   */
+  shop: '/shop',
+  shopBuy: '/shop/buy',
+  shopFlask: '/shop/flask',
+  shopStashTab: '/shop/stash-tab',
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

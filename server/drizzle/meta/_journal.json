@@ -71,6 +71,48 @@
       "when": 1788532641871,
       "tag": "0009_daffy_titania",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788694689659,
+      "tag": "0010_unusual_gorilla_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788707319663,
+      "tag": "0011_complete_wiccan",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788708005964,
+      "tag": "0012_slow_thunderbolt",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788708969617,
+      "tag": "0013_clever_leech",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788708982853,
+      "tag": "0014_faulty_madame_web",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788709707066,
+      "tag": "0015_dazzling_emma_frost",
+      "breakpoints": true
     }
   ]
 }

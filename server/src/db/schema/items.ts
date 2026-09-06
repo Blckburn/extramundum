@@ -12,7 +12,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { containerEnum, equipmentSlotEnum, rarityEnum } from './enums.ts';
+import { containerEnum, equipmentSlotEnum, materialEnum, rarityEnum } from './enums.ts';
 import { players } from './game.ts';
 
 /**
@@ -96,6 +96,21 @@ export const items = pgTable(
       .default(sql`'[]'::jsonb`),
     upgradeLevel: integer('upgrade_level').notNull().default(0),
 
+    /**
+     * Сколько раз кузнец брался за этот предмет. GDD §6.3.
+     *
+     * СЧЁТЧИК, А НЕ ЖУРНАЛ, и нужен он не статистике. Бросок кузнеца
+     * выводится из сида игрока, номера предмета и ЭТОГО числа, а само
+     * оно растёт той же транзакцией, что списывает золото. Поэтому
+     * повторить неудачную попытку нельзя: второй запрос считает другой
+     * бросок, а первый уже оплачен.
+     *
+     * Хранить сам бросок было бы хуже: его пришлось бы куда-то класть
+     * ДО списания, и между двумя записями открылось бы окно, в котором
+     * исход известен, а цена не уплачена.
+     */
+    smithAttempts: integer('smith_attempts').notNull().default(0),
+
     /** Защита от случайной продажи и разбора. GDD §6.3. */
     locked: boolean('locked').notNull().default(false),
 
@@ -105,6 +120,7 @@ export const items = pgTable(
     index('items_owner_container_idx').on(table.ownerId, table.container),
     check('items_ilvl_range', sql`${table.ilvl} between 1 and 200`),
     check('items_upgrade_range', sql`${table.upgradeLevel} between 0 and 10`),
+    check('items_smith_attempts_non_negative', sql`${table.smithAttempts} >= 0`),
     check(
       'items_slot_index_non_negative',
       sql`${table.slotIndex} is null or ${table.slotIndex} >= 0`,
@@ -134,5 +150,63 @@ export const equipment = pgTable(
     uniqueIndex('equipment_player_slot_idx').on(table.playerId, table.slot),
     // Один предмет не может быть надет в два слота одновременно.
     uniqueIndex('equipment_item_idx').on(table.itemId),
+  ],
+);
+
+/**
+ * player_materials — лом и высокий материал. GDD §6.3.
+ *
+ * СТРОКАМИ, А НЕ JSONB, и это не вкус. Материал прибавляется
+ * и списывается конкурентно: разбор во время открытого экрана кузнеца
+ * — обычное дело. Строка позволяет `amount = amount + n` одним
+ * условным обновлением, а jsonb пришлось бы читать, править и писать
+ * целиком, теряя чужую правку между чтением и записью.
+ *
+ * Отрицательный остаток запрещён проверкой БД: списание сверх наличия
+ * обязано падать в транзакции, а не оставлять минус, который потом
+ * кто-нибудь прочитает как «должен».
+ */
+export const playerMaterials = pgTable(
+  'player_materials',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    material: materialEnum('material').notNull(),
+    amount: integer('amount').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('player_materials_idx').on(table.playerId, table.material),
+    check('player_materials_non_negative', sql`${table.amount} >= 0`),
+  ],
+);
+
+export type PlayerMaterialRow = typeof playerMaterials.$inferSelect;
+
+/**
+ * player_flasks — заряды фляг. GDD §7.2, §6.3.
+ *
+ * СТРОКАМИ, как материалы, и по той же причине: заряд покупается
+ * и тратится конкурентно (купил в лавке, пока открыт экран забега),
+ * а строка позволяет менять его одним условным обновлением.
+ *
+ * ЗАРЯДОВ ПО УМОЛЧАНИЮ НОЛЬ — строки просто нет. Первый забег без
+ * золота обязан быть возможен, и «идти без фляг» — это он и есть.
+ * Бесплатный заряд вводил бы новое правило вместо снятого: его
+ * пришлось бы восстанавливать по таймеру или за забег.
+ */
+export const playerFlasks = pgTable(
+  'player_flasks',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    /** Идентификатор тира из `balance.economy.flasks`. */
+    tier: text('tier').notNull(),
+    charges: integer('charges').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('player_flasks_idx').on(table.playerId, table.tier),
+    check('player_flasks_non_negative', sql`${table.charges} >= 0`),
   ],
 );
