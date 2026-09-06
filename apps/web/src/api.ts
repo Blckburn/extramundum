@@ -22,6 +22,9 @@ import {
   type SellResponse,
   type SimulatePreviewInput,
   type SimulatePreviewResponse,
+  type ShopBuyInput,
+  type ShopBuyResponse,
+  type ShopResponse,
   type SmithItemInput,
   type SmithViewResponse,
   type UpgradeResponse,
@@ -264,6 +267,23 @@ export const api = {
       method: 'POST',
       body: '{}',
     })) as RespecResponse;
+  },
+
+  /**
+   * Лавка. GDD §6.3.
+   *
+   * В теле покупки — НОМЕР СЛОТА. Ни предмета, ни цены: и то, и другое
+   * сервер выводит из серверного сида дня заново.
+   */
+  async shop(): Promise<ShopResponse> {
+    return (await request(API_ROUTES.shop)) as ShopResponse;
+  },
+
+  async shopBuy(input: ShopBuyInput): Promise<ShopBuyResponse> {
+    return (await request(API_ROUTES.shopBuy, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as ShopBuyResponse;
   },
 
   /**

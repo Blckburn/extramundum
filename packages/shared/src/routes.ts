@@ -60,6 +60,15 @@ export const API_ROUTES = {
   smithReforge: '/smith/reforge',
   smithRarityUp: '/smith/rarity-up',
   smithRespec: '/smith/respec',
+
+  /**
+   * Лавка. GDD §6.3.
+   *
+   * В теле покупки — НОМЕР СЛОТА, и больше ничего. Ни предмета,
+   * ни цены: и то, и другое сервер выводит из серверного сида дня.
+   */
+  shop: '/shop',
+  shopBuy: '/shop/buy',
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

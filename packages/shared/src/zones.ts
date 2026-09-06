@@ -265,3 +265,37 @@ export function isSegmentUnlocked(
   if (previous === undefined) return false;
   return (progress[previous.id] ?? 0) >= SEGMENTS_PER_ZONE;
 }
+
+/**
+ * Уровень САМОГО ГЛУБОКОГО ПРОЙДЕННОГО участка. GDD §6.3 (лавка).
+ *
+ * ЛАВКА ТОРГУЕТ ПО ЭТОМУ ЧИСЛУ, А НЕ ПО УРОВНЮ ИГРОКА, и это то же
+ * правило, что делает игру проходимой: сила и уровень добычи идут
+ * от того, куда ты добрался, а не от того, сколько у тебя опыта.
+ * Уровень игрока вернул бы зависимость через чёрный ход — нафармил
+ * опыта на первом участке и купил снаряжение, до которого не дошёл.
+ *
+ * УРОВНЯ ИГРОКА СРЕДИ АРГУМЕНТОВ НЕТ, и на это стоит тест по числу
+ * параметров, как у `enemyLevel` и `isSegmentUnlocked`.
+ *
+ * Ничего не пройдено — верх первого участка первой зоны: играть
+ * с пустой лавкой не на что, а первый участок открыт всегда.
+ */
+export function clearedLevel(
+  zones: readonly Pick<ZoneSpec, 'id' | 'segments'>[],
+  progress: ZoneProgress,
+): number {
+  const first = zones[0];
+  if (first === undefined) throw new Error('нет ни одной зоны');
+
+  let best = segmentBounds(first, 0)[1];
+  for (const zone of zones) {
+    const cleared = progress[zone.id] ?? 0;
+    if (cleared <= 0) continue;
+    // `cleared` — сколько участков пройдено, то есть номер следующего.
+    // Верх ПОСЛЕДНЕГО пройденного — это `cleared - 1`.
+    const at = Math.min(cleared, SEGMENTS_PER_ZONE) - 1;
+    best = Math.max(best, segmentBounds(zone, at)[1]);
+  }
+  return best;
+}

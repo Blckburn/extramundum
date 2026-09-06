@@ -5,6 +5,7 @@ import { renderAuth } from './screens/auth.ts';
 import { renderDraft } from './screens/draft.ts';
 import { renderInventory } from './screens/inventory.ts';
 import { renderRaid } from './screens/raid.ts';
+import { renderShop } from './screens/shop.ts';
 import { renderSmith } from './screens/smith.ts';
 import { renderVillage } from './screens/village.ts';
 import { mountIconSprite } from './ui/sprite.ts';
@@ -118,6 +119,7 @@ async function route(): Promise<void> {
          и статы на сервере, а `player` здесь снимок, сделанный
          при входе. Та же причина, что у драфта. */
       () => renderSmith(root!, () => void route()),
+      () => renderShop(root!, () => void route()),
     );
   village();
 }

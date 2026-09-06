@@ -99,3 +99,40 @@ export type RespecResponse = {
   /** Прогрессия ПОСЛЕ сброса: все драфты снова ждут выбора. */
   readonly progression: ProgressionView;
 };
+
+/* ──────────────────────────────── лавка ──────────────────────────────── */
+
+/**
+ * Покупка. В теле НОМЕР СЛОТА, и больше ничего.
+ *
+ * Ни предмета, ни цены: и то, и другое сервер выводит из серверного
+ * сида дня заново — как оффер драфта. Прислать «что покупаю» нечем.
+ */
+export const shopBuyInputSchema = z.object({ slot: z.int().min(0).max(15) });
+export type ShopBuyInput = z.infer<typeof shopBuyInputSchema>;
+
+export type ShopSlot = {
+  readonly slot: number;
+  readonly item: ItemView;
+  readonly price: number;
+  readonly affordable: boolean;
+  /** Уже куплено сегодня. Слот не исчезает: пустая полка — тоже итог. */
+  readonly sold: boolean;
+};
+
+export type ShopResponse = {
+  readonly gold: number;
+  readonly slots: readonly ShopSlot[];
+  /**
+   * Уровень ассортимента — верх САМОГО ГЛУБОКОГО ПРОЙДЕННОГО участка.
+   *
+   * Показывается, а не подразумевается: иначе «почему тут только
+   * ilvl 8» остаётся без ответа, и игрок решает, что лавка сломана.
+   */
+  readonly level: number;
+};
+
+export type ShopBuyResponse = {
+  readonly gold: number;
+  readonly item: ItemView;
+};

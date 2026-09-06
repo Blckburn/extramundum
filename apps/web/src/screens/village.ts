@@ -20,6 +20,7 @@ export function renderVillage(
   onInventory?: () => void,
   onDraft?: () => void,
   onSmith?: () => void,
+  onShop?: () => void,
 ): void {
   clear(root);
 
@@ -136,6 +137,7 @@ export function renderVillage(
       el('div', { class: 'village__nav screen__actions' }, [
         ...(onInventory === undefined ? [] : [navButton('inventory.open', onInventory)]),
         ...(onSmith === undefined ? [] : [navButton('village.action.smith', onSmith)]),
+        ...(onShop === undefined ? [] : [navButton('village.action.shop', onShop)]),
         ...(onRaid === undefined ? [] : [navButton('raid.enter', onRaid)]),
       ]),
     ]),

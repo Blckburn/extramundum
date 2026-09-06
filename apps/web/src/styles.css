@@ -1273,6 +1273,107 @@ button[disabled],
   margin: 0.5rem 0;
 }
 
+/* ─────────────────────────────── ЛАВКА ─────────────────────────────────
+   GDD §6.3. Дневной сток по серверному сиду.
+
+   Карточка показывает АФФИКСЫ, а не только имя: «купить или не купить»
+   без них — то же угадывание, что продажа без цены разбора. */
+.screen--shop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shop__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.shop__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.shop__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.shop__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--tap-gap);
+}
+
+@media (min-width: 720px) {
+  .shop__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.shop__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.shop__cardHead {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.shop__name {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.shop__sub,
+.shop__hint,
+.shop__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.shop__affixes {
+  margin: 0;
+  padding-left: 1rem;
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+
+.shop__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+}
+
+.shop__short {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.shop__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+  justify-content: space-between;
+}
+
 /* ─────────────────────────────── КУЗНЕЦ ────────────────────────────────
    GDD §6.3. Главный сток золота.
 

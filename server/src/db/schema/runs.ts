@@ -170,6 +170,33 @@ export const dailies = pgTable(
 );
 
 /**
+ * shop_purchases — что уже куплено в дневном стоке. GDD §6.3.
+ *
+ * СТРОКА НА КУПЛЕННЫЙ СЛОТ, а не флаг в jsonb дневных счётчиков.
+ * Уникальный индекс (игрок, день, слот) и есть защита от двойной
+ * покупки: два одновременных запроса дают одну строку, второй падает
+ * на индексе. Проверка «куплено ли» до вставки прошла бы у обоих.
+ *
+ * Дата СЕРВЕРНАЯ, как и у `dailies`. В v1.0 сток зависел от даты
+ * браузера: перевёл часы — получил новый ассортимент (§13, пункт 12).
+ */
+export const shopPurchases = pgTable(
+  'shop_purchases',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    dayUtc: date('day_utc').notNull(),
+    slot: integer('slot').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('shop_purchases_slot_idx').on(table.playerId, table.dayUtc, table.slot),
+    check('shop_purchases_slot_non_negative', sql`${table.slot} >= 0`),
+  ],
+);
+
+/**
  * arena_ladder — рейтинг арены. GDD §3.3, §8.
  *
  * snapshot — копия билда игрока на момент попадания в таблицу. Соперник
