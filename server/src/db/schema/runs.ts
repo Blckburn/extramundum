@@ -69,6 +69,16 @@ export const runs = pgTable(
     bag: jsonb('bag')
       .notNull()
       .default(sql`'[]'::jsonb`),
+    /**
+     * Высокий материал В СУМКЕ. GDD §6.3.
+     *
+     * Лежит здесь, а не в запасе игрока, ровно затем, чтобы теряться
+     * при смерти вместе с остальной сумкой. Начисляй его сразу
+     * в запас — и «кошмар» давал бы ресурс без ставки, то есть
+     * решение об эвакуации перестало бы покрывать всё, что забег
+     * принёс.
+     */
+    bagEmber: integer('bag_ember').notNull().default(0),
     state: runStateEnum('state').notNull().default('active'),
 
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
@@ -84,6 +94,7 @@ export const runs = pgTable(
     check('runs_fight_index_range', sql`${table.fightIndex} between 0 and 5`),
     check('runs_segment_range', sql`${table.segment} between 0 and 3`),
     check('runs_potions_non_negative', sql`${table.potionsLeft} >= 0`),
+    check('runs_bag_ember_non_negative', sql`${table.bagEmber} >= 0`),
   ],
 );
 

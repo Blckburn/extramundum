@@ -12,7 +12,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
-import { containerEnum, equipmentSlotEnum, rarityEnum } from './enums.ts';
+import { containerEnum, equipmentSlotEnum, materialEnum, rarityEnum } from './enums.ts';
 import { players } from './game.ts';
 
 /**
@@ -136,3 +136,33 @@ export const equipment = pgTable(
     uniqueIndex('equipment_item_idx').on(table.itemId),
   ],
 );
+
+/**
+ * player_materials — лом и высокий материал. GDD §6.3.
+ *
+ * СТРОКАМИ, А НЕ JSONB, и это не вкус. Материал прибавляется
+ * и списывается конкурентно: разбор во время открытого экрана кузнеца
+ * — обычное дело. Строка позволяет `amount = amount + n` одним
+ * условным обновлением, а jsonb пришлось бы читать, править и писать
+ * целиком, теряя чужую правку между чтением и записью.
+ *
+ * Отрицательный остаток запрещён проверкой БД: списание сверх наличия
+ * обязано падать в транзакции, а не оставлять минус, который потом
+ * кто-нибудь прочитает как «должен».
+ */
+export const playerMaterials = pgTable(
+  'player_materials',
+  {
+    playerId: uuid('player_id')
+      .notNull()
+      .references(() => players.id, { onDelete: 'cascade' }),
+    material: materialEnum('material').notNull(),
+    amount: integer('amount').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('player_materials_idx').on(table.playerId, table.material),
+    check('player_materials_non_negative', sql`${table.amount} >= 0`),
+  ],
+);
+
+export type PlayerMaterialRow = typeof playerMaterials.$inferSelect;

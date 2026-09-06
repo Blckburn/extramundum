@@ -12,7 +12,7 @@ import {
   type ZonesResponse,
 } from '@extramundum/shared';
 import { generateItem } from '@extramundum/sim';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { players } from '../db/schema/game.ts';
@@ -562,6 +562,75 @@ describe.skipIf(!HAS_DB)('забег', () => {
       await ctx.db.update(players).set({ hpCurrent: 1 }).where(eq(players.id, playerId));
       return { doomed: before, result: await fight(jar), playerId };
     };
+
+    /**
+     * Уголь горна кладётся в сумку ПРЯМОЙ ЗАПИСЬЮ.
+     *
+     * Он падает броском в 15% за бой на «кошмаре», и тест, ждущий его
+     * выпадения, был бы тестом на везение: он краснел бы примерно
+     * каждый второй прогон. Проверяется здесь не бросок — у него свой
+     * тест в `materials.test.ts` на четырёх тысячах сидов, — а то, что
+     * с углём делает ТРАНЗАКЦИЯ: теряется ли он со смертью и доезжает
+     * ли до запаса при уходе.
+     */
+    const putEmberInBag = async (playerId: string, amount: number): Promise<void> => {
+      await ctx.db
+        .update(runs)
+        .set({ bagEmber: amount })
+        .where(and(eq(runs.playerId, playerId), eq(runs.state, 'active')));
+    };
+
+    it('УГОЛЬ ГОРНА ТЕРЯЕТСЯ ВМЕСТЕ С СУМКОЙ, а не оседает в запасе', async () => {
+      /* Начисляй его сразу в запас — и «кошмар» давал бы ресурс
+         без ставки, то есть решение об эвакуации перестало бы
+         покрывать всё, что забег принёс.
+
+         Пара к проверке: сначала уголь обязан быть В СУМКЕ. «После
+         смерти запас пуст» верно и тогда, когда угля не было вовсе. */
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      const playerId = await playerIdOf(jar);
+      await start(jar, 'wastes', 'nightmare');
+      await fightUntilLoot(jar, { minFights: 2 });
+      await putEmberInBag(playerId, 3);
+
+      const carrying = await runOf(jar);
+      expect(carrying?.bagEmber, 'угля в сумке нет — терять нечего').toBe(3);
+
+      await ctx.db.update(players).set({ hpCurrent: 1 }).where(eq(players.id, playerId));
+      const dead = await fight(jar);
+
+      expect(dead.run.state).toBe('wiped');
+      expect(dead.run.bagEmber).toBe(0);
+      expect(dead.summary?.ember).toBe(0);
+      expect((await inventory(jar)).materials.ember ?? 0).toBe(0);
+    });
+
+    it('УГОЛЬ ГОРНА ДОЕЗЖАЕТ ПРИ ЭВАКУАЦИИ, и той же транзакцией, что предметы', async () => {
+      const { jar } = await register(ctx);
+      await gearUp(jar);
+      const playerId = await playerIdOf(jar);
+      await start(jar, 'wastes', 'nightmare');
+      const carried = await fightUntilLoot(jar, { minFights: 2 });
+      expect(carried.run.bag.length, 'сумка пуста — проверять нечего').toBeGreaterThan(0);
+      await putEmberInBag(playerId, 2);
+
+      const res = await post(ctx, API_ROUTES.runExtract, {}, jar);
+      expect(res.status).toBe(200);
+      const body = res.body as unknown as RunExtractResponse;
+
+      expect(body.summary.ember).toBe(2);
+      const inv = await inventory(jar);
+      expect(inv.materials.ember).toBe(2);
+      // Предметы доехали тем же движением: разойдись они, «унёс,
+      // но материал не пришёл» стало бы состоянием без пути назад.
+      for (const item of carried.run.bag) {
+        expect(
+          inv.items.find((i) => i.id === item.id),
+          `предмет ${item.id} не доехал`,
+        ).toBeDefined();
+      }
+    });
 
     it('погибший теряет сумку целиком, забег помечен wiped', async () => {
       const { jar } = await register(ctx);

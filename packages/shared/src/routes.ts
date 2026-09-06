@@ -47,6 +47,7 @@ export const API_ROUTES = {
   itemsMove: '/items/move',
   itemsLock: '/items/lock',
   itemsSell: '/items/sell',
+  itemsDismantle: '/items/dismantle',
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

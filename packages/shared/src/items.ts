@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { armorClassSchema, weaponClassSchema } from './combat.js';
+import type { Materials } from './economy.js';
 
 /**
  * Контракт предметов. GDD §5.3 (слоты), §6.1 (ilvl и аффиксы),
@@ -265,15 +266,53 @@ export type LockInput = z.infer<typeof lockInputSchema>;
  * Заблокированные не продаются никогда, даже если попали под фильтр:
  * замок существует ровно для этого (§6.3).
  */
-export const sellInputSchema = z.object({
-  rarities: z.array(raritySchema).min(1),
-  from: z.enum(['inv', 'stash']),
-});
+export const sellInputSchema = z
+  .object({
+    rarities: z.array(raritySchema).min(1).optional(),
+    from: z.enum(['inv', 'stash']).optional(),
+    /**
+     * Поимённый список вместо фильтра. GDD §6.3.
+     *
+     * Нужен, потому что продажа — ПОЛОВИНА РАЗВИЛКИ с разбором, а вторая
+     * половина берётся по конкретной вещи. Развилка, у которой одна
+     * ветка только массовая, а другая поштучная, выбором не является:
+     * игрок не может продать тот самый эпик, который решил не разбирать.
+     */
+    itemIds: z.array(z.uuid()).min(1).max(200).optional(),
+  })
+  .refine(
+    (input) =>
+      (input.itemIds !== undefined) !== (input.rarities !== undefined && input.from !== undefined),
+    { message: 'нужен либо фильтр по редкости, либо список предметов', path: ['itemIds'] },
+  );
 export type SellInput = z.infer<typeof sellInputSchema>;
 
 export type SellResponse = {
   readonly sold: number;
   readonly gold: number;
+};
+
+/**
+ * Разбор предметов на материалы. GDD §6.3.
+ *
+ * СПИСОК ИДЕНТИФИКАТОРОВ, а не фильтр по редкости, как у продажи,
+ * и разница намеренная. Продажа по фильтру — уборка мусора: «всё
+ * обычное вон». Разбор — развилка «золото или ресурс», и она берётся
+ * по конкретной вещи: игрок смотрит на аффиксы и решает, нужен ли ему
+ * за неё лом того тира или деньги.
+ *
+ * Заблокированные не разбираются никогда — тот же замок, что у продажи.
+ * Надетые тоже: разобрать надетое значило бы снять его молча.
+ */
+export const dismantleInputSchema = z.object({
+  itemIds: z.array(z.uuid()).min(1).max(200),
+});
+export type DismantleInput = z.infer<typeof dismantleInputSchema>;
+
+export type DismantleResponse = {
+  readonly dismantled: number;
+  /** Что получено этим разбором. Пусто — не разобрано ничего. */
+  readonly gained: Materials;
 };
 
 /**
@@ -311,6 +350,16 @@ export type ItemView = Omit<Item, 'affixes'> & {
   readonly offhandKind?: OffhandKind;
   readonly weaponClass?: string;
   readonly armorClass?: string;
+  /**
+   * ОБЕ СТОРОНЫ РАЗВИЛКИ «ЗОЛОТО ИЛИ РЕСУРС», и приходят они вместе.
+   *
+   * Продать и разобрать — взаимоисключающие действия над одной вещью
+   * (§6.3), а взаимоисключающий выбор без обеих цифр на экране
+   * не решение, а угадывание. Считает сервер: обе формулы живут
+   * в `shared` и берут коэффициенты из баланса, которого у клиента нет.
+   */
+  readonly sellValue: number;
+  readonly scrap: { readonly tier: string; readonly amount: number };
 };
 
 /**
@@ -372,6 +421,14 @@ export type InventoryResponse = {
   readonly equipped: Readonly<Partial<Record<EquipmentSlot, string>>>;
   readonly stats: LoadoutStats;
   readonly gold: number;
+  /**
+   * Лом по тирам и высокий материал. GDD §6.3.
+   *
+   * Приходит вместе с инвентарём, а не отдельным запросом: разбор
+   * меняет и то, и другое одной транзакцией, и два запроса показали бы
+   * состояние между ними.
+   */
+  readonly materials: Materials;
   /** Вместимость инвентаря и стеша. Вкладки за золото — M3c. */
   readonly capacity: { readonly inv: number; readonly stash: number };
 };

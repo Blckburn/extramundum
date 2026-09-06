@@ -2,6 +2,7 @@ import { balance as balanceData, itemBase } from '@extramundum/data';
 import {
   baseValue,
   BUDGETED_FAMILIES,
+  dismantleYield,
   isBudgetedFamily,
   PERCENT_AFFIX_FAMILIES,
   type AffixFamily,
@@ -24,6 +25,8 @@ import {
 import { familyMultiplier, familySum, maxHp as maxHpOf } from '@extramundum/sim';
 
 import { combatBalance } from '../battle/setup.ts';
+
+import { economy, priceOf } from './prices.ts';
 
 /**
  * Сборка бойца из НАДЕТОГО. GDD §5.3, §6.1.
@@ -328,9 +331,16 @@ export function loadoutStats(
 export function toView(item: Item, quotas: CountedQuotas | null): ItemView {
   const base = itemBase(item.baseKey);
 
+  /* Цена и выход разбора приходят ВМЕСТЕ, потому что вместе они
+     и читаются: продать или разобрать — один выбор, и обе цифры
+     нужны в момент, когда он делается. */
+  const yielded = dismantleYield(item, economy);
+
   return {
     ...item,
     derived: derive(item),
+    sellValue: priceOf(item),
+    scrap: { tier: yielded.tier, amount: yielded.amount },
     ...(base.offhandKind === undefined ? {} : { offhandKind: base.offhandKind }),
     ...(base.weaponClass === undefined ? {} : { weaponClass: base.weaponClass }),
     ...(base.armorClass === undefined ? {} : { armorClass: base.armorClass }),

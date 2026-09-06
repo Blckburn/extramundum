@@ -1,6 +1,7 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
 import { monsterSpec, ZONES } from '@extramundum/data/zones';
 import {
+  emberChanceFor,
   enemyLevel,
   isSegmentUnlocked,
   lootBalanceSchema,
@@ -29,6 +30,7 @@ import {
 import type { Database } from '../db/client.ts';
 import { AppError } from '../http/errors.ts';
 import { fighterFromLoadout, toView } from '../items/loadout.ts';
+import { economy } from '../items/prices.ts';
 import { loadoutOf } from '../items/repository.ts';
 import { progressionOf } from '../progression/service.ts';
 import type { PlayerProfile } from '@extramundum/shared';
@@ -182,6 +184,7 @@ export async function runView(db: Database, ctx: RunContext): Promise<RunView> {
     maxHp,
     potionsLeft: row.potionsLeft,
     bag,
+    bagEmber: row.bagEmber,
     lootMultiplier: lootMultiplierAt(row.fightIndex),
     hpRestore: restoreFractionOf(zone),
     next,
@@ -278,6 +281,7 @@ async function summaryOf(
   row: RunRow,
   state: Exclude<RunSummary['state'], never>,
   hauled: readonly BagItem[],
+  hauledEmber: number,
 ): Promise<RunSummary> {
   const zone = requireZone(row.zone);
   const totals = await runTotals(db, row.id);
@@ -293,6 +297,7 @@ async function summaryOf(
     xp: totals.xp,
     gold: totals.gold,
     loot: hauled.map((item) => toView(item, null)),
+    ember: hauledEmber,
   };
 }
 
@@ -351,6 +356,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
   const nextIndex = row.fightIndex + 1;
 
   const drops = won ? rollLoot(row, spec, level, nextIndex) : [];
+  const ember = won ? rollEmber(row) : 0;
   const rewards = rewardsFor(spec, level, won);
 
   /* Всё одной транзакцией: исход, HP, XP, золото, лут в сумку
@@ -369,13 +375,17 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     // бои остаётся целиком (§7.2).
     gold: won ? rewards.gold : Math.floor(rewards.gold * raid.goldKeptOnDeath),
     drops,
+    /* Высокий материал едет В СУМКЕ, а не сразу в запас: иначе высокая
+       сложность давала бы ресурс без ставки, и решение об эвакуации
+       перестало бы покрывать всё, что забег принёс. */
+    ember,
     // Пятый бой пройден — забег закончен сам, сумка едет в инвентарь.
     finish: won ? (nextIndex >= raid.fightsPerRun ? 'extracted' : null) : 'wiped',
     opponentRef: `monster:${spec.key}`,
     seed,
     log,
     result: won ? 'win' : 'loss',
-    rewardsJson: { xp: rewards.xp, gold: rewards.gold, drops: drops.length },
+    rewardsJson: { xp: rewards.xp, gold: rewards.gold, drops: drops.length, ember },
     /* УЧАСТОК ЗАСЧИТЫВАЕТСЯ ЗА УБИТОГО БОССА, то есть за пятый бой.
        Не за эвакуацию: уйти с добычей — это отказ от риска, и открывать
        им следующий участок значило бы платить продвижением за отказ. */
@@ -395,6 +405,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
           applied.run,
           applied.run.state === 'wiped' ? 'wiped' : 'extracted',
           applied.hauled,
+          applied.hauledEmber,
         );
 
   return {
@@ -409,7 +420,7 @@ export async function fight(db: Database, profile: PlayerProfile): Promise<Fight
     enemyLook: { rig: spec.rig, ...(spec.recolor === undefined ? {} : { recolor: spec.recolor }) },
     // Показ считает СЕРВЕР, как и для инвентаря: числа предмета уже
     // с учётом ilvl, и клиент их не выводит (§6.1).
-    rewards: { ...rewards, loot: applied.granted.map((item) => toView(item, null)) },
+    rewards: { ...rewards, ember, loot: applied.granted.map((item) => toView(item, null)) },
     run: view,
   };
 }
@@ -480,7 +491,7 @@ export async function extract(
     run: view,
     recovered: applied.recovered,
     // Уход — тоже конец забега, и итог у него тот же самый.
-    summary: await summaryOf(db, applied.run, 'extracted', applied.hauled),
+    summary: await summaryOf(db, applied.run, 'extracted', applied.hauled, applied.hauledEmber),
   };
 }
 
@@ -505,7 +516,11 @@ async function requireActive(db: Database, playerId: string): Promise<RunRow> {
  * на любой глубине. Возьми показатель другим — и прогрессия ускорялась
  * бы или глохла сама по себе.
  */
-function rewardsFor(spec: MonsterSpec, level: number, won: boolean): Omit<FightRewards, 'loot'> {
+function rewardsFor(
+  spec: MonsterSpec,
+  level: number,
+  won: boolean,
+): Omit<FightRewards, 'loot' | 'ember'> {
   const bossXp = spec.boss ? rewardsBalance.xpPerFight.bossMultiplier : 1;
   const bossGold = spec.boss ? rewardsBalance.goldPerFight.bossMultiplier : 1;
 
@@ -522,6 +537,25 @@ function rewardsFor(spec: MonsterSpec, level: number, won: boolean): Omit<FightR
   // считает вызывающий: здесь только «сколько стоил бы этот бой».
   void won;
   return { xp, gold };
+}
+
+/**
+ * Выпал ли высокий материал этим боем. GDD §6.3.
+ *
+ * ЕДИНСТВЕННАЯ ПРИЧИНА ХОДИТЬ НА ВЫСОКИЕ СЛОЖНОСТИ ПОМИМО РЕДКОСТИ.
+ * Шанс приходит из данных по сложности, и на «нормально» он ноль —
+ * то есть ветка не отключена кодом, а не оплачена данными.
+ *
+ * Бросок СВОЙ, а не тот, что разыгрывает дробный остаток лута: общий
+ * связал бы «упал ли пятый предмет» с «упал ли высокий материал»,
+ * и две величины, которые игрок читает по отдельности, ходили бы
+ * парой. Это тот же пункт 5 аудита v1.0, что и общий бросок
+ * на уклонение с блоком.
+ */
+export function rollEmber(row: Pick<RunRow, 'seed' | 'difficulty' | 'fightIndex'>): number {
+  const chance = emberChanceFor(row.difficulty, economy);
+  if (chance <= 0) return 0;
+  return seededRoll(`${row.seed}:ember:${row.fightIndex}`) < chance ? 1 : 0;
 }
 
 /**

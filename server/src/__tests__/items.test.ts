@@ -1,16 +1,21 @@
 import { balance as balanceData, ITEM_BASES } from '@extramundum/data';
 import {
   API_ROUTES,
+  economyBalanceSchema,
   lootBalanceSchema,
+  type DismantleResponse,
   type EquipmentSlot,
   type InventoryResponse,
+  type SellResponse,
 } from '@extramundum/shared';
 import { generateItem } from '@extramundum/sim';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { items } from '../db/schema/items.ts';
-import { grantItems, sellPrice, type NewItem } from '../items/repository.ts';
+import { readMaterials, spendMaterials } from '../items/materials.ts';
+import { priceOf } from '../items/prices.ts';
+import { grantItems, type NewItem } from '../items/repository.ts';
 import { players } from '../db/schema/game.ts';
 
 import {
@@ -25,6 +30,7 @@ import {
 
 const HAS_DB = databaseUrl() !== undefined;
 const loot = lootBalanceSchema.parse(balanceData.items);
+const economy = economyBalanceSchema.parse(balanceData.economy);
 
 /**
  * Инвентарь и экипировка против настоящей базы. GDD §5.3, §6.3, §6.4.
@@ -317,10 +323,9 @@ describe.skipIf(!HAS_DB)('предметы', () => {
     });
 
     it('цена зависит от редкости и ilvl', async () => {
-      // Формула провизорная (экономика — M3c), но она обязана быть
-      // МОНОТОННОЙ: иначе продавать эпик выгоднее по одному, а это
-      // не решение дизайна, а баг.
-      const cheap = sellPrice({
+      // Формула обязана быть МОНОТОННОЙ: иначе продавать эпик выгоднее
+      // по одному, а это не решение дизайна, а баг.
+      const cheap = priceOf({
         id: 'x',
         baseKey: 'ring.band',
         slot: 'ring',
@@ -331,7 +336,7 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         locked: false,
         container: 'inv',
       });
-      const rich = sellPrice({
+      const rich = priceOf({
         id: 'y',
         baseKey: 'ring.band',
         slot: 'ring',
@@ -343,6 +348,173 @@ describe.skipIf(!HAS_DB)('предметы', () => {
         container: 'inv',
       });
       expect(rich).toBeGreaterThan(cheap);
+    });
+  });
+
+  /* ─────────────────── развилка «золото или ресурс» ─────────────────── */
+
+  describe('разбор и продажа', () => {
+    it('разбор даёт лом ТОГО ТИРА, что соответствует уровню вещи', async () => {
+      /* Две вещи одной редкости и разных уровней: количество обязано
+         совпасть, тир — разойтись. Проверка по одной вещи прошла бы
+         и там, где тир берётся от редкости, а количество от уровня. */
+      const { jar, ids } = await withItems([
+        item('mat-low', { rarity: 'rare', ilvl: 4 }),
+        item('mat-high', { rarity: 'rare', ilvl: 36 }),
+      ]);
+
+      const res = await post(ctx, API_ROUTES.itemsDismantle, { itemIds: ids }, jar);
+      expect(res.status).toBe(200);
+      const body = res.body as unknown as DismantleResponse;
+
+      expect(body.dismantled).toBe(2);
+      const each = economy.materials.scrapByRarity.rare ?? 0;
+      expect(each, 'редкий даёт ноль лома — проверять нечего').toBeGreaterThan(0);
+      expect(body.gained).toEqual({ T1: each, T5: each });
+
+      // И то же самое видно в инвентаре: материалы приходят с ним,
+      // а не отдельным запросом.
+      expect((await inventory(jar)).materials).toMatchObject({ T1: each, T5: each });
+    });
+
+    it('РАЗБОР НЕ ДАЁТ ЗОЛОТА, а продажа той же вещи дала бы', async () => {
+      /* «Лом не превращается в золото» — половина того, что делает
+         развилку развилкой. Проверка «золото не выросло» пуста сама
+         по себе: она прошла бы и на вещи, которая ничего не стоит.
+         Поэтому рядом стоит цена той же вещи, и она обязана быть
+         больше нуля. */
+      const { jar, ids } = await withItems([item('mat-gold', { rarity: 'epic', ilvl: 20 })]);
+      const before = await inventory(jar);
+      const target = own(before, ids)[0];
+      if (target === undefined) throw new Error('предмет не выдан');
+      expect(target.sellValue, 'вещь ничего не стоит — проверка пуста').toBeGreaterThan(0);
+
+      await post(ctx, API_ROUTES.itemsDismantle, { itemIds: ids }, jar);
+      const after = await inventory(jar);
+
+      expect(after.gold).toBe(before.gold);
+      expect(own(after, ids)).toHaveLength(0);
+    });
+
+    it('ПРОДАТЬ И РАЗОБРАТЬ — ОДНО ИЗ ДВУХ: проданное уже не разобрать', async () => {
+      /* Взаимоисключимость держится не проверкой, а тем, что обе
+         операции удаляют предмет. Тест поэтому смотрит на итог,
+         а не на код: после продажи разбор не находит ничего
+         и материалов не прибавляет. */
+      const { jar, ids } = await withItems([item('mat-fork', { rarity: 'rare', ilvl: 12 })]);
+
+      const sold = await post(ctx, API_ROUTES.itemsSell, { itemIds: ids }, jar);
+      expect((sold.body as unknown as SellResponse).sold).toBe(1);
+      expect((sold.body as unknown as SellResponse).gold).toBeGreaterThan(0);
+
+      const res = await post(ctx, API_ROUTES.itemsDismantle, { itemIds: ids }, jar);
+      expect((res.body as unknown as DismantleResponse).dismantled).toBe(0);
+      expect((await inventory(jar)).materials).toEqual({});
+    });
+
+    it('заблокированное не разбирается, как и не продаётся', async () => {
+      /* Замок ставится ТЕМ ЖЕ маршрутом, что у игрока: `grantItems`
+         его не принимает вовсе, и предмет «выданный заблокированным»
+         проверял бы состояние, которого в игре не бывает. */
+      const { jar, ids } = await withItems([item('mat-locked', { rarity: 'rare', ilvl: 12 })]);
+      const target = ids[0];
+      if (target === undefined) throw new Error('предмет не выдан');
+      await post(ctx, API_ROUTES.itemsLock, { itemId: target, locked: true }, jar);
+      expect(own(await inventory(jar), ids)[0]?.locked, 'замок не поставлен').toBe(true);
+
+      const res = await post(ctx, API_ROUTES.itemsDismantle, { itemIds: ids }, jar);
+
+      expect((res.body as unknown as DismantleResponse).dismantled).toBe(0);
+      expect(own(await inventory(jar), ids)).toHaveLength(1);
+    });
+
+    it('надетое не разбирается: иначе слот опустел бы молча', async () => {
+      const { jar, ids } = await withItems([
+        item('mat-worn', { rarity: 'rare', ilvl: 12, slot: 'helmet' }),
+      ]);
+      const target = own(await inventory(jar), ids)[0];
+      if (target === undefined) throw new Error('предмет не выдан');
+      await post(ctx, API_ROUTES.itemsEquip, { itemId: target.id }, jar);
+
+      const res = await post(ctx, API_ROUTES.itemsDismantle, { itemIds: [target.id] }, jar);
+      expect((res.body as unknown as DismantleResponse).dismantled).toBe(0);
+      expect(own(await inventory(jar), ids)).toHaveLength(1);
+    });
+
+    it('ЧУЖОЕ НЕ РАЗБИРАЕТСЯ, и владелец об этом не узнаёт', async () => {
+      const mine = await withItems([item('mat-mine', { rarity: 'rare', ilvl: 12 })]);
+      const other = await withItems([item('mat-other', { rarity: 'rare', ilvl: 12 })]);
+
+      const res = await post(ctx, API_ROUTES.itemsDismantle, { itemIds: other.ids }, mine.jar);
+      expect((res.body as unknown as DismantleResponse).dismantled).toBe(0);
+      expect(own(await inventory(other.jar), other.ids)).toHaveLength(1);
+    });
+
+    it('ОБЕ СТОРОНЫ РАЗВИЛКИ ПРИХОДЯТ С ПРЕДМЕТОМ, а не считаются клиентом', async () => {
+      /* Взаимоисключающий выбор без обеих цифр на экране — угадывание,
+         а не решение. Числа считает сервер: у клиента нет ни баланса,
+         ни формул. */
+      const { jar, ids } = await withItems([item('mat-view', { rarity: 'rare', ilvl: 20 })]);
+      const view = own(await inventory(jar), ids)[0];
+      if (view === undefined) throw new Error('предмет не выдан');
+
+      expect(view.sellValue).toBe(priceOf(view));
+      expect(view.scrap.tier).toBe('T3');
+      expect(view.scrap.amount).toBe(economy.materials.scrapByRarity.rare);
+    });
+
+    it('поимённая продажа берёт ТОЛЬКО названное', async () => {
+      /* Продажа по фильтру редкости снесла бы обе вещи: они одной
+         редкости. Ради этого список и заведён. */
+      const { jar, ids } = await withItems([
+        item('mat-one', { rarity: 'rare', ilvl: 12 }),
+        item('mat-two', { rarity: 'rare', ilvl: 12 }),
+      ]);
+      const first = ids[0];
+      if (first === undefined) throw new Error('предметы не выданы');
+
+      const res = await post(ctx, API_ROUTES.itemsSell, { itemIds: [first] }, jar);
+      expect((res.body as unknown as SellResponse).sold).toBe(1);
+      expect(own(await inventory(jar), ids)).toHaveLength(1);
+    });
+
+    it('запрос без фильтра И без списка — отказ, а не «продать всё»', async () => {
+      /* Две формы взаимоисключимы, и пустой запрос не должен означать
+         ни одну из них. Умолчание здесь стоило бы игроку стеша. */
+      const { jar } = await withItems([]);
+      expect((await post(ctx, API_ROUTES.itemsSell, {}, jar)).status).toBe(400);
+      expect(
+        (
+          await post(
+            ctx,
+            API_ROUTES.itemsSell,
+            { rarities: ['common'], from: 'inv', itemIds: [] },
+            jar,
+          )
+        ).status,
+      ).toBe(400);
+    });
+
+    it('СПИСАНИЕ СВЕРХ НАЛИЧИЯ НЕ ТРОГАЕТ НИЧЕГО', async () => {
+      /* Условие стоит в самом UPDATE, а не в проверке до него. Пара
+         к проверке: сначала списание ПО СРЕДСТВАМ обязано пройти —
+         иначе «не хватило» проходило бы и на сломанном списании,
+         которое не работает никогда. */
+      const { jar, playerId, ids } = await withItems([
+        item('mat-spend', { rarity: 'epic', ilvl: 4 }),
+      ]);
+      await post(ctx, API_ROUTES.itemsDismantle, { itemIds: ids }, jar);
+
+      const have = (await readMaterials(ctx.db, playerId)).T1 ?? 0;
+      expect(have, 'лома нет — списывать нечего').toBeGreaterThan(0);
+
+      const enough = await ctx.db.transaction((tx) => spendMaterials(tx, playerId, { T1: have }));
+      expect(enough, 'списание по средствам не прошло').toBe(true);
+      expect((await readMaterials(ctx.db, playerId)).T1).toBe(0);
+
+      const tooMuch = await ctx.db.transaction((tx) => spendMaterials(tx, playerId, { T1: 1 }));
+      expect(tooMuch).toBe(false);
+      expect((await readMaterials(ctx.db, playerId)).T1).toBe(0);
     });
   });
 

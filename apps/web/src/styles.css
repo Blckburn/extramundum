@@ -1273,6 +1273,69 @@ button[disabled],
   margin: 0.5rem 0;
 }
 
+/* РАЗВИЛКА «ЗОЛОТО ИЛИ РЕСУРС». GDD §6.3.
+
+   Две кнопки в ряд и подпись под ними. Ряд целей — значит зазор общий,
+   а не свой: перекрытый зазор здесь стоил бы дороже, чем где-либо ещё,
+   потому что обе кнопки НЕОБРАТИМЫ и промах по соседней означает
+   не то действие над той же вещью.
+
+   Подпись занимает всю ширину, чтобы встать под кнопками, а не между
+   ними: правило «предмет исчезнет в любом случае» относится к обеим. */
+/* Уголь горна в сумке. Отдельной строкой, а не пунктом списка добычи:
+   он не предмет, его нельзя надеть и у него нет редкости. */
+.raid__bagEmber {
+  margin: 0.25rem 0 0;
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.inv__fork {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  margin: 0.5rem 0;
+}
+
+.inv__fork-note {
+  flex: 1 0 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+/* Материалы рядом с золотом: разбор превращает одно в другое, и обе
+   величины читаются в один момент. Прокрутка по горизонтали, как
+   у ряда редкостей: шесть подписей в 390 пикселей не помещаются. */
+.inv__materials {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 0.75rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  scrollbar-width: thin;
+}
+
+.inv__mat {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Уголь горна — не лом, и читается он иначе: это валюта высоких
+   сложностей, а не побочный продукт уборки инвентаря. */
+.inv__mat--ember {
+  color: var(--accent);
+}
+
+.inv__mat-none {
+  flex: 0 0 auto;
+  font-style: italic;
+}
+
 .inv__preview {
   padding-top: 0.5rem;
   border-top: 1px solid var(--border);

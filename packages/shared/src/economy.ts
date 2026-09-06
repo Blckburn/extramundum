@@ -23,6 +23,31 @@ const scrapTierSchema = z.enum(['T1', 'T2', 'T3', 'T4', 'T5']);
 export type ScrapTier = z.infer<typeof scrapTierSchema>;
 export const SCRAP_TIERS: readonly ScrapTier[] = ['T1', 'T2', 'T3', 'T4', 'T5'];
 
+/**
+ * Всё, что копится не золотом: лом по тирам плюс высокий материал.
+ *
+ * `ember` стоит рядом с ломом, а не отдельным полем, потому что тратят
+ * их вместе — попытка улучшения выше +5 стоит и того, и другого.
+ * Разведи их по двум формам, и цена операции перестала бы быть одним
+ * значением, которое можно сложить, показать и проверить.
+ */
+export type MaterialKey = ScrapTier | 'ember';
+export const MATERIAL_KEYS: readonly MaterialKey[] = [...SCRAP_TIERS, 'ember'];
+
+/** Сколько чего есть или сколько чего дано. Отсутствие ключа — ноль. */
+export type Materials = Readonly<Partial<Record<MaterialKey, number>>>;
+
+/** Сложить два набора материалов. Отрицательные значения — расход. */
+export function addMaterials(a: Materials, b: Materials): Materials {
+  const out: Partial<Record<MaterialKey, number>> = { ...a };
+  for (const key of MATERIAL_KEYS) {
+    const delta = b[key];
+    if (delta === undefined) continue;
+    out[key] = (out[key] ?? 0) + delta;
+  }
+  return out;
+}
+
 export const economyBalanceSchema = z.object({
   materials: z.object({
     /** Граница тира по ilvl разобранного предмета, по возрастанию. */
@@ -192,6 +217,24 @@ export function dismantleYield(
     tier: scrapTierFor(item.ilvl, economy),
     amount: economy.materials.scrapByRarity[item.rarity] ?? 0,
   };
+}
+
+/**
+ * Шанс высокого материала за ОДИН выигранный бой. GDD §6.3.
+ *
+ * ЕДИНСТВЕННАЯ ПРИЧИНА ХОДИТЬ НА ВЫСОКИЕ СЛОЖНОСТИ ПОМИМО РЕДКОСТИ.
+ * На «нормально» он не падает вовсе, и это ноль в данных, а не ветка
+ * в коде: сложность без своей записи означала бы, что про неё забыли.
+ *
+ * Падает В СУМКУ, как и лут, — то есть теряется при смерти. Начисляй
+ * его сразу в запас, и высокая сложность давала бы ресурс без ставки,
+ * а решение об эвакуации перестало бы покрывать всё, что забег принёс.
+ */
+export function emberChanceFor(
+  difficulty: Difficulty,
+  economy: Pick<EconomyBalance, 'materials'>,
+): number {
+  return economy.materials.emberChanceByDifficulty[difficulty] ?? 0;
 }
 
 /* ──────────────────────────────── кузнец ─────────────────────────────── */

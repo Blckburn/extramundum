@@ -88,6 +88,14 @@ export type RunView = {
    * из решения «идти дальше» половину ставки.
    */
   readonly bag: readonly ItemView[];
+  /**
+   * Высокий материал, лежащий в сумке. GDD §6.3.
+   *
+   * Отдельным числом, а не предметом: он не носится и не имеет
+   * аффиксов. Но теряется вместе с сумкой, поэтому и показывается
+   * рядом с ней — иначе половина ставки не была бы видна.
+   */
+  readonly bagEmber: number;
   /** Множитель лута на СЛЕДУЮЩИЙ бой. GDD §7.2. */
   readonly lootMultiplier: number;
   /** Доля запаса, возвращаемая между боями в ЭТОЙ зоне. §7.2. */
@@ -136,6 +144,8 @@ export type RunSummary = {
    * данных, а сам итог: сумка потеряна целиком.
    */
   readonly loot: readonly ItemView[];
+  /** Сколько высокого материала доехало. При смерти ноль. */
+  readonly ember: number;
 };
 
 /** Что бой дал игроку. Всё уже применено к профилю. */
@@ -144,6 +154,8 @@ export type FightRewards = {
   readonly gold: number;
   /** Что упало в сумку ЭТИМ боем. Уже входит в `run.bag`. */
   readonly loot: readonly ItemView[];
+  /** Выпал ли высокий материал этим боем. GDD §6.3. */
+  readonly ember: number;
 };
 
 export type RunFightResponse = {

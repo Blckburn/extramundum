@@ -5,6 +5,7 @@ import type { Database } from '../db/client.ts';
 import { players } from '../db/schema/game.ts';
 import { items } from '../db/schema/items.ts';
 import { battles, runs, zoneProgress } from '../db/schema/runs.ts';
+import { grantMaterials } from '../items/materials.ts';
 import { toProfile } from '../players/repository.ts';
 
 /**
@@ -35,6 +36,8 @@ export type RunRow = {
   readonly potionsLeft: number;
   readonly state: 'active' | 'extracted' | 'wiped';
   readonly bag: readonly BagItem[];
+  /** Высокий материал в сумке. Теряется вместе с ней. */
+  readonly bagEmber: number;
 };
 
 function toRun(row: typeof runs.$inferSelect): RunRow {
@@ -49,6 +52,7 @@ function toRun(row: typeof runs.$inferSelect): RunRow {
     potionsLeft: row.potionsLeft,
     state: row.state,
     bag: row.bag as readonly BagItem[],
+    bagEmber: row.bagEmber,
   };
 }
 
@@ -131,6 +135,15 @@ export type FightOutcomeInput = {
   readonly xp: number;
   readonly gold: number;
   readonly drops: readonly Omit<BagItem, 'id'>[];
+  /**
+   * Высокий материал, выпавший этим боем. GDD §6.3.
+   *
+   * Копится В СУМКЕ, как и предметы, и по той же причине: он должен
+   * теряться при смерти. Ресурс, начисляемый сразу в запас, выпал бы
+   * из решения об эвакуации — то есть высокая сложность платила бы
+   * без ставки.
+   */
+  readonly ember: number;
   /** Чем кончился забег: `null` — продолжается. */
   readonly finish: 'extracted' | 'wiped' | null;
   readonly opponentRef: string;
@@ -164,6 +177,8 @@ export type FightOutcomeResult = {
    * смешались с прежними.
    */
   readonly hauled: readonly BagItem[] | null;
+  /** Высокий материал, доехавший до запаса. При смерти ноль. */
+  readonly hauledEmber: number;
 };
 
 /**
@@ -199,6 +214,7 @@ export async function applyFightOutcome(
     }));
 
     const bag = input.won ? [...(current.bag as BagItem[]), ...granted] : [];
+    const bagEmber = input.won ? current.bagEmber + input.ember : 0;
     const nextIndex = input.expectedFightIndex + 1;
 
     const [row] = await tx
@@ -206,6 +222,7 @@ export async function applyFightOutcome(
       .set({
         fightIndex: nextIndex,
         bag,
+        bagEmber,
         state: input.finish ?? 'active',
         ...(input.finish === null ? {} : { finishedAt: new Date() }),
       })
@@ -272,19 +289,25 @@ export async function applyFightOutcome(
     /* Забег закончился ПОБЕДОЙ в пятом бою — сумка едет в инвентарь
        той же транзакцией. Отдельным запросом это было бы окном, в котором
        забег уже закончен, а лут ещё нигде. */
-    if (input.finish === 'extracted' && bag.length > 0) {
-      await insertBag(tx, input.playerId, bag);
-      await tx.update(runs).set({ bag: [] }).where(eq(runs.id, input.runId));
+    if (input.finish === 'extracted' && (bag.length > 0 || bagEmber > 0)) {
+      if (bag.length > 0) await insertBag(tx, input.playerId, bag);
+      /* Материал начисляется ТОЙ ЖЕ транзакцией, что и предметы:
+         разойдись они, и «унёс, но материал не пришёл» стало бы
+         состоянием, из которого нет пути назад. */
+      if (bagEmber > 0) await grantMaterials(tx, input.playerId, { ember: bagEmber });
+      await tx.update(runs).set({ bag: [], bagEmber: 0 }).where(eq(runs.id, input.runId));
     }
 
+    const extracted = input.finish === 'extracted';
     return {
       battleId: battle.id,
-      run: { ...toRun(row), bag: input.finish === 'extracted' ? [] : bag },
+      run: { ...toRun(row), bag: extracted ? [] : bag, bagEmber: extracted ? 0 : bagEmber },
       profile: toProfile(profile),
       granted,
       // При смерти сумка потеряна целиком — это пустой список, а не
       // отсутствие данных: пустота и есть итог.
       hauled: input.finish === null ? null : input.finish === 'wiped' ? [] : bag,
+      hauledEmber: extracted ? bagEmber : 0,
     };
   });
 }
@@ -333,6 +356,7 @@ export async function extractBag(
   profile: PlayerProfile;
   recovered: number;
   hauled: readonly BagItem[];
+  hauledEmber: number;
 }> {
   return db.transaction(async (tx) => {
     const current = await tx
@@ -344,21 +368,25 @@ export async function extractBag(
     if (current === undefined) throw new Error('активного забега нет');
 
     const bag = current.bag as BagItem[];
+    const bagEmber = current.bagEmber;
 
     const [row] = await tx
       .update(runs)
-      .set({ state: 'extracted', bag: [], finishedAt: new Date() })
+      .set({ state: 'extracted', bag: [], bagEmber: 0, finishedAt: new Date() })
       .where(and(eq(runs.id, input.runId), eq(runs.state, 'active')))
       .returning();
 
     if (row === undefined) throw new Error('забег уже завершён');
     if (bag.length > 0) await insertBag(tx, input.playerId, bag);
+    // Той же транзакцией, что и предметы: см. `applyFightOutcome`.
+    if (bagEmber > 0) await grantMaterials(tx, input.playerId, { ember: bagEmber });
 
     return {
       run: toRun(row),
       profile: await profileById(tx as unknown as Database, input.playerId),
       recovered: bag.length,
       hauled: bag,
+      hauledEmber: bagEmber,
     };
   });
 }

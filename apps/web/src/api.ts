@@ -3,6 +3,8 @@ import {
   apiErrorSchema,
   meResponseSchema,
   type ApiError,
+  type DismantleInput,
+  type DismantleResponse,
   type DraftPickInput,
   type DraftResponse,
   type EquipInput,
@@ -210,6 +212,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     })) as SellResponse;
+  },
+
+  async dismantleItems(input: DismantleInput): Promise<DismantleResponse> {
+    return (await request(API_ROUTES.itemsDismantle, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as DismantleResponse;
   },
 
   /**
