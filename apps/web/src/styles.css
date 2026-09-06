@@ -1273,6 +1273,171 @@ button[disabled],
   margin: 0.5rem 0;
 }
 
+/* ─────────────────────────────── КУЗНЕЦ ────────────────────────────────
+   GDD §6.3. Главный сток золота.
+
+   Ряд кнопок операций — цели нажатия, значит общий зазор: у кузнеца
+   две соседние кнопки делают РАЗНОЕ с одной вещью, и промах стоит
+   уплаченной цены. */
+.screen--smith {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.smith__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.smith__title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.smith__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.smith__body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+@media (min-width: 720px) {
+  .smith__body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+}
+
+.smith__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+}
+
+.smith__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: center;
+  min-width: var(--tap);
+  min-height: var(--tap);
+  max-width: 6rem;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 0.6875rem;
+  text-align: center;
+}
+
+.smith__cell--selected {
+  outline: 2px solid var(--accent);
+}
+
+.smith__cellName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Уровень улучшения виден В СПИСКЕ: иначе «что я уже качал»
+   выясняется перебором карточек. */
+.smith__plus {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.smith__detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.smith__name {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.smith__sub,
+.smith__note,
+.smith__pick,
+.smith__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+/* РИСК НАПИСАН РЯДОМ С ЦЕНОЙ, а не спрятан в подсказку: провал выше
+   +5 отнимает уровень, и узнавать об этом после нажатия нельзя. */
+.smith__note--risk {
+  color: var(--accent);
+}
+
+.smith__subtitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Операция — кнопка и её цена рядом. Ряд целей: общий зазор. */
+.smith__op {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+}
+
+.smith__price {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.smith__short {
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.smith__respec {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+}
+
+.smith__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--tap-gap);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.smith__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
 /* РАЗВИЛКА «ЗОЛОТО ИЛИ РЕСУРС». GDD §6.3.
 
    Две кнопки в ряд и подпись под ними. Ряд целей — значит зазор общий,

@@ -34,7 +34,7 @@ import { economy, priceOf } from './prices.ts';
 const loot = lootBalanceSchema.parse(balanceData.items);
 
 /** Строка БД → предмет контракта. Аффиксы валидируются, а не приводятся. */
-function toItem(row: typeof items.$inferSelect): Item {
+export function toItem(row: typeof items.$inferSelect): Item {
   const base = itemBase(row.baseKey);
   return {
     id: row.id,

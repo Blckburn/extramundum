@@ -96,6 +96,21 @@ export const items = pgTable(
       .default(sql`'[]'::jsonb`),
     upgradeLevel: integer('upgrade_level').notNull().default(0),
 
+    /**
+     * Сколько раз кузнец брался за этот предмет. GDD §6.3.
+     *
+     * СЧЁТЧИК, А НЕ ЖУРНАЛ, и нужен он не статистике. Бросок кузнеца
+     * выводится из сида игрока, номера предмета и ЭТОГО числа, а само
+     * оно растёт той же транзакцией, что списывает золото. Поэтому
+     * повторить неудачную попытку нельзя: второй запрос считает другой
+     * бросок, а первый уже оплачен.
+     *
+     * Хранить сам бросок было бы хуже: его пришлось бы куда-то класть
+     * ДО списания, и между двумя записями открылось бы окно, в котором
+     * исход известен, а цена не уплачена.
+     */
+    smithAttempts: integer('smith_attempts').notNull().default(0),
+
     /** Защита от случайной продажи и разбора. GDD §6.3. */
     locked: boolean('locked').notNull().default(false),
 
@@ -105,6 +120,7 @@ export const items = pgTable(
     index('items_owner_container_idx').on(table.ownerId, table.container),
     check('items_ilvl_range', sql`${table.ilvl} between 1 and 200`),
     check('items_upgrade_range', sql`${table.upgradeLevel} between 0 and 10`),
+    check('items_smith_attempts_non_negative', sql`${table.smithAttempts} >= 0`),
     check(
       'items_slot_index_non_negative',
       sql`${table.slotIndex} is null or ${table.slotIndex} >= 0`,

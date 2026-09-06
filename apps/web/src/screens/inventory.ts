@@ -14,6 +14,7 @@ import {
 import { api, ApiClientError } from '../api.ts';
 import { clear, el } from '../dom.ts';
 import { t } from '../i18n.ts';
+import { affixText } from '../ui/affix.ts';
 import { renderIcon } from '../ui/icon.ts';
 import { statsPanel } from '../ui/stats.ts';
 
@@ -418,21 +419,10 @@ export function renderInventory(root: HTMLElement, onBack: () => void): void {
     void loadPreview(item);
   }
 
-  /**
-   * Строка аффикса.
-   *
-   * Текст берётся по КЛЮЧУ СЕМЕЙСТВА (`affix.<family>`), а не ветвлением
-   * по каждому из семи: забытая ветка молча превратилась бы в строку
-   * другого семейства, и игрок прочитал бы «+12% урона» там, где надет
-   * «+12% брони». Отсутствующий ключ ловит тест локалей.
-   */
+  /** Строка аффикса. Текст собирает общая `affixText` — одна на клиент. */
   function affixRow(affix: ItemAffixView, stats: LoadoutStats): HTMLElement {
     const family = affix.family;
-    const text = t(`affix.${family}`, {
-      // Проценты показываются процентами, плоские — единицами. Одно
-      // и то же число в двух видах — это пункт 4 аудита v1.0.
-      value: isPercentFamily(family) ? Math.round(affix.value * 1000) / 10 : affix.value,
-    });
+    const text = affixText(affix);
 
     const children: (string | Node)[] = [
       el('span', { class: 'inv__affix-text' }, [text]),

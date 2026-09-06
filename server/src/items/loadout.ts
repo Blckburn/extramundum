@@ -41,12 +41,29 @@ import { economy, priceOf } from './prices.ts';
  */
 
 const ilvlScale = balanceData.items.ilvlScale;
+const upgradeBalance = balanceData.items.upgrade;
 
-/** Числа предмета после масштабирования по ilvl. GDD §6.1. */
+/**
+ * Числа предмета после масштабирования по ilvl И по уровню улучшения.
+ * GDD §6.1, §6.3.
+ *
+ * УЛУЧШЕНИЕ ПРИМЕНЯЕТСЯ ЗДЕСЬ, И ЭТО ЕДИНСТВЕННОЕ МЕСТО. `derive` —
+ * та воронка, через которую числа базы попадают и в тултип, и в бойца:
+ * `fighterFromLoadout` берёт урон, броню и оффхенд отсюда же. Посчитай
+ * улучшение отдельно для показа — и получится §13 пункт 4 в чистом
+ * виде: в описании +20%, в бою ноль. Колонка `upgrade_level`
+ * существовала с M3a и не влияла ни на что.
+ *
+ * ДОЛИ НЕ УЛУЧШАЮТСЯ, как и не масштабируются по ilvl: шанс блока 0.32
+ * при +10 превратился бы в 0.38, а «+2% к базе» из §6.3 сказано
+ * про базу, измеряемую в единицах урона и брони. Правило то же самое
+ * и по той же причине, поэтому и записано одним списком, а не двумя.
+ */
 export function derive(item: Item): ItemDerived {
   const base = itemBase(item.baseKey);
+  const upgraded = 1 + item.upgradeLevel * upgradeBalance.bonusPerLevel;
   const scale = (value: number): number =>
-    Math.round(baseValue(value, item.ilvl, ilvlScale) * 10) / 10;
+    Math.round(baseValue(value, item.ilvl, ilvlScale) * upgraded * 10) / 10;
 
   return {
     ...(base.dmgMin === undefined ? {} : { dmgMin: scale(base.dmgMin) }),

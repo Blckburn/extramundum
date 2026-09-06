@@ -14,11 +14,17 @@ import {
   type RunExtractResponse,
   type RunFightResponse,
   type RunResponse,
+  type ReforgeInput,
+  type ReforgeResponse,
+  type RespecResponse,
   type RunStartInput,
   type SellInput,
   type SellResponse,
   type SimulatePreviewInput,
   type SimulatePreviewResponse,
+  type SmithItemInput,
+  type SmithViewResponse,
+  type UpgradeResponse,
   type UnequipInput,
   type ZonesResponse,
   type MeResponse,
@@ -219,6 +225,45 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     })) as DismantleResponse;
+  },
+
+  /**
+   * Кузнец. GDD §6.3, §5.2.
+   *
+   * В теле — идентификатор предмета и, у перековки, номер аффикса.
+   * Ни цены, ни шанса, ни результата: клиент их не выводит и прислать
+   * не может — схемы таких полей не содержат.
+   */
+  async smith(): Promise<SmithViewResponse> {
+    return (await request(API_ROUTES.smith)) as SmithViewResponse;
+  },
+
+  async smithUpgrade(input: SmithItemInput): Promise<UpgradeResponse> {
+    return (await request(API_ROUTES.smithUpgrade, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as UpgradeResponse;
+  },
+
+  async smithReforge(input: ReforgeInput): Promise<ReforgeResponse> {
+    return (await request(API_ROUTES.smithReforge, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as ReforgeResponse;
+  },
+
+  async smithRarityUp(input: SmithItemInput): Promise<ReforgeResponse> {
+    return (await request(API_ROUTES.smithRarityUp, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })) as ReforgeResponse;
+  },
+
+  async smithRespec(): Promise<RespecResponse> {
+    return (await request(API_ROUTES.smithRespec, {
+      method: 'POST',
+      body: '{}',
+    })) as RespecResponse;
   },
 
   /**

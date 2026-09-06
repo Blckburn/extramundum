@@ -48,6 +48,18 @@ export const API_ROUTES = {
   itemsLock: '/items/lock',
   itemsSell: '/items/sell',
   itemsDismantle: '/items/dismantle',
+
+  /**
+   * Кузнец. GDD §6.3, §5.2.
+   *
+   * В теле — идентификатор предмета и, у перековки, номер аффикса.
+   * Ни цены, ни шанса, ни результата: всё считает сервер.
+   */
+  smith: '/smith',
+  smithUpgrade: '/smith/upgrade',
+  smithReforge: '/smith/reforge',
+  smithRarityUp: '/smith/rarity-up',
+  smithRespec: '/smith/respec',
 } as const;
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

@@ -78,6 +78,13 @@
       "when": 1788694689659,
       "tag": "0010_unusual_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788707319663,
+      "tag": "0011_complete_wiccan",
+      "breakpoints": true
     }
   ]
 }

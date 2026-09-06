@@ -20,5 +20,6 @@ export * from './render.js';
 export * from './rolls.js';
 export * from './routes.js';
 export * from './runs.js';
+export * from './smith.js';
 export * from './validation.js';
 export * from './zones.js';
